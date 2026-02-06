@@ -1,0 +1,15 @@
+metadata:
+  name: "Simple LLM Call"
+  version: "1.0.0"
+
+workflow:
+  - id: "greet"
+    type: "llm"
+    config:
+      provider: "google"
+      model: "gemini-2.0-flash-exp"
+      system: "You are a helpful assistant."
+      messages:
+        - role: "user"
+          content: "$input.prompt"
+    result: "greeting"

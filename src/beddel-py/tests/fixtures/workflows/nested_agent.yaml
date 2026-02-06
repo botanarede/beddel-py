@@ -1,0 +1,24 @@
+metadata:
+  name: "Nested Agent Call"
+  version: "1.0.0"
+
+workflow:
+  - id: "delegate"
+    type: "call-agent"
+    config:
+      agentId: "text-generator"
+      input:
+        messages: "$input.messages"
+    result: "delegated"
+
+  - id: "validate"
+    type: "guardrail"
+    config:
+      schema:
+        type: "object"
+        properties:
+          text:
+            type: "string"
+            minLength: 1
+      input: "$stepResult.delegated"
+    result: "validated"
