@@ -5,13 +5,10 @@
 **Purpose:** Root model representing a complete YAML workflow file.
 
 **Key Attributes:**
-- `name`: str - Workflow identifier
-- `description`: str | None - Human-readable description
-- `version`: str - Semantic version
-- `input_schema`: dict | None - Pydantic schema for input validation
-- `steps`: list[StepDefinition] - Ordered list of workflow steps
-- `config`: WorkflowConfig - Global workflow configuration
-- `return_template`: dict | None - Optional explicit API response contract
+- `metadata`: WorkflowMetadata - Workflow identity (name, version, description)
+- `workflow`: list[StepDefinition] - Ordered list of workflow steps
+- `config`: WorkflowConfig - Global workflow configuration (default provided)
+- `return_template`: dict | None - Optional explicit API response contract (YAML alias: `return`)
 
 **Relationships:**
 - Contains multiple `StepDefinition` instances
@@ -58,6 +55,7 @@ return:
 - `id`: str - Unique step identifier within workflow
 - `type`: str - Primitive type (llm, chat, output-generator, etc.)
 - `config`: dict - Primitive-specific configuration
+- `result`: str | None - Variable name to store step output in context (used as key in `$stepResult.*`)
 - `condition`: str | None - Optional execution condition
 - `on_error`: ErrorHandler | None - Error handling configuration
 
@@ -72,7 +70,7 @@ return:
 **Key Attributes:**
 - `workflow_id`: str - Unique execution identifier
 - `input`: dict - Original input data
-- `step_results`: dict[str, Any] - Results keyed by step ID
+- `step_results`: dict[str, Any] - Results keyed by step's `result` variable name (not step ID)
 - `env`: dict[str, str] - Environment variables snapshot
 - `metadata`: dict - Execution metadata (timestamps, trace IDs)
 
@@ -89,10 +87,10 @@ return:
 - `messages`: list[Message] - Conversation messages
 - `temperature`: float - Sampling temperature
 - `max_tokens`: int | None - Maximum response tokens
-- `response_format`: type[BaseModel] | None - Structured output schema
+- `response_format`: dict[str, Any] | None - Structured output schema (JSON Schema dict)
 
 **Key Attributes (Response):**
-- `content`: str | BaseModel - Response content
+- `content`: str - Response content (plain text)
 - `model`: str - Actual model used
 - `usage`: TokenUsage - Token consumption details
 - `finish_reason`: str - Completion reason

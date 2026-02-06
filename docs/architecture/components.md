@@ -9,7 +9,7 @@
 **Key Interfaces:**
 - `parse(yaml_content: str) -> WorkflowDefinition`
 - `parse_file(path: Path) -> WorkflowDefinition`
-- `validate(definition: WorkflowDefinition) -> list[ValidationError]`
+- `validate(definition: WorkflowDefinition) -> list[str]`
 
 **Dependencies:** Pydantic, PyYAML
 
@@ -183,7 +183,6 @@ graph LR
         A3[LifecycleHooksAdapter]
     end
 
-    S3 --> P1
     S3 --> P2
     S3 --> P3
     A1 -.implements.-> P1

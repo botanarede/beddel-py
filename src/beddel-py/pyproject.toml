@@ -42,6 +42,7 @@ dev = [
     "pytest-mock>=3.14",
     "ruff>=0.9",
     "mypy>=1.14",
+    "types-PyYAML>=6.0",
     "respx>=0.22",
 ]
 

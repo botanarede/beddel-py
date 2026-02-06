@@ -15,6 +15,23 @@
   ```
 - **Error Propagation:** Errors bubble up with context; lifecycle hooks notified
 
+## on_error Hook Firing Rules
+
+| Exception Type | Step-level `on_error` | Workflow-level `on_error` | Behavior |
+|---|---|---|---|
+| `ExecutionError` / `PrimitiveError` | ✅ fires | ✅ fires (re-raised) | Domain errors propagate up after notifying hooks |
+| Generic `Exception` | ✅ fires | ❌ (handled at step) | Converted to `StepResult(success=False)` |
+
+## Skip Strategy Semantics
+
+When a step has `on_error: { strategy: skip }` and fails:
+
+- `StepResult.success` is `False` (the step did not succeed)
+- The workflow **continues** to the next step
+- The skipped step does **not** write to `context.step_results`
+- If a later step or `return` template references `$stepResult.<skipped_key>`, it will raise `ResolutionError` (fail-fast by design)
+- Workflow authors should guard dependent steps with `condition` checks or avoid referencing skippable results in `return` templates
+
 ## Logging Standards
 
 - **Library:** Python `logging` (standard library)
@@ -29,7 +46,7 @@
 
 ### External API Errors (LLM Providers)
 
-- **Retry Policy:** Exponential backoff (3 attempts, 1s/2s/4s)
+- **Retry Policy:** Not in MVP. Primitives may implement their own retry logic.
 - **Circuit Breaker:** Not in MVP (consider for post-MVP)
 - **Timeout Configuration:** Configurable per-step, default 30s
 - **Error Translation:** LiteLLM errors → `ProviderError` with original context
