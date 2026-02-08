@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,6 +18,9 @@ from beddel.domain.models import (
     TokenUsage,
 )
 from beddel.primitives.llm import _build_request, llm_primitive
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -231,3 +234,180 @@ def test_build_request_system_shorthand() -> None:
     assert req.messages[0].role == "system"
     assert req.messages[0].content == "Be brief."
     assert len(req.messages) == 2
+
+
+# ---------------------------------------------------------------------------
+# Streaming mode tests (Story 2.2)
+# ---------------------------------------------------------------------------
+
+
+async def _mock_stream_chunks() -> AsyncIterator[str]:
+    """Async generator yielding test chunks."""
+    for chunk in ["Hello", " ", "world"]:
+        yield chunk
+
+
+# ---------------------------------------------------------------------------
+# 3.1 Streaming happy path
+# ---------------------------------------------------------------------------
+
+
+async def test_streaming_happy_path(
+    mock_provider: AsyncMock,
+    context_with_provider: ExecutionContext,
+) -> None:
+    """Config with stream=True calls provider.stream() and returns AsyncIterator."""
+    mock_provider.stream = AsyncMock(return_value=_mock_stream_chunks())
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "stream": True,
+    }
+
+    result = await llm_primitive(config, context_with_provider)
+
+    mock_provider.stream.assert_awaited_once()
+    mock_provider.complete.assert_not_awaited()
+    # Result should be an async iterator
+    chunks = [chunk async for chunk in result]
+    assert chunks == ["Hello", " ", "world"]
+
+
+# ---------------------------------------------------------------------------
+# 3.2 Streaming iteration
+# ---------------------------------------------------------------------------
+
+
+async def test_streaming_iteration_matches_mock_data(
+    mock_provider: AsyncMock,
+    context_with_provider: ExecutionContext,
+) -> None:
+    """Consume the returned async iterator and verify chunks match."""
+    mock_provider.stream = AsyncMock(return_value=_mock_stream_chunks())
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Tell me a story"}],
+        "stream": True,
+    }
+
+    result = await llm_primitive(config, context_with_provider)
+    chunks: list[str] = []
+    async for chunk in result:
+        chunks.append(chunk)
+
+    assert chunks == ["Hello", " ", "world"]
+
+
+# ---------------------------------------------------------------------------
+# 3.3 Streaming request has stream=True
+# ---------------------------------------------------------------------------
+
+
+async def test_streaming_request_has_stream_true(
+    mock_provider: AsyncMock,
+    context_with_provider: ExecutionContext,
+) -> None:
+    """Verify LLMRequest.stream is True when config has stream: True."""
+    mock_provider.stream = AsyncMock(return_value=_mock_stream_chunks())
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "stream": True,
+    }
+
+    await llm_primitive(config, context_with_provider)
+
+    req: LLMRequest = mock_provider.stream.call_args[0][0]
+    assert req.stream is True
+
+
+# ---------------------------------------------------------------------------
+# 3.4 Streaming error wraps in ProviderError
+# ---------------------------------------------------------------------------
+
+
+async def test_streaming_error_raises_provider_error(
+    mock_provider: AsyncMock,
+) -> None:
+    """provider.stream() exception wrapped in ProviderError BEDDEL-PROVIDER-001."""
+    mock_provider.stream = AsyncMock(side_effect=RuntimeError("Stream failed"))
+    ctx = ExecutionContext(metadata={"llm_provider": mock_provider})
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "stream": True,
+    }
+
+    with pytest.raises(ProviderError, match="Stream failed") as exc_info:
+        await llm_primitive(config, ctx)
+
+    assert exc_info.value.code == ErrorCode.PROVIDER_ERROR
+    assert exc_info.value.__cause__ is not None
+
+
+# ---------------------------------------------------------------------------
+# 3.5 Streaming missing provider
+# ---------------------------------------------------------------------------
+
+
+async def test_streaming_missing_provider_raises_primitive_error() -> None:
+    """Missing llm_provider with stream=True raises PrimitiveError."""
+    ctx = ExecutionContext(metadata={})
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "stream": True,
+    }
+
+    with pytest.raises(PrimitiveError, match="llm_provider") as exc_info:
+        await llm_primitive(config, ctx)
+
+    assert exc_info.value.code == ErrorCode.EXEC_STEP_FAILED
+
+
+# ---------------------------------------------------------------------------
+# 3.6 Blocking mode unchanged
+# ---------------------------------------------------------------------------
+
+
+async def test_blocking_mode_unchanged_without_stream_key(
+    base_config: dict[str, Any],
+    context_with_provider: ExecutionContext,
+    mock_provider: AsyncMock,
+) -> None:
+    """Config without stream key still calls provider.complete()."""
+    result = await llm_primitive(base_config, context_with_provider)
+
+    assert isinstance(result, LLMResponse)
+    mock_provider.complete.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# 3.7 _build_request with stream=True
+# ---------------------------------------------------------------------------
+
+
+def test_build_request_with_stream_true() -> None:
+    """_build_request with stream: True sets LLMRequest.stream to True."""
+    config = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "x"}],
+        "stream": True,
+    }
+    req = _build_request(config)
+    assert req.stream is True
+
+
+# ---------------------------------------------------------------------------
+# 3.8 _build_request without stream key defaults to False
+# ---------------------------------------------------------------------------
+
+
+def test_build_request_without_stream_defaults_false() -> None:
+    """_build_request without stream key defaults LLMRequest.stream to False."""
+    config = {
+        "model": "m",
+        "messages": [{"role": "user", "content": "x"}],
+    }
+    req = _build_request(config)
+    assert req.stream is False
