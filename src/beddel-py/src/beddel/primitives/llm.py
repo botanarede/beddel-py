@@ -1,4 +1,4 @@
-"""LLM primitive — Single-turn blocking LLM call via ILLMProvider."""
+"""LLM primitive — Single-turn LLM call via ILLMProvider (blocking & streaming)."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from beddel.domain.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from beddel.domain.ports import ILLMProvider
 
 logger = logging.getLogger("beddel.primitives.llm")
@@ -47,6 +49,8 @@ def _build_request(config: dict[str, Any]) -> LLMRequest:
         kwargs["max_tokens"] = config["max_tokens"]
     if "response_format" in config:
         kwargs["response_format"] = config["response_format"]
+    if "stream" in config:
+        kwargs["stream"] = config["stream"]
 
     return LLMRequest(**kwargs)
 
@@ -54,8 +58,13 @@ def _build_request(config: dict[str, Any]) -> LLMRequest:
 async def llm_primitive(
     config: dict[str, Any],
     context: ExecutionContext,
-) -> LLMResponse:
-    """Execute a single-turn LLM call through the ILLMProvider port."""
+) -> LLMResponse | AsyncIterator[str]:
+    """Execute a single-turn LLM call through the ILLMProvider port.
+
+    When ``config["stream"]`` is ``True``, calls ``provider.stream()`` and
+    returns an ``AsyncIterator[str]``.  Otherwise calls ``provider.complete()``
+    and returns an ``LLMResponse``.
+    """
     # Extract provider from context metadata
     provider: ILLMProvider | None = context.metadata.get("llm_provider")
     if provider is None:
@@ -66,8 +75,23 @@ async def llm_primitive(
         )
 
     request = _build_request(config)
-    logger.debug("LLM request: model=%s messages=%d", request.model, len(request.messages))
+    logger.debug(
+        "LLM request: model=%s messages=%d stream=%s",
+        request.model, len(request.messages), request.stream,
+    )
 
+    # Streaming path
+    if request.stream:
+        try:
+            return await provider.stream(request)
+        except Exception as exc:
+            raise ProviderError(
+                f"LLM provider stream failed: {exc}",
+                code=ErrorCode.PROVIDER_ERROR,
+                details={"primitive": "llm", "model": request.model, "stream": True},
+            ) from exc
+
+    # Blocking path
     try:
         response = await provider.complete(request)
     except Exception as exc:
