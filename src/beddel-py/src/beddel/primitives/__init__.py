@@ -9,6 +9,7 @@ from beddel.primitives.chat import chat_primitive
 from beddel.primitives.guardrail import guardrail_primitive
 from beddel.primitives.llm import llm_primitive
 from beddel.primitives.output import output_primitive
+from beddel.primitives.tool import tool_primitive
 
 if TYPE_CHECKING:
     from beddel.domain.registry import PrimitiveRegistry
@@ -21,3 +22,4 @@ def register_builtins(registry: PrimitiveRegistry) -> None:
     registry.register_func("output-generator", output_primitive)
     registry.register_func("call-agent", call_agent_primitive)
     registry.register_func("guardrail", guardrail_primitive)
+    registry.register_func("tool", tool_primitive)

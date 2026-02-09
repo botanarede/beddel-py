@@ -1,0 +1,101 @@
+schema: "bmad-quality-gate/v1"
+story: "2.7"
+story_title: "Tool Primitive (Function Invocation)"
+
+gate:
+  status: "PASS"
+  status_reason: >
+    All 10 acceptance criteria fully met. 11/11 unit tests pass.
+    98% code coverage. Both architect reviews approve (Winston: APPROVE,
+    GPT-5.2: PASS with CONCERNS). Two known limitations documented and
+    accepted for v0.1.0. No blocking issues.
+  reviewer: "Quinn (Test Architect)"
+  updated: "2026-02-09"
+
+top_issues:
+  - id: "TL-1"
+    severity: "low"
+    title: "Timeout only applies to async callables"
+    description: >
+      Sync blocking functions cannot be interrupted by asyncio.wait_for().
+      Known limitation of the isawaitable pattern, consistent with call-agent.
+    status: "accepted"
+    deferred_to: "E6 (MCP integration) or post-MVP"
+    flagged_by:
+      - "Winston (Phase 1)"
+      - "GPT-5.2 (Phase 2)"
+
+  - id: "TL-2"
+    severity: "low"
+    title: "Tool registry in context.metadata is a soft contract"
+    description: >
+      context.metadata["tool_registry"] is a dict-based convention with no
+      type enforcement. Risk of metadata becoming a dumping ground as more
+      primitives use it. Consider ToolRegistry Protocol in future.
+    status: "accepted"
+    deferred_to: "Architecture review (Phase 4)"
+    flagged_by:
+      - "GPT-5.2 (Phase 2)"
+
+  - id: "TL-3"
+    severity: "low"
+    title: "No explicit args type validation"
+    description: >
+      If config["args"] is not a dict, the ** unpacking raises TypeError
+      which gets wrapped in PrimitiveError. Works but could provide a
+      clearer error message with explicit validation.
+    status: "accepted"
+    deferred_to: "Backlog"
+    flagged_by:
+      - "GPT-5.2 (Phase 2)"
+
+evidence:
+  tests:
+    total: 11
+    passed: 11
+    failed: 0
+    duration_seconds: 0.15
+    coverage_percent: 98
+    coverage_detail: "41 statements, 1 miss (line 102: PrimitiveError re-raise branch)"
+
+  static_analysis:
+    ruff: "All checks passed"
+    mypy: "Success, no issues found in 17 source files"
+
+  architect_reviews:
+    - reviewer: "Winston (BMAD Architect / Claude Opus 4.6)"
+      phase: 1
+      verdict: "APPROVE"
+      findings: 10
+      warnings: 1
+      critical: 0
+
+    - reviewer: "GPT-5.2 (OpenClaw Architect)"
+      phase: 2
+      verdict: "PASS with CONCERNS"
+      concerns: 4
+      critical: 0
+
+  files:
+    created:
+      - "src/beddel-py/src/beddel/primitives/tool.py"
+      - "src/beddel-py/tests/unit/primitives/test_tool.py"
+    modified:
+      - "src/beddel-py/src/beddel/primitives/__init__.py"
+
+nfr_validation:
+  hexagonal_architecture: "PASS — pure domain function, depends only on beddel.domain.models"
+  dependency_direction: "PASS — no adapter imports, tool registry injected via context.metadata"
+  pattern_consistency: "PASS — matches call-agent and guardrail patterns exactly"
+  no_new_dependencies: "PASS — only stdlib (asyncio, inspect, logging, time)"
+  security: "PASS — args keys only in logs, no secrets, no PII"
+
+recommendations:
+  - action: "Update story status to Done"
+    priority: "immediate"
+  - action: "Track TL-1 (sync timeout) for E6 or post-MVP"
+    priority: "backlog"
+  - action: "Track TL-2 (metadata contract) for Phase 4 architect review"
+    priority: "backlog"
+  - action: "Track TL-3 (args validation) in backlog"
+    priority: "backlog"
