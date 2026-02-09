@@ -265,3 +265,61 @@ async def test_call_depth_incremented_in_child() -> None:
     await call_agent_primitive({"agentId": "child"}, ctx)
 
     assert observed_depth == [3]  # 2 + 1
+
+
+# ---------------------------------------------------------------------------
+# A1: Async workflow loader support
+# ---------------------------------------------------------------------------
+
+
+async def test_async_workflow_loader_supported() -> None:
+    """Async workflow_loader is awaited correctly."""
+    registry = PrimitiveRegistry()
+
+    async def noop(config: dict[str, Any], context: ExecutionContext) -> Any:
+        return "async-ok"
+
+    registry.register_func("noop", noop)
+
+    step = StepDefinition(id="s1", type="noop", config={})
+    workflow = _make_workflow(steps=[step])
+
+    async def async_loader(agent_id: str) -> WorkflowDefinition:
+        return workflow
+
+    ctx = _make_context(registry=registry, workflow_loader=async_loader)
+    result = await call_agent_primitive({"agentId": "async-child"}, ctx)
+    assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# A5: Metadata passthrough to child context
+# ---------------------------------------------------------------------------
+
+
+async def test_metadata_passes_through_to_child() -> None:
+    """Extra metadata keys from parent context propagate to child."""
+    registry = PrimitiveRegistry()
+    observed_meta: dict[str, Any] = {}
+
+    async def meta_checker(config: dict[str, Any], context: ExecutionContext) -> Any:
+        observed_meta.update(context.metadata)
+        return "checked"
+
+    registry.register_func("check-meta", meta_checker)
+
+    step = StepDefinition(id="s1", type="check-meta", config={})
+    workflow = _make_workflow(steps=[step])
+    loader = lambda agent_id: workflow  # noqa: E731
+
+    ctx = _make_context(
+        registry=registry,
+        workflow_loader=loader,
+        extra_metadata={"custom_key": "custom_value", "another": 42},
+    )
+
+    await call_agent_primitive({"agentId": "child"}, ctx)
+
+    assert observed_meta["custom_key"] == "custom_value"
+    assert observed_meta["another"] == 42
+    assert observed_meta["call_depth"] == 1

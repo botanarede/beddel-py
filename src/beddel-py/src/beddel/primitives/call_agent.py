@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 import time
 from typing import Any
@@ -69,7 +70,10 @@ async def call_agent_primitive(
         "Invoking nested workflow: agentId=%s, depth=%d/%d",
         agent_id, current_depth + 1, max_depth,
     )
-    workflow_def = workflow_loader(agent_id)
+    _loader_result = workflow_loader(agent_id)
+    if inspect.isawaitable(_loader_result):
+        _loader_result = await _loader_result
+    workflow_def = _loader_result
 
     # AC 6: Retrieve registry and execute nested workflow
     registry = context.metadata.get("registry")
@@ -89,10 +93,16 @@ async def call_agent_primitive(
             "Nested workflow failed: agentId=%s, depth=%d, error=%s",
             agent_id, current_depth + 1, result.error,
         )
+        error_msg = result.error or "unknown error"
         raise PrimitiveError(
-            f"Nested workflow '{agent_id}' failed: {result.error}",
+            f"Nested workflow '{agent_id}' failed: {error_msg}",
             code=ErrorCode.EXEC_STEP_FAILED,
-            details={"primitive": "call-agent", "agentId": agent_id, "error": result.error},
+            details={
+                "primitive": "call-agent",
+                "agentId": agent_id,
+                "error": error_msg,
+                "workflow_id": result.workflow_id,
+            },
         )
 
     # AC 9: Log success
@@ -122,11 +132,15 @@ async def _execute_nested(
     start = time.monotonic()
 
     child_ctx = ExecutionContext(
+        workflow_id=workflow_def.metadata.name,
         input=input_data,
         env=dict(workflow_def.config.environment),
         metadata=metadata,
     )
 
+    # Local dict tracks StepResult objects (with metadata like duration, success).
+    # child_ctx.step_results tracks raw output values for variable resolution.
+    # This mirrors the pattern in WorkflowExecutor.execute().
     step_results: dict[str, StepResult] = {}
     last_output: Any = None
 
