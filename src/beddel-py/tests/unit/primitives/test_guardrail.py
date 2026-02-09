@@ -223,3 +223,21 @@ async def test_context_accepted_but_unused() -> None:
     schema = {"type": "string"}
     result = await guardrail_primitive({"schema": schema, "input": "ok"}, ctx)
     assert result == "ok"
+
+
+# ---------------------------------------------------------------------------
+# C1: Invalid on_fail value raises PrimitiveError
+# ---------------------------------------------------------------------------
+
+
+async def test_invalid_on_fail_raises() -> None:
+    """Unknown on_fail value raises PrimitiveError with allowed strategies."""
+    schema = {"type": "string"}
+
+    with pytest.raises(PrimitiveError, match="on_fail") as exc_info:
+        await guardrail_primitive(
+            {"schema": schema, "input": "ok", "on_fail": "ignore"}, _ctx()
+        )
+
+    assert exc_info.value.code == ErrorCode.EXEC_STEP_FAILED
+    assert "ignore" in str(exc_info.value)

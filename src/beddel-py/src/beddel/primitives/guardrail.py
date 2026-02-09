@@ -45,6 +45,15 @@ async def guardrail_primitive(
     input_data = config["input"]
     on_fail: str = config.get("on_fail", "raise")
 
+    valid_on_fail = {"raise", "return_errors"}
+    if on_fail not in valid_on_fail:
+        allowed = sorted(valid_on_fail)
+        raise PrimitiveError(
+            f"guardrail 'on_fail' must be one of {allowed}, got '{on_fail}'",
+            code=ErrorCode.EXEC_STEP_FAILED,
+            details={"primitive": "guardrail", "on_fail": on_fail, "allowed": allowed},
+        )
+
     logger.debug(
         "Guardrail validating: schema_type=%s, input_type=%s",
         schema.get("type", "unknown") if isinstance(schema, dict) else "unknown",
