@@ -11,7 +11,18 @@ Requires the ``beddel[fastapi]`` extra::
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from beddel.domain.executor import WorkflowExecutor
+from beddel.domain.models import (
+    ConfigurationError,
+    ExecutionError,
+    ParseError,
+    ProviderError,
+)
+from beddel.domain.parser import YAMLParser
+from beddel.domain.registry import PrimitiveRegistry
 
 # ---------------------------------------------------------------------------
 # Import guard — fail fast with a helpful message (AC 7)
@@ -31,7 +42,6 @@ if TYPE_CHECKING:
 
     from beddel.domain.models import WorkflowDefinition
     from beddel.domain.ports import ILifecycleHook, ILLMProvider, ITracer
-    from beddel.domain.registry import PrimitiveRegistry
 
 # ---------------------------------------------------------------------------
 # Structured logging (subtask 1.3)
@@ -78,8 +88,81 @@ def create_beddel_handler(
         type(registry).__name__ if registry else None,
     )
 
-    # Placeholder — Tasks 2 and 3 will implement blocking and streaming logic.
+    # --- Subtask 2.2: Parse YAML path into WorkflowDefinition ---------------
+    workflow_def: WorkflowDefinition
+    if isinstance(workflow, str):
+        logger.debug("parsing workflow from YAML file: %s", workflow)
+        workflow_def = YAMLParser().parse_file(Path(workflow))
+    else:
+        workflow_def = workflow
+
+    # --- Subtask 2.1: Build WorkflowExecutor from provided/default deps -----
+    effective_registry = registry or PrimitiveRegistry()
+    executor = WorkflowExecutor(
+        registry=effective_registry,
+        tracer=tracer,
+        hooks=hooks,
+    )
+
+    # --- Subtask 2.3 & 2.4: Blocking handler with error mapping -------------
     async def _handler(request: Request) -> JSONResponse:
-        raise NotImplementedError("handler not yet implemented (see tasks 2–3)")
+        try:
+            request_body: dict[str, Any] = await request.json()
+        except Exception as exc:
+            logger.warning("failed to parse request body: %s", exc)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "code": "INVALID_REQUEST_BODY",
+                        "message": f"Invalid JSON request body: {exc}",
+                        "details": {},
+                    },
+                },
+            )
+
+        try:
+            result = await executor.execute(workflow_def, request_body)
+            return JSONResponse(content=result.model_dump(mode="json"))
+
+        except (ParseError, ConfigurationError) as exc:
+            logger.warning("client error during workflow execution: %s", exc)
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "code": str(exc.code),
+                        "message": str(exc),
+                        "details": exc.details,
+                    },
+                },
+            )
+
+        except ExecutionError as exc:
+            # Covers ProviderError and PrimitiveError (subclasses)
+            logger.error("execution error during workflow: %s", exc)
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": {
+                        "code": str(exc.code),
+                        "message": str(exc),
+                        "details": exc.details,
+                    },
+                },
+            )
+
+        except Exception as exc:
+            logger.exception("unexpected error during workflow execution")
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": {
+                        "code": "INTERNAL_ERROR",
+                        "message": str(exc),
+                        "details": {},
+                    },
+                },
+            )
 
     return _handler
