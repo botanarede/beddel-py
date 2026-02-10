@@ -1,10 +1,11 @@
-"""Unit tests for the FastAPI integration — factory and blocking handler."""
+"""Unit tests for the FastAPI integration — factory, blocking handler, and SSE streaming."""
 
 from __future__ import annotations
 
 import inspect
+import json
 import tempfile
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -25,6 +26,9 @@ from beddel.domain.models import (
 )
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.integrations.fastapi import create_beddel_handler
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator as AsyncIteratorABC
 
 # ---------------------------------------------------------------------------
 # Test-app helper
@@ -404,3 +408,265 @@ async def test_factory_accepts_workflow_definition(
     body = response.json()
     assert body["success"] is True
     assert body["output"] == "Hello from Beddel!"
+
+
+# ===========================================================================
+# SSE Streaming Handler Tests (Task 5)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# SSE Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _async_iter(items: list[str]) -> AsyncIteratorABC[str]:
+    """Yield items as an async iterator (simulates streaming LLM output)."""
+    for item in items:
+        yield item
+
+
+def _make_streaming_workflow() -> WorkflowDefinition:
+    """Build a minimal streaming WorkflowDefinition (stream: true on a step)."""
+    return WorkflowDefinition(
+        metadata=WorkflowMetadata(name="streaming-test"),
+        workflow=[
+            StepDefinition(
+                id="step-1",
+                type="llm",
+                config={"model": "gpt-4o", "stream": True},
+            ),
+        ],
+    )
+
+
+def _parse_sse_events(body: str) -> list[dict[str, str]]:
+    """Parse raw SSE text into a list of ``{event, data}`` dicts.
+
+    Handles the ``event: <type>\\r\\ndata: <payload>\\r\\n\\r\\n`` wire
+    format produced by sse-starlette (which uses CRLF line endings).
+    """
+    events: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+    for raw_line in body.split("\n"):
+        line = raw_line.rstrip("\r")  # strip only CR, preserve content spaces
+        if line.startswith("event: "):
+            current["event"] = line[len("event: "):]
+        elif line.startswith("data: "):
+            current["data"] = line[len("data: "):]
+        elif line.startswith("data:") and line == "data:":
+            # data field with empty value
+            current["data"] = ""
+        elif line == "" and current:
+            events.append(current)
+            current = {}
+    if current:
+        events.append(current)
+    return events
+
+
+# ---------------------------------------------------------------------------
+# SSE Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def streaming_workflow_def() -> WorkflowDefinition:
+    """Minimal streaming WorkflowDefinition (stream: true)."""
+    return _make_streaming_workflow()
+
+
+# ---------------------------------------------------------------------------
+# 5.1 Streaming workflow returns EventSourceResponse (AC: 4)
+# ---------------------------------------------------------------------------
+
+
+async def test_streaming_workflow_returns_event_source_response(
+    streaming_workflow_def: WorkflowDefinition,
+    registry: PrimitiveRegistry,
+) -> None:
+    """Streaming workflow returns SSE content type (text/event-stream)."""
+    # Arrange
+    chunks = ["Hello", " ", "world"]
+    mock_result = ExecutionResult(
+        workflow_id="sse-123",
+        success=True,
+        output=_async_iter(chunks),
+    )
+    with patch(
+        "beddel.integrations.fastapi.WorkflowExecutor.execute",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
+        handler = create_beddel_handler(streaming_workflow_def, registry=registry)
+        app = _mount_handler(handler)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post("/run", json={"prompt": "hello"})
+
+    # Assert
+    assert response.status_code == 200
+    content_type = response.headers.get("content-type", "")
+    assert "text/event-stream" in content_type
+
+
+# ---------------------------------------------------------------------------
+# 5.2 SSE events follow the event: chunk / data: ... format (AC: 5)
+# ---------------------------------------------------------------------------
+
+
+async def test_sse_events_follow_chunk_format(
+    streaming_workflow_def: WorkflowDefinition,
+    registry: PrimitiveRegistry,
+) -> None:
+    """SSE chunk events have ``event: chunk`` and ``data: <text>`` fields."""
+    # Arrange
+    chunks = ["Hello", " ", "world"]
+    mock_result = ExecutionResult(
+        workflow_id="sse-123",
+        success=True,
+        output=_async_iter(chunks),
+    )
+    with patch(
+        "beddel.integrations.fastapi.WorkflowExecutor.execute",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
+        handler = create_beddel_handler(streaming_workflow_def, registry=registry)
+        app = _mount_handler(handler)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post("/run", json={"prompt": "hello"})
+
+    # Assert — parse SSE events and verify chunk format
+    events = _parse_sse_events(response.text)
+    chunk_events = [e for e in events if e.get("event") == "chunk"]
+    assert len(chunk_events) == len(chunks)
+    for i, event in enumerate(chunk_events):
+        assert event["event"] == "chunk"
+        assert event["data"] == chunks[i]
+
+
+# ---------------------------------------------------------------------------
+# 5.3 [DONE] sentinel is sent on completion (AC: 5)
+# ---------------------------------------------------------------------------
+
+
+async def test_sse_done_sentinel_sent_on_completion(
+    streaming_workflow_def: WorkflowDefinition,
+    registry: PrimitiveRegistry,
+) -> None:
+    """The last SSE event is ``event: done`` with ``data: [DONE]``."""
+    # Arrange
+    chunks = ["Hello"]
+    mock_result = ExecutionResult(
+        workflow_id="sse-123",
+        success=True,
+        output=_async_iter(chunks),
+    )
+    with patch(
+        "beddel.integrations.fastapi.WorkflowExecutor.execute",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
+        handler = create_beddel_handler(streaming_workflow_def, registry=registry)
+        app = _mount_handler(handler)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post("/run", json={"prompt": "hello"})
+
+    # Assert
+    events = _parse_sse_events(response.text)
+    assert len(events) >= 2  # at least one chunk + done
+    done_event = events[-1]
+    assert done_event["event"] == "done"
+    assert done_event["data"] == "[DONE]"
+
+
+# ---------------------------------------------------------------------------
+# 5.4 Error during streaming yields event: error SSE event (AC: 5)
+# ---------------------------------------------------------------------------
+
+
+async def test_sse_error_event_on_execution_error(
+    streaming_workflow_def: WorkflowDefinition,
+    registry: PrimitiveRegistry,
+) -> None:
+    """ExecutionError during streaming yields an ``event: error`` SSE event."""
+    # Arrange
+    exec_exc = ExecutionError(
+        "Step failed",
+        code=ErrorCode.EXEC_STEP_FAILED,
+        details={"step_id": "step-1"},
+    )
+    with patch(
+        "beddel.integrations.fastapi.WorkflowExecutor.execute",
+        new_callable=AsyncMock,
+        side_effect=exec_exc,
+    ):
+        handler = create_beddel_handler(streaming_workflow_def, registry=registry)
+        app = _mount_handler(handler)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post("/run", json={"prompt": "hello"})
+
+    # Assert — SSE stream should contain an error event
+    events = _parse_sse_events(response.text)
+    error_events = [e for e in events if e.get("event") == "error"]
+    assert len(error_events) == 1
+    error_data = json.loads(error_events[0]["data"])
+    assert error_data["code"] == str(ErrorCode.EXEC_STEP_FAILED)
+    assert "Step failed" in error_data["message"]
+    assert error_data["details"] == {"step_id": "step-1"}
+
+
+# ---------------------------------------------------------------------------
+# 5.5 SSE response headers include Cache-Control: no-cache (AC: 10)
+# ---------------------------------------------------------------------------
+
+
+async def test_sse_response_headers_include_cache_control(
+    streaming_workflow_def: WorkflowDefinition,
+    registry: PrimitiveRegistry,
+) -> None:
+    """SSE response includes ``Cache-Control: no-cache`` header."""
+    # Arrange
+    chunks = ["ok"]
+    mock_result = ExecutionResult(
+        workflow_id="sse-123",
+        success=True,
+        output=_async_iter(chunks),
+    )
+    with patch(
+        "beddel.integrations.fastapi.WorkflowExecutor.execute",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
+        handler = create_beddel_handler(streaming_workflow_def, registry=registry)
+        app = _mount_handler(handler)
+
+        # Act
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+        ) as client:
+            response = await client.post("/run", json={"prompt": "hello"})
+
+    # Assert
+    cache_control = response.headers.get("cache-control", "")
+    assert "no-cache" in cache_control
