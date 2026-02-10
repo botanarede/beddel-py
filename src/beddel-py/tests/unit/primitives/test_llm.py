@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import BaseModel
 
 from beddel.domain.models import (
     ErrorCode,
@@ -413,3 +414,160 @@ def test_build_request_without_stream_defaults_false() -> None:
     }
     req, _ = _build_request(config)
     assert req.stream is False
+
+
+# ===========================================================================
+# Structured output tests (Story 3.2)
+# ===========================================================================
+
+
+class _Sentiment(BaseModel):
+    """Test model for structured output tests."""
+
+    label: str
+    score: float
+
+
+# ---------------------------------------------------------------------------
+# 5.1 _build_request with response_model
+# ---------------------------------------------------------------------------
+
+
+def test_build_request_with_response_model_returns_handler() -> None:
+    """_build_request with response_model returns a non-None handler and sets response_format."""
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Classify this"}],
+        "response_model": _Sentiment,
+    }
+
+    req, handler = _build_request(config)
+
+    assert handler is not None
+    assert req.response_format is not None
+    assert req.response_format["type"] == "json_schema"
+    assert req.response_format["json_schema"]["name"] == "_Sentiment"
+    assert req.response_format["json_schema"]["strict"] is True
+
+
+def test_build_request_without_response_model_returns_none_handler() -> None:
+    """_build_request without response_model returns handler=None."""
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Hi"}],
+    }
+
+    req, handler = _build_request(config)
+
+    assert handler is None
+    assert req.response_format is None
+
+
+async def test_structured_output_passes_response_format_to_provider(
+    mock_provider: AsyncMock,
+    context_with_provider: ExecutionContext,
+) -> None:
+    """Config with response_model passes response_format to provider and returns parsed dict."""
+    # Arrange
+    mock_provider.complete.return_value = LLMResponse(
+        content='{"label": "positive", "score": 0.95}',
+        model="test-model",
+        usage=TokenUsage(prompt_tokens=10, completion_tokens=8, total_tokens=18),
+    )
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Classify: great movie"}],
+        "response_model": _Sentiment,
+    }
+
+    # Act
+    result = await llm_primitive(config, context_with_provider)
+
+    # Assert — response_format was set on the request passed to provider
+    mock_provider.complete.assert_awaited_once()
+    req: LLMRequest = mock_provider.complete.call_args[0][0]
+    assert req.response_format is not None
+    assert req.response_format["type"] == "json_schema"
+    assert req.response_format["json_schema"]["name"] == "_Sentiment"
+
+    # Assert — result is a dict (parsed and validated)
+    assert isinstance(result, dict)
+
+
+# ---------------------------------------------------------------------------
+# 5.2 response_model returns .model_dump() dict (AC 7)
+# ---------------------------------------------------------------------------
+
+
+async def test_structured_output_returns_model_dump_dict(
+    mock_provider: AsyncMock,
+    context_with_provider: ExecutionContext,
+) -> None:
+    """response_model returns validated Pydantic model as dict via .model_dump() (AC 7)."""
+    # Arrange
+    mock_provider.complete.return_value = LLMResponse(
+        content='{"label": "positive", "score": 0.95}',
+        model="test-model",
+        usage=TokenUsage(prompt_tokens=10, completion_tokens=8, total_tokens=18),
+    )
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Classify: great movie"}],
+        "response_model": _Sentiment,
+    }
+
+    # Act
+    result = await llm_primitive(config, context_with_provider)
+
+    # Assert — result is a plain dict, NOT an LLMResponse
+    assert not isinstance(result, LLMResponse)
+    assert isinstance(result, dict)
+    assert result == {"label": "positive", "score": 0.95}
+
+
+# ---------------------------------------------------------------------------
+# 5.3 response_model + stream=True raises PrimitiveError
+# ---------------------------------------------------------------------------
+
+
+async def test_structured_output_with_stream_raises_primitive_error(
+    mock_provider: AsyncMock,
+    context_with_provider: ExecutionContext,
+) -> None:
+    """response_model + stream=True raises PrimitiveError BEDDEL-EXEC-001."""
+    # Arrange
+    config = {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "Classify: great movie"}],
+        "response_model": _Sentiment,
+        "stream": True,
+    }
+
+    # Act & Assert
+    with pytest.raises(PrimitiveError, match="not supported with streaming") as exc_info:
+        await llm_primitive(config, context_with_provider)
+
+    assert exc_info.value.code == ErrorCode.EXEC_STEP_FAILED
+    assert exc_info.value.details["primitive"] == "llm"
+    assert "hint" in exc_info.value.details
+
+
+# ---------------------------------------------------------------------------
+# 5.4 Without response_model still returns LLMResponse (regression)
+# ---------------------------------------------------------------------------
+
+
+async def test_without_response_model_returns_llm_response_regression(
+    base_config: dict[str, Any],
+    context_with_provider: ExecutionContext,
+    mock_provider: AsyncMock,
+) -> None:
+    """Without response_model, llm_primitive still returns LLMResponse (regression)."""
+    # Act
+    result = await llm_primitive(base_config, context_with_provider)
+
+    # Assert — result is LLMResponse, not a dict
+    assert isinstance(result, LLMResponse)
+    assert not isinstance(result, dict)
+    assert result.content == "Hello!"
+    mock_provider.complete.assert_awaited_once()
