@@ -10,22 +10,19 @@ Requires the ``beddel[fastapi]`` extra::
 
 from __future__ import annotations
 
-import json
 import logging
-from collections.abc import AsyncIterator as AsyncIteratorABC
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
-    BeddelError,
     ConfigurationError,
     ExecutionError,
     ParseError,
-    ProviderError,
 )
 from beddel.domain.parser import YAMLParser
 from beddel.domain.registry import PrimitiveRegistry
+from beddel.integrations.sse import BeddelSSEAdapter
 
 # ---------------------------------------------------------------------------
 # Import guard — fail fast with a helpful message (AC 7)
@@ -41,7 +38,7 @@ except ImportError:
     ) from None
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from beddel.domain.models import WorkflowDefinition
     from beddel.domain.ports import ILifecycleHook, ILLMProvider, ITracer
@@ -67,77 +64,6 @@ def _is_streaming_workflow(workflow_def: WorkflowDefinition) -> bool:
     return any(
         step.config.get("stream") is True for step in workflow_def.workflow
     )
-
-
-def _build_error_event(exc: Exception) -> dict[str, str]:
-    """Build an SSE error event dict from an exception.
-
-    Returns a dict suitable for yielding from an SSE async generator:
-    ``{"event": "error", "data": "<json>"}``.
-    """
-    if isinstance(exc, BeddelError):
-        payload: dict[str, Any] = {
-            "code": str(exc.code),
-            "message": str(exc),
-            "details": exc.details,
-        }
-    else:
-        payload = {
-            "code": "INTERNAL_ERROR",
-            "message": str(exc),
-            "details": {},
-        }
-    return {"event": "error", "data": json.dumps(payload)}
-
-
-async def _sse_generator(
-    executor: WorkflowExecutor,
-    workflow_def: WorkflowDefinition,
-    request_body: dict[str, Any],
-) -> AsyncIteratorABC[dict[str, str]]:
-    """Async generator that executes a workflow and yields SSE events.
-
-    Subtasks 3.2–3.5: Execute the workflow, intercept ``AsyncIterator[str]``
-    step results, and yield SSE-formatted event dicts.
-
-    Yields:
-        Dicts with ``event`` and ``data`` keys consumed by
-        ``EventSourceResponse``.
-    """
-    try:
-        result = await executor.execute(workflow_def, request_body)
-
-        # Subtask 3.2: Check if the output is an async iterator (streaming)
-        if isinstance(result.output, AsyncIteratorABC):
-            logger.debug("streaming async iterator output as SSE chunks")
-            async for chunk in result.output:
-                # Subtask 3.3: Yield chunk events
-                yield {"event": "chunk", "data": str(chunk)}
-        else:
-            # Non-streaming result from a streaming-declared workflow —
-            # emit the full output as a single chunk.
-            logger.debug("workflow output is not an async iterator; emitting single chunk")
-            yield {
-                "event": "chunk",
-                "data": json.dumps(
-                    result.model_dump(mode="json"),
-                ),
-            }
-
-        # Subtask 3.4: Done sentinel
-        yield {"event": "done", "data": "[DONE]"}
-
-    except (ParseError, ConfigurationError) as exc:
-        logger.warning("client error during streaming execution: %s", exc)
-        yield _build_error_event(exc)
-
-    except ExecutionError as exc:
-        logger.error("execution error during streaming: %s", exc)
-        yield _build_error_event(exc)
-
-    except Exception as exc:
-        logger.exception("unexpected error during streaming execution")
-        yield _build_error_event(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +105,7 @@ def create_beddel_handler(
         type(registry).__name__ if registry else None,
     )
 
-    # --- Subtask 2.2: Parse YAML path into WorkflowDefinition ---------------
+    # --- Parse YAML path into WorkflowDefinition ----------------------------
     workflow_def: WorkflowDefinition
     if isinstance(workflow, str):
         logger.debug("parsing workflow from YAML file: %s", workflow)
@@ -187,7 +113,7 @@ def create_beddel_handler(
     else:
         workflow_def = workflow
 
-    # --- Subtask 2.1: Build WorkflowExecutor from provided/default deps -----
+    # --- Build WorkflowExecutor from provided/default deps ------------------
     effective_registry = registry or PrimitiveRegistry()
     executor = WorkflowExecutor(
         registry=effective_registry,
@@ -195,12 +121,32 @@ def create_beddel_handler(
         hooks=hooks,
     )
 
-    # --- Subtask 2.3 & 2.4: Blocking handler with error mapping -------------
-    # --- Subtask 3.1–3.6: SSE streaming handler path -----------------------
-
     streaming = _is_streaming_workflow(workflow_def)
     if streaming:
         logger.debug("workflow contains streaming step(s) — SSE mode enabled")
+
+    async def _sse_bridge(
+        executor: WorkflowExecutor,
+        workflow_def: WorkflowDefinition,
+        request_body: dict[str, Any],
+    ) -> AsyncIterator[dict[str, str]]:
+        """Bridge between BeddelSSEAdapter and EventSourceResponse.
+
+        Executes the workflow, streams SSE events via the adapter, and
+        converts each ``SSEEvent`` to the dict format expected by
+        ``EventSourceResponse``.
+        """
+        adapter = BeddelSSEAdapter()
+        try:
+            result = await executor.execute(workflow_def, request_body)
+            async for sse_event in adapter.stream(result):
+                yield {"event": sse_event.event, "data": sse_event.data}
+        except Exception as exc:
+            logger.exception("error during SSE streaming execution")
+            from beddel.integrations.sse import _build_error_event
+
+            error_event = _build_error_event(exc)
+            yield {"event": error_event.event, "data": error_event.data}
 
     async def _handler(request: Request) -> JSONResponse | EventSourceResponse:
         try:
@@ -218,10 +164,10 @@ def create_beddel_handler(
                 },
             )
 
-        # --- Subtask 3.1: Branch on streaming mode --------------------------
+        # --- Branch on streaming mode ---------------------------------------
         if streaming:
             return EventSourceResponse(
-                _sse_generator(executor, workflow_def, request_body),
+                _sse_bridge(executor, workflow_def, request_body),
                 headers=_SSE_HEADERS,
             )
 
@@ -271,5 +217,3 @@ def create_beddel_handler(
             )
 
     return _handler
-
-
