@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import builtins
+import importlib
 import inspect
 import json
+import sys
 import tempfile
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
@@ -670,3 +673,49 @@ async def test_sse_response_headers_include_cache_control(
     # Assert
     cache_control = response.headers.get("cache-control", "")
     assert "no-cache" in cache_control
+
+
+# ===========================================================================
+# Import Guard Tests (Task 6)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 6.1 ImportError raised with helpful message when fastapi is missing (AC: 7)
+# ---------------------------------------------------------------------------
+
+
+def test_import_error_when_fastapi_missing() -> None:
+    """ImportError with helpful message when fastapi is not installed."""
+    # Arrange — remove cached module and block fastapi import
+    modules_to_remove = [
+        key
+        for key in sys.modules
+        if key.startswith("beddel.integrations.fastapi")
+    ]
+
+    saved_modules = {key: sys.modules.pop(key) for key in modules_to_remove}
+
+    original_import = builtins.__import__
+
+    def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name in (
+            "fastapi",
+            "fastapi.responses",
+            "sse_starlette",
+            "sse_starlette.sse",
+        ):
+            raise ImportError(f"No module named '{name}'")
+        return original_import(name, *args, **kwargs)
+
+    try:
+        # Act & Assert
+        with (
+            patch("builtins.__import__", side_effect=mock_import),
+            pytest.raises(
+                ImportError, match=r"beddel\[fastapi\] extra required"
+            ),
+        ):
+            importlib.import_module("beddel.integrations.fastapi")
+    finally:
+        # Restore — put the real modules back so other tests are unaffected
+        sys.modules.update(saved_modules)
