@@ -6,10 +6,12 @@ from beddel.adapters.hooks import LifecycleHooksAdapter
 from beddel.adapters.litellm import LiteLLMAdapter
 from beddel.adapters.provider_config import ProviderConfig, ProviderRegistry
 from beddel.adapters.structured import StructuredOutputHandler
+from beddel.adapters.tracing import OpenTelemetryAdapter
 
 __all__ = [
     "LifecycleHooksAdapter",
     "LiteLLMAdapter",
+    "OpenTelemetryAdapter",
     "ProviderConfig",
     "ProviderRegistry",
     "StructuredOutputHandler",
