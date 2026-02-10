@@ -215,11 +215,12 @@ async def test_provider_field_ignored_in_config(
 def test_build_request_minimal() -> None:
     """_build_request with minimal config produces correct LLMRequest."""
     config = {"model": "m", "messages": [{"role": "user", "content": "x"}]}
-    req = _build_request(config)
+    req, handler = _build_request(config)
 
     assert req.model == "m"
     assert len(req.messages) == 1
     assert req.temperature == 0.7
+    assert handler is None
 
 
 def test_build_request_system_shorthand() -> None:
@@ -229,11 +230,12 @@ def test_build_request_system_shorthand() -> None:
         "system": "Be brief.",
         "messages": [{"role": "user", "content": "x"}],
     }
-    req = _build_request(config)
+    req, handler = _build_request(config)
 
     assert req.messages[0].role == "system"
     assert req.messages[0].content == "Be brief."
     assert len(req.messages) == 2
+    assert handler is None
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +396,7 @@ def test_build_request_with_stream_true() -> None:
         "messages": [{"role": "user", "content": "x"}],
         "stream": True,
     }
-    req = _build_request(config)
+    req, _ = _build_request(config)
     assert req.stream is True
 
 
@@ -409,5 +411,5 @@ def test_build_request_without_stream_defaults_false() -> None:
         "model": "m",
         "messages": [{"role": "user", "content": "x"}],
     }
-    req = _build_request(config)
+    req, _ = _build_request(config)
     assert req.stream is False

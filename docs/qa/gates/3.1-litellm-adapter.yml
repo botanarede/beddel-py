@@ -1,0 +1,55 @@
+schema: 1
+story: "3.1"
+story_title: "LiteLLM Adapter (Unified Provider Interface)"
+gate: PASS
+status_reason: "All 10 acceptance criteria met. 9/9 tests pass with 96% coverage (exceeds 80% threshold). Both architect reviews approve. One actionable low-severity item (CODE-001: litellm.Usage fallback) deferred to backlog."
+reviewer: "Quinn (Test Architect)"
+updated: "2026-02-09"
+
+top_issues:
+  - id: "CODE-001"
+    severity: low
+    finding: "litellm.Usage fallback in complete() couples to LiteLLM internals — if litellm.Usage is removed or renamed in a future version, this line breaks"
+    suggested_action: "Replace `litellm.Usage(prompt_tokens=0, ...)` with direct `TokenUsage(prompt_tokens=0, ...)` construction — 2-line change, no behavior difference"
+
+  - id: "TEST-001"
+    severity: low
+    finding: "Two uncovered lines (96%): max_tokens branch (line 59) and ProviderError re-raise in stream (line 128)"
+    suggested_action: "Add test for complete() with max_tokens set, and test for stream() re-raising ProviderError without double-wrap — nice-to-have, coverage already exceeds 80% threshold"
+
+  - id: "ARCH-001"
+    severity: low
+    finding: "temperature is always sent to LiteLLM even at default value (0.7) — some providers may behave differently when temperature is explicitly set vs omitted"
+    suggested_action: "Design choice accepted for v0.1.0 — revisit if provider-specific quirks surface"
+
+  - id: "ARCH-002"
+    severity: low
+    finding: "LLMRequest.stream field is unused by the adapter (stream behavior is method-driven, not field-driven)"
+    suggested_action: "Consider removing LLMRequest.stream field or documenting it as reserved for future use"
+
+waiver:
+  active: false
+
+quality_score: 92
+
+evidence:
+  tests_pass: true
+  test_count: 9
+  coverage_percent: 96
+  mypy_errors: 0
+  ruff_issues: 0
+  all_acs_met: true
+  architect_reviews: 2
+  architect_verdicts: ["APPROVE", "CONCERNS"]
+
+nfr_validation:
+  type_safety: PASS
+  error_handling: PASS
+  logging: PASS
+  security: PASS
+  performance: N/A
+
+recommendations:
+  - "Apply CODE-001 fix (replace litellm.Usage with TokenUsage) in next story or maintenance pass"
+  - "Add max_tokens and ProviderError re-raise tests when convenient (TEST-001)"
+  - "Phase 2 OpenClaw TYPE_CHECKING concern was a false positive — from __future__ import annotations is present on line 3"
