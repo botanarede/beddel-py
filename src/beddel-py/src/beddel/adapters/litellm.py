@@ -30,6 +30,9 @@ class LiteLLMAdapter:
     Args:
         api_key: Optional API key passed through to every LiteLLM call.
         api_base: Optional base URL passed through to every LiteLLM call.
+        extra_params: Optional provider-specific parameters merged into every
+            ``litellm.acompletion()`` call (e.g. ``custom_llm_provider``,
+            ``aws_region_name``).
     """
 
     def __init__(
@@ -37,9 +40,11 @@ class LiteLLMAdapter:
         *,
         api_key: str | None = None,
         api_base: str | None = None,
+        extra_params: dict[str, Any] | None = None,
     ) -> None:
         self.api_key = api_key
         self.api_base = api_base
+        self.extra_params = extra_params
 
     def _build_params(self, request: LLMRequest) -> dict[str, Any]:
         """Map an ``LLMRequest`` to LiteLLM ``acompletion()`` kwargs.
@@ -66,6 +71,9 @@ class LiteLLMAdapter:
 
         if self.api_base is not None:
             params["api_base"] = self.api_base
+
+        if self.extra_params:
+            params.update(self.extra_params)
 
         return params
 

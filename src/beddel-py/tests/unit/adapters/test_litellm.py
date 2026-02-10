@@ -328,3 +328,63 @@ async def test_default_constructor_no_credentials(
     assert "api_base" not in call_kwargs
     assert adapter.api_key is None
     assert adapter.api_base is None
+
+
+# ---------------------------------------------------------------------------
+# 5.11 extra_params integration (AC: 6)
+# ---------------------------------------------------------------------------
+
+
+async def test_build_params_merges_extra_params() -> None:
+    """_build_params() merges extra_params into the returned params dict."""
+    # Arrange
+    adapter = LiteLLMAdapter(
+        extra_params={
+            "aws_region_name": "us-west-2",
+            "custom_llm_provider": "sagemaker",
+        },
+    )
+    req = _make_request()
+
+    # Act
+    params = adapter._build_params(req)
+
+    # Assert
+    assert params["aws_region_name"] == "us-west-2"
+    assert params["custom_llm_provider"] == "sagemaker"
+
+
+async def test_build_params_without_extra_params_regression() -> None:
+    """_build_params() without extra_params produces no extra keys (regression)."""
+    # Arrange
+    adapter = LiteLLMAdapter()
+    req = _make_request()
+
+    # Act
+    params = adapter._build_params(req)
+
+    # Assert — no provider-specific keys leak in
+    assert "aws_region_name" not in params
+    assert "custom_llm_provider" not in params
+    # Core keys still present
+    assert params["model"] == "gpt-4o-mini"
+    assert isinstance(params["messages"], list)
+    assert "temperature" in params
+
+
+@patch("beddel.adapters.litellm.litellm.acompletion", new_callable=AsyncMock)
+async def test_complete_passes_extra_params_to_acompletion(
+    mock_acompletion: AsyncMock,
+) -> None:
+    """complete() forwards extra_params through to litellm.acompletion()."""
+    # Arrange
+    adapter = LiteLLMAdapter(extra_params={"aws_region_name": "eu-west-1"})
+    req = _make_request()
+    mock_acompletion.return_value = _make_completion_response()
+
+    # Act
+    await adapter.complete(req)
+
+    # Assert
+    call_kwargs = mock_acompletion.call_args[1]
+    assert call_kwargs["aws_region_name"] == "eu-west-1"

@@ -1,0 +1,51 @@
+schema: 1
+story: "3.3"
+story_title: "Provider-Specific Configuration"
+gate: PASS
+status_reason: "All 10 acceptance criteria met. 27/27 tests pass with 100% coverage on provider_config.py (exceeds 80% threshold). Both architect reviews completed — Winston APPROVE, GPT-5.2 CONCERNS. Primary concern (extra_params overriding reserved keys) is a valid defensive coding observation rated medium, but not a current defect — extra_params is developer-controlled configuration, not user input. Follows v0.1.0 pragmatic precedent from Story 3.2."
+reviewer: "Quinn (Test Architect)"
+updated: "2026-02-10"
+
+top_issues:
+  - id: "DOC-001"
+    severity: low
+    finding: "extra_params docstring says 'forwarded in a future release' but params are already forwarded now via _build_params() — stale documentation"
+    suggested_action: "Update ProviderConfig.extra_params docstring to reflect current behavior (1-line fix)"
+
+  - id: "SAFE-001"
+    severity: medium
+    finding: "extra_params can override reserved request keys (model, messages, temperature, stream) via params.update() in _build_params() — could cause silent misbehavior if misconfigured"
+    suggested_action: "Add a RESERVED_KEYS blocklist in _build_params() that logs a warning and skips conflicting keys, or raise ConfigurationError on collision. Address in a future hardening story."
+
+  - id: "NORM-001"
+    severity: low
+    finding: "Provider names are case-sensitive with no normalization — 'OpenRouter' and 'openrouter' would be treated as different providers"
+    suggested_action: "Apply .lower() normalization in register() and get() to prevent case drift. Low priority — convention is documented as lowercase."
+
+waiver:
+  active: false
+
+quality_score: 94
+
+evidence:
+  tests_pass: true
+  test_count: 27
+  coverage_percent: 100
+  mypy_errors: 0
+  mypy_warnings: 0
+  ruff_issues: 0
+  all_acs_met: true
+  architect_reviews: 2
+  architect_verdicts: ["APPROVE", "CONCERNS"]
+
+nfr_validation:
+  type_safety: PASS
+  error_handling: PASS
+  logging: PASS
+  security: PASS
+  performance: N/A
+
+recommendations:
+  - "Fix DOC-001 (stale extra_params docstring) in next maintenance pass — 1-line change"
+  - "Track SAFE-001 (reserved key protection) as a hardening item for a future story — highest priority improvement"
+  - "NORM-001 (case normalization) is a nice-to-have — low priority, add when registry API is next touched"
