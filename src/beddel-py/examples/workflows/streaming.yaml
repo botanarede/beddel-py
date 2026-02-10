@@ -1,0 +1,28 @@
+# Streaming Workflow
+# ==================
+# A single-step LLM workflow with streaming enabled.
+# The executor yields tokens as they arrive via Server-Sent Events (SSE).
+#
+# Usage:
+#   POST /agent/streaming  {"input": {"prompt": "Tell me a story."}}
+#   Response: text/event-stream (SSE)
+
+# Workflow metadata — describes the workflow for tooling and documentation.
+metadata:
+  name: "Streaming LLM Call"
+  version: "1.0.0"
+  description: "A minimal single-step workflow that streams LLM tokens back to the client via SSE."
+
+# The workflow is a list of steps executed sequentially.
+workflow:
+  - id: "stream-answer"                   # Unique step identifier
+    type: "llm"                           # Primitive type — invokes an LLM provider
+    config:
+      provider: "openai"                  # LLM provider (openai, google, anthropic, etc.)
+      model: "gpt-4o"                     # Model to use for this step
+      stream: true                        # Enable streaming — tokens are yielded as they arrive
+      system: "You are a helpful assistant. Answer concisely."  # System prompt
+      messages:
+        - role: "user"
+          content: "$input.prompt"        # Variable reference — replaced at runtime with user input
+    result: "stream-answer"               # Store the step output under this key

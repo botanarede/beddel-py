@@ -1,0 +1,26 @@
+# Simple Blocking Workflow
+# =======================
+# A single-step LLM workflow that runs in blocking mode.
+# The executor waits for the full response before returning.
+#
+# Usage:
+#   POST /agent/simple  {"input": {"prompt": "Hello, world!"}}
+
+# Workflow metadata — describes the workflow for tooling and documentation.
+metadata:
+  name: "Simple Blocking LLM Call"
+  version: "1.0.0"
+  description: "A minimal single-step workflow that sends a prompt to an LLM and returns the full response."
+
+# The workflow is a list of steps executed sequentially.
+workflow:
+  - id: "answer"                          # Unique step identifier
+    type: "llm"                           # Primitive type — invokes an LLM provider
+    config:
+      provider: "openai"                  # LLM provider (openai, google, anthropic, etc.)
+      model: "gpt-4o"                     # Model to use for this step
+      system: "You are a helpful assistant. Answer concisely."  # System prompt
+      messages:
+        - role: "user"
+          content: "$input.prompt"        # Variable reference — replaced at runtime with user input
+    result: "answer"                      # Store the step output under this key
