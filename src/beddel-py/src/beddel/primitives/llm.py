@@ -19,7 +19,7 @@ from beddel.domain.models import (
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-    from beddel.domain.ports import ILLMProvider
+    from beddel.domain.ports import ILifecycleHook, ILLMProvider
 
 logger = logging.getLogger("beddel.primitives.llm")
 
@@ -106,6 +106,13 @@ async def llm_primitive(
         request.model, len(request.messages), request.stream,
     )
 
+    # Extract lifecycle hooks from context metadata
+    hooks: list[ILifecycleHook] = context.metadata.get("lifecycle_hooks", [])
+
+    # Fire on_llm_start before calling the provider
+    for hook in hooks:
+        await hook.on_llm_start(request)
+
     # Streaming path — structured output is blocking-only
     if request.stream:
         if handler is not None:
@@ -136,6 +143,10 @@ async def llm_primitive(
             code=ErrorCode.PROVIDER_ERROR,
             details={"primitive": "llm", "model": request.model},
         ) from exc
+
+    # Fire on_llm_end after receiving the response
+    for hook in hooks:
+        await hook.on_llm_end(request, response)
 
     logger.debug("LLM response: tokens=%d", response.usage.total_tokens)
 

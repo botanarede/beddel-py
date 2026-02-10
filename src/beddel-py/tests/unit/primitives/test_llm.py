@@ -571,3 +571,92 @@ async def test_without_response_model_returns_llm_response_regression(
     assert not isinstance(result, dict)
     assert result.content == "Hello!"
     mock_provider.complete.assert_awaited_once()
+
+
+# ===========================================================================
+# Lifecycle hook integration tests (Story 4.1)
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# 6.1 on_llm_start is called before adapter.complete() (AC 6)
+# ---------------------------------------------------------------------------
+
+
+async def test_on_llm_start_called_before_provider_complete(
+    base_config: dict[str, Any],
+    mock_provider: AsyncMock,
+) -> None:
+    """on_llm_start is called before provider.complete() with the LLMRequest."""
+    # Arrange
+    mock_hook = AsyncMock()
+    ctx = ExecutionContext(
+        metadata={"llm_provider": mock_provider, "lifecycle_hooks": [mock_hook]},
+    )
+
+    # Act
+    await llm_primitive(base_config, ctx)
+
+    # Assert — on_llm_start was called exactly once
+    mock_hook.on_llm_start.assert_awaited_once()
+
+    # Verify the request passed to on_llm_start matches the one passed to provider
+    hook_request = mock_hook.on_llm_start.call_args[0][0]
+    provider_request: LLMRequest = mock_provider.complete.call_args[0][0]
+    assert hook_request is provider_request
+    assert isinstance(hook_request, LLMRequest)
+    assert hook_request.model == "test-model"
+
+
+# ---------------------------------------------------------------------------
+# 6.2 on_llm_end is called after adapter.complete() with request and response (AC 6)
+# ---------------------------------------------------------------------------
+
+
+async def test_on_llm_end_called_after_provider_complete_with_request_and_response(
+    base_config: dict[str, Any],
+    mock_provider: AsyncMock,
+) -> None:
+    """on_llm_end is called after provider.complete() with both request and response."""
+    # Arrange
+    mock_hook = AsyncMock()
+    ctx = ExecutionContext(
+        metadata={"llm_provider": mock_provider, "lifecycle_hooks": [mock_hook]},
+    )
+
+    # Act
+    result = await llm_primitive(base_config, ctx)
+
+    # Assert — on_llm_end was called exactly once
+    mock_hook.on_llm_end.assert_awaited_once()
+
+    # Verify both request and response are passed correctly
+    hook_request = mock_hook.on_llm_end.call_args[0][0]
+    hook_response = mock_hook.on_llm_end.call_args[0][1]
+
+    provider_request: LLMRequest = mock_provider.complete.call_args[0][0]
+    assert hook_request is provider_request
+    assert isinstance(hook_response, LLMResponse)
+    assert hook_response.content == "Hello!"
+    assert hook_response is result
+
+
+# ---------------------------------------------------------------------------
+# 6.3 Hooks are not called when no hooks are provided (regression)
+# ---------------------------------------------------------------------------
+
+
+async def test_no_hooks_provided_completes_without_error(
+    base_config: dict[str, Any],
+    context_with_provider: ExecutionContext,
+    mock_provider: AsyncMock,
+) -> None:
+    """When no lifecycle_hooks in metadata, llm_primitive completes normally (regression)."""
+    # Act — context_with_provider has NO lifecycle_hooks key
+    result = await llm_primitive(base_config, context_with_provider)
+
+    # Assert — completes successfully without errors
+    assert isinstance(result, LLMResponse)
+    assert result.content == "Hello!"
+    mock_provider.complete.assert_awaited_once()
+

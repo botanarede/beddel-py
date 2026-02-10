@@ -72,3 +72,12 @@ class ILifecycleHook(Protocol):
     async def on_error(self, error: Exception) -> None:
         """Called when an error occurs."""
         ...
+
+    async def on_llm_start(self, request: LLMRequest) -> None:
+        """Called before an LLM provider call."""
+        ...
+
+    async def on_llm_end(self, request: LLMRequest, response: LLMResponse) -> None:
+        """Called after an LLM provider call completes."""
+        ...
+
