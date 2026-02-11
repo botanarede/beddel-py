@@ -135,16 +135,16 @@ def create_beddel_handler(
         workflow_def: WorkflowDefinition,
         request_body: dict[str, Any],
     ) -> AsyncIterator[dict[str, str]]:
-        """Bridge between BeddelSSEAdapter and EventSourceResponse.
+        """Bridge between WorkflowExecutor.execute_stream() and EventSourceResponse.
 
-        Executes the workflow, streams SSE events via the adapter, and
-        converts each ``SSEEvent`` to the dict format expected by
-        ``EventSourceResponse``.
+        Pipes the ``BeddelEvent`` async generator through
+        ``BeddelSSEAdapter.stream_events()`` and converts each ``SSEEvent``
+        to the dict format expected by ``EventSourceResponse``.
         """
         adapter = BeddelSSEAdapter()
         try:
-            result = await executor.execute(workflow_def, request_body)
-            async for sse_event in adapter.stream(result):
+            event_stream = executor.execute_stream(workflow_def, request_body)
+            async for sse_event in adapter.stream_events(event_stream):
                 yield {"event": sse_event.event, "data": sse_event.data}
         except Exception as exc:
             logger.exception("error during SSE streaming execution")
