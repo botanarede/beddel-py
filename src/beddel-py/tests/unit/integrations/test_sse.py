@@ -501,3 +501,235 @@ class TestGenericExceptionMapping:
         error_data = json.loads(events[0].data)
         assert error_data["code"] == "INTERNAL_ERROR"
         assert error_data["details"] == {}
+
+
+# ---------------------------------------------------------------------------
+# 6.1 build_error_event (public API — SSE-001 fix)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildErrorEvent:
+    """build_error_event() is now a public function (SSE-001 fix)."""
+
+    def test_importable_as_public(self) -> None:
+        """build_error_event can be imported directly from sse module."""
+        from beddel.integrations.sse import build_error_event
+
+        assert callable(build_error_event)
+
+    def test_in_all(self) -> None:
+        """build_error_event is listed in __all__."""
+        from beddel.integrations import sse
+
+        assert "build_error_event" in sse.__all__
+
+    def test_generic_exception(self) -> None:
+        """Generic exception produces INTERNAL_ERROR SSE event."""
+        from beddel.integrations.sse import build_error_event
+
+        event = build_error_event(RuntimeError("oops"))
+        assert event.event == "error"
+        error_data = json.loads(event.data)
+        assert error_data["code"] == "INTERNAL_ERROR"
+        assert "oops" in error_data["message"]
+        assert error_data["details"] == {}
+
+    def test_beddel_error(self) -> None:
+        """BeddelError produces SSE event with correct code and details."""
+        from beddel.integrations.sse import build_error_event
+
+        exc = ExecutionError(
+            "Step failed",
+            code=ErrorCode.EXEC_STEP_FAILED,
+            details={"step_id": "s1"},
+        )
+        event = build_error_event(exc)
+        assert event.event == "error"
+        error_data = json.loads(event.data)
+        assert error_data["code"] == "BEDDEL-EXEC-001"
+        assert error_data["details"] == {"step_id": "s1"}
+
+
+# ---------------------------------------------------------------------------
+# 6.1 SSEEvent.serialize() multi-line data (SSE-003 fix)
+# ---------------------------------------------------------------------------
+
+
+class TestSerializeMultiLineData:
+    """serialize() splits multi-line data into multiple data: lines (SSE-003 fix)."""
+
+    def test_two_line_data(self) -> None:
+        """Two-line data produces two data: lines."""
+        event = SSEEvent(event="chunk", data="line1\nline2")
+        result = event.serialize()
+        assert "data: line1\n" in result
+        assert "data: line2\n" in result
+        # Should NOT have a single data: line1\nline2
+        assert "data: line1\nline2" not in result.replace("data: line1\ndata: line2", "REPLACED")
+
+    def test_three_line_data(self) -> None:
+        """Three-line data produces three data: lines."""
+        event = SSEEvent(event="chunk", data="a\nb\nc")
+        result = event.serialize()
+        lines = result.strip().split("\n")
+        data_lines = [ln for ln in lines if ln.startswith("data:")]
+        assert len(data_lines) == 3
+        assert data_lines == ["data: a", "data: b", "data: c"]
+
+    def test_single_line_unchanged(self) -> None:
+        """Single-line data still produces one data: line (regression)."""
+        event = SSEEvent(event="chunk", data="no newlines here")
+        result = event.serialize()
+        assert result == "event: chunk\ndata: no newlines here\n\n"
+
+    def test_trailing_newline_in_data(self) -> None:
+        """Data ending with newline produces an extra empty data: line."""
+        event = SSEEvent(event="chunk", data="text\n")
+        result = event.serialize()
+        lines = result.strip().split("\n")
+        data_lines = [ln for ln in lines if ln.startswith("data:")]
+        assert len(data_lines) == 2
+        assert data_lines == ["data: text", "data:"]
+
+
+# ---------------------------------------------------------------------------
+# 6.1 BeddelSSEAdapter.stream_events()
+# ---------------------------------------------------------------------------
+
+
+class TestStreamEvents:
+    """stream_events() maps BeddelEvent stream to SSEEvent stream."""
+
+    async def test_maps_event_types_correctly(self) -> None:
+        """Each BeddelEvent maps to SSEEvent with lowercase event type."""
+        from beddel.domain.models import BeddelEvent, BeddelEventType
+
+        async def _event_stream() -> AsyncIterator[BeddelEvent]:
+            yield BeddelEvent(
+                type=BeddelEventType.WORKFLOW_START,
+                workflow_id="wf-1",
+                data={"workflow_name": "test"},
+            )
+            yield BeddelEvent(
+                type=BeddelEventType.STEP_START,
+                workflow_id="wf-1",
+                step_id="s1",
+                data={"step_type": "llm"},
+            )
+            yield BeddelEvent(
+                type=BeddelEventType.STEP_RESULT,
+                workflow_id="wf-1",
+                step_id="s1",
+                data={"output": "hello"},
+            )
+            yield BeddelEvent(
+                type=BeddelEventType.STEP_END,
+                workflow_id="wf-1",
+                step_id="s1",
+            )
+            yield BeddelEvent(
+                type=BeddelEventType.WORKFLOW_END,
+                workflow_id="wf-1",
+                data={"success": True},
+            )
+
+        adapter = BeddelSSEAdapter()
+        events = await _collect(adapter.stream_events(_event_stream()))
+
+        # 5 BeddelEvents + 1 done sentinel = 6 SSEEvents
+        assert len(events) == 6
+        assert events[0].event == "workflow_start"
+        assert events[1].event == "step_start"
+        assert events[2].event == "step_result"
+        assert events[3].event == "step_end"
+        assert events[4].event == "workflow_end"
+        assert events[5].event == "done"
+        assert events[5].data == "[DONE]"
+
+    async def test_data_is_json_serialized(self) -> None:
+        """BeddelEvent.data is JSON-serialized in SSEEvent.data."""
+        from beddel.domain.models import BeddelEvent, BeddelEventType
+
+        async def _event_stream() -> AsyncIterator[BeddelEvent]:
+            yield BeddelEvent(
+                type=BeddelEventType.STEP_RESULT,
+                workflow_id="wf-1",
+                step_id="s1",
+                data={"output": 42, "success": True},
+            )
+            yield BeddelEvent(
+                type=BeddelEventType.WORKFLOW_END,
+                workflow_id="wf-1",
+                data={"success": True},
+            )
+
+        adapter = BeddelSSEAdapter()
+        events = await _collect(adapter.stream_events(_event_stream()))
+
+        payload = json.loads(events[0].data)
+        assert payload == {"output": 42, "success": True}
+
+    async def test_done_sentinel_after_workflow_end(self) -> None:
+        """done sentinel is yielded immediately after WORKFLOW_END."""
+        from beddel.domain.models import BeddelEvent, BeddelEventType
+
+        async def _event_stream() -> AsyncIterator[BeddelEvent]:
+            yield BeddelEvent(
+                type=BeddelEventType.WORKFLOW_START,
+                workflow_id="wf-1",
+            )
+            yield BeddelEvent(
+                type=BeddelEventType.WORKFLOW_END,
+                workflow_id="wf-1",
+                data={"success": True},
+            )
+
+        adapter = BeddelSSEAdapter()
+        events = await _collect(adapter.stream_events(_event_stream()))
+
+        assert events[-2].event == "workflow_end"
+        assert events[-1].event == "done"
+        assert events[-1].data == "[DONE]"
+
+    async def test_error_in_generator_yields_error_event(self) -> None:
+        """Exception in the BeddelEvent generator yields SSE error event."""
+        from beddel.domain.models import BeddelEvent, BeddelEventType
+
+        async def _failing_stream() -> AsyncIterator[BeddelEvent]:
+            yield BeddelEvent(
+                type=BeddelEventType.WORKFLOW_START,
+                workflow_id="wf-1",
+            )
+            raise RuntimeError("generator exploded")
+
+        adapter = BeddelSSEAdapter()
+        events = await _collect(adapter.stream_events(_failing_stream()))
+
+        assert len(events) == 2
+        assert events[0].event == "workflow_start"
+        assert events[1].event == "error"
+        error_data = json.loads(events[1].data)
+        assert error_data["code"] == "INTERNAL_ERROR"
+        assert "generator exploded" in error_data["message"]
+
+    async def test_none_data_serialized_as_null(self) -> None:
+        """BeddelEvent with data=None serializes as JSON null."""
+        from beddel.domain.models import BeddelEvent, BeddelEventType
+
+        async def _event_stream() -> AsyncIterator[BeddelEvent]:
+            yield BeddelEvent(
+                type=BeddelEventType.STEP_END,
+                workflow_id="wf-1",
+                step_id="s1",
+                data=None,
+            )
+            yield BeddelEvent(
+                type=BeddelEventType.WORKFLOW_END,
+                workflow_id="wf-1",
+                data={"success": True},
+            )
+
+        adapter = BeddelSSEAdapter()
+        events = await _collect(adapter.stream_events(_event_stream()))
+
+        assert events[0].data == "null"
