@@ -232,6 +232,13 @@ class WorkflowExecutor:
                     for hook in self._hooks:
                         await hook.on_step_end(step, step_output)
 
+                    # ── STEP_END ────────────────────────────────────
+                    yield BeddelEvent(
+                        type=BeddelEventType.STEP_END,
+                        workflow_id=context.workflow_id,
+                        step_id=step.id,
+                    )
+
                     # Update context for downstream steps
                     if step.result:
                         context = context.with_step_result(
