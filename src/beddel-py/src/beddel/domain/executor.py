@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterator as AsyncIteratorABC
 from typing import TYPE_CHECKING, Any
 
 from beddel.domain.models import (
+    BeddelError,
+    BeddelEvent,
+    BeddelEventType,
     ExecutionContext,
     ExecutionError,
     ExecutionResult,
@@ -35,6 +40,21 @@ def _evaluate_condition(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() not in _FALSY_VALUES
     return bool(value)
+
+def _build_error_payload(exc: Exception, step_id: str) -> dict[str, Any]:
+    """Build a structured error payload for ERROR events. Never includes tracebacks."""
+    if isinstance(exc, BeddelError):
+        return {
+            "code": str(exc.code),
+            "message": str(exc),
+            "details": exc.details,
+        }
+    return {
+        "code": "INTERNAL_ERROR",
+        "message": f"Step '{step_id}' failed: {exc}",
+        "details": {},
+    }
+
 
 
 class WorkflowExecutor:
@@ -120,6 +140,133 @@ class WorkflowExecutor:
             if self._tracer and workflow_span:
                 self._tracer.end_span(workflow_span, error=str(exc))
             raise
+
+    async def execute_stream(
+        self,
+        workflow: WorkflowDefinition,
+        input_data: dict[str, Any] | None = None,
+    ) -> AsyncGenerator[BeddelEvent, None]:
+        """Execute a workflow definition, yielding events at each lifecycle point.
+
+        This is the streaming counterpart to :meth:`execute`.  It yields
+        :class:`BeddelEvent` instances **and** fires lifecycle hooks at
+        every lifecycle point (dual-write).
+
+        On step failure an ``ERROR`` event is yielded and iteration stops.
+        If the consumer closes the generator (``GeneratorExit``), a warning
+        is logged and the method returns cleanly.
+        """
+        start = time.monotonic()
+        effective_input = input_data or {}
+        context = ExecutionContext(
+            input=effective_input,
+            env=dict(workflow.config.environment),
+        )
+
+        try:
+            # ── WORKFLOW_START ──────────────────────────────────────
+            for hook in self._hooks:
+                await hook.on_workflow_start(workflow, effective_input)
+            yield BeddelEvent(
+                type=BeddelEventType.WORKFLOW_START,
+                workflow_id=context.workflow_id,
+                data={
+                    "workflow_name": workflow.metadata.name,
+                    "input_keys": list(effective_input.keys()),
+                },
+            )
+
+            for step in workflow.workflow:
+                # Condition check — skip silently (no events)
+                if step.condition:
+                    resolved = self._resolver.resolve(step.condition, context)
+                    if not _evaluate_condition(resolved):
+                        continue
+
+                # ── STEP_START ──────────────────────────────────────
+                for hook in self._hooks:
+                    await hook.on_step_start(step)
+                yield BeddelEvent(
+                    type=BeddelEventType.STEP_START,
+                    workflow_id=context.workflow_id,
+                    step_id=step.id,
+                    data={"step_type": step.type},
+                )
+
+                try:
+                    resolved_config = self._resolver.resolve_dict(
+                        step.config, context,
+                    )
+                    primitive_fn = self._registry.get(step.type)
+                    output = await primitive_fn(resolved_config, context)
+
+                    # Streaming output (AsyncIterator[str]) → TEXT_CHUNK events
+                    if isinstance(output, AsyncIteratorABC):
+                        chunks: list[str] = []
+                        async for chunk in output:
+                            yield BeddelEvent(
+                                type=BeddelEventType.TEXT_CHUNK,
+                                workflow_id=context.workflow_id,
+                                step_id=step.id,
+                                data=str(chunk),
+                            )
+                            chunks.append(str(chunk))
+                        step_output: Any = "".join(chunks)
+                    else:
+                        step_output = output
+
+                    # ── STEP_RESULT ─────────────────────────────────
+                    step_result = StepResult(
+                        step_id=step.id,
+                        output=step_output,
+                        success=True,
+                        duration_ms=_elapsed_ms(start),
+                    )
+                    yield BeddelEvent(
+                        type=BeddelEventType.STEP_RESULT,
+                        workflow_id=context.workflow_id,
+                        step_id=step.id,
+                        data=step_result.model_dump(mode="json"),
+                    )
+
+                    for hook in self._hooks:
+                        await hook.on_step_end(step, step_output)
+
+                    # Update context for downstream steps
+                    if step.result:
+                        context = context.with_step_result(
+                            step.result, step_output,
+                        )
+
+                except Exception as exc:
+                    # ── ERROR ────────────────────────────────────────
+                    error_payload = _build_error_payload(exc, step.id)
+                    for hook in self._hooks:
+                        await hook.on_error(exc)
+                    yield BeddelEvent(
+                        type=BeddelEventType.ERROR,
+                        workflow_id=context.workflow_id,
+                        step_id=step.id,
+                        data=error_payload,
+                    )
+                    return  # stop iteration on error
+
+            # ── WORKFLOW_END ────────────────────────────────────────
+            for hook in self._hooks:
+                await hook.on_workflow_end(workflow, None)
+            yield BeddelEvent(
+                type=BeddelEventType.WORKFLOW_END,
+                workflow_id=context.workflow_id,
+                data={
+                    "success": True,
+                    "duration_ms": round(_elapsed_ms(start), 2),
+                },
+            )
+
+        except GeneratorExit:
+            logger.warning("Client disconnected during streaming execution")
+            return
+
 
     async def execute_step(
         self,
