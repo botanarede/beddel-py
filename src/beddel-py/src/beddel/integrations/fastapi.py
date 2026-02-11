@@ -148,9 +148,9 @@ def create_beddel_handler(
                 yield {"event": sse_event.event, "data": sse_event.data}
         except Exception as exc:
             logger.exception("error during SSE streaming execution")
-            from beddel.integrations.sse import _build_error_event
+            from beddel.integrations.sse import build_error_event
 
-            error_event = _build_error_event(exc)
+            error_event = build_error_event(exc)
             yield {"event": error_event.event, "data": error_event.data}
 
     async def _handler(request: Request) -> JSONResponse | EventSourceResponse:

@@ -84,7 +84,8 @@ class SSEEvent:
             lines.append(f"retry: {self.retry}")
 
         lines.append(f"event: {self.event}")
-        lines.append(f"data: {self.data}")
+        for data_line in self.data.split("\n"):
+            lines.append(f"data: {data_line}")
 
         # Trailing blank line terminates the event block.
         return "\n".join(lines) + "\n\n"
@@ -143,7 +144,7 @@ class BeddelSSEAdapter:
                 yield SSEEvent(event="done", data="[DONE]")
         except Exception as exc:
             logger.exception("Error during stream() for workflow %s", result.workflow_id)
-            yield _build_error_event(exc)
+            yield build_error_event(exc)
 
     async def stream_iterator(self, iterator: AsyncIterator[str]) -> AsyncIterator[SSEEvent]:
         """Yield ``SSEEvent`` instances from a raw async string iterator.
@@ -163,7 +164,7 @@ class BeddelSSEAdapter:
             yield SSEEvent(event="done", data="[DONE]")
         except Exception as exc:
             logger.exception("Error during stream_iterator()")
-            yield _build_error_event(exc)
+            yield build_error_event(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +172,7 @@ class BeddelSSEAdapter:
 # ---------------------------------------------------------------------------
 
 
-def _build_error_event(exc: Exception) -> SSEEvent:
+def build_error_event(exc: Exception) -> SSEEvent:
     """Map an exception to a structured SSE error event.
 
     If *exc* is a :class:`~beddel.domain.models.BeddelError`, the error
@@ -199,4 +200,4 @@ def _build_error_event(exc: Exception) -> SSEEvent:
     return SSEEvent(event="error", data=json.dumps(payload))
 
 
-__all__ = ["BeddelSSEAdapter", "SSEEvent"]
+__all__ = ["BeddelSSEAdapter", "SSEEvent", "build_error_event"]
