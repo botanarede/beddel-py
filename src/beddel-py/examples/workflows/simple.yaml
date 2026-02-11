@@ -17,8 +17,8 @@ workflow:
   - id: "answer"                          # Unique step identifier
     type: "llm"                           # Primitive type — invokes an LLM provider
     config:
-      provider: "openai"                  # LLM provider (openai, google, anthropic, etc.)
-      model: "gpt-4o"                     # Model to use for this step
+      provider: "google"                  # LLM provider (openai, google, anthropic, etc.)
+      model: "gemini-2.0-flash-exp"       # Model to use for this step
       system: "You are a helpful assistant. Answer concisely."  # System prompt
       messages:
         - role: "user"

@@ -32,6 +32,33 @@ class ErrorCode(StrEnum):
 
 
 # ---------------------------------------------------------------------------
+# Event Types
+# ---------------------------------------------------------------------------
+
+
+class BeddelEventType(StrEnum):
+    """Types of events emitted during workflow execution."""
+
+    WORKFLOW_START = "workflow_start"
+    WORKFLOW_END = "workflow_end"
+    STEP_START = "step_start"
+    STEP_END = "step_end"
+    TEXT_CHUNK = "text_chunk"
+    STEP_RESULT = "step_result"
+    ERROR = "error"
+
+
+class BeddelEvent(BaseModel):
+    """A single event emitted during workflow execution."""
+
+    type: BeddelEventType
+    workflow_id: str
+    step_id: str | None = None
+    data: Any = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+# ---------------------------------------------------------------------------
 # Exception Hierarchy
 # ---------------------------------------------------------------------------
 

@@ -23,6 +23,7 @@ from beddel.domain.models import (
 from beddel.domain.parser import YAMLParser
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.integrations.sse import BeddelSSEAdapter
+from beddel.primitives import register_builtins
 
 # ---------------------------------------------------------------------------
 # Import guard — fail fast with a helpful message (AC 7)
@@ -114,7 +115,11 @@ def create_beddel_handler(
         workflow_def = workflow
 
     # --- Build WorkflowExecutor from provided/default deps ------------------
-    effective_registry = registry or PrimitiveRegistry()
+    if registry is None:
+        effective_registry = PrimitiveRegistry()
+        register_builtins(effective_registry)
+    else:
+        effective_registry = registry
     executor = WorkflowExecutor(
         registry=effective_registry,
         tracer=tracer,
