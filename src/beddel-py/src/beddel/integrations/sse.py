@@ -25,12 +25,12 @@ from collections.abc import AsyncIterator as AsyncIteratorABC
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from beddel.domain.models import BeddelError
+from beddel.domain.models import BeddelError, BeddelEventType
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
 
-    from beddel.domain.models import ExecutionResult
+    from beddel.domain.models import BeddelEvent, ExecutionResult
 
 # ---------------------------------------------------------------------------
 # Structured logging
@@ -165,6 +165,37 @@ class BeddelSSEAdapter:
         except Exception as exc:
             logger.exception("Error during stream_iterator()")
             yield build_error_event(exc)
+
+    async def stream_events(
+        self, stream: AsyncGenerator[BeddelEvent, None],
+    ) -> AsyncIterator[SSEEvent]:
+        """Map a stream of ``BeddelEvent`` instances to ``SSEEvent`` instances.
+
+        Each ``BeddelEvent`` is converted to an ``SSEEvent`` where:
+        - ``event`` = the lowercase event type value (e.g. ``"workflow_start"``)
+        - ``data`` = JSON-serialised ``BeddelEvent.data``
+
+        After the ``WORKFLOW_END`` event, a ``done`` sentinel is yielded.
+
+        Args:
+            stream: An async generator of ``BeddelEvent`` instances
+                (typically from ``WorkflowExecutor.execute_stream()``).
+
+        Yields:
+            ``SSEEvent`` instances in protocol order.
+        """
+        try:
+            async for event in stream:
+                yield SSEEvent(
+                    event=event.type.value,
+                    data=json.dumps(event.data, default=str),
+                )
+                if event.type == BeddelEventType.WORKFLOW_END:
+                    yield SSEEvent(event="done", data="[DONE]")
+        except Exception as exc:
+            logger.exception("Error during stream_events()")
+            yield build_error_event(exc)
+
 
 
 # ---------------------------------------------------------------------------
