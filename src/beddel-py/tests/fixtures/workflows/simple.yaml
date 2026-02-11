@@ -7,7 +7,7 @@ workflow:
     type: "llm"
     config:
       provider: "google"
-      model: "gemini-2.0-flash-exp"
+      model: "gemini/gemini-2.0-flash-exp"
       system: "You are a helpful assistant."
       messages:
         - role: "user"

@@ -22,7 +22,7 @@ from beddel.domain.resolver import VariableResolver
 
 if TYPE_CHECKING:
     from beddel.domain.models import StepDefinition, WorkflowDefinition
-    from beddel.domain.ports import ILifecycleHook, ITracer
+    from beddel.domain.ports import ILifecycleHook, ILLMProvider, ITracer
     from beddel.domain.registry import PrimitiveRegistry
 
 logger = logging.getLogger("beddel.executor")
@@ -66,11 +66,13 @@ class WorkflowExecutor:
         resolver: VariableResolver | None = None,
         tracer: ITracer | None = None,
         hooks: list[ILifecycleHook] | None = None,
+        provider: ILLMProvider | None = None,
     ) -> None:
         self._registry = registry
         self._resolver = resolver or VariableResolver()
         self._tracer = tracer
         self._hooks = hooks or []
+        self._provider = provider
 
     async def execute(
         self,
@@ -79,9 +81,15 @@ class WorkflowExecutor:
     ) -> ExecutionResult:
         """Execute a workflow definition sequentially."""
         start = time.monotonic()
+        metadata: dict[str, Any] = {}
+        if self._provider is not None:
+            metadata["llm_provider"] = self._provider
+        if self._hooks:
+            metadata["lifecycle_hooks"] = self._hooks
         context = ExecutionContext(
             input=input_data or {},
             env=dict(workflow.config.environment),
+            metadata=metadata,
         )
 
         for hook in self._hooks:
@@ -158,9 +166,15 @@ class WorkflowExecutor:
         """
         start = time.monotonic()
         effective_input = input_data or {}
+        metadata: dict[str, Any] = {}
+        if self._provider is not None:
+            metadata["llm_provider"] = self._provider
+        if self._hooks:
+            metadata["lifecycle_hooks"] = self._hooks
         context = ExecutionContext(
             input=effective_input,
             env=dict(workflow.config.environment),
+            metadata=metadata,
         )
 
         try:

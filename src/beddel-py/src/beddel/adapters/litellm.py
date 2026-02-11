@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 import litellm
@@ -20,6 +21,14 @@ if TYPE_CHECKING:
     from beddel.domain.models import LLMRequest
 
 logger = logging.getLogger("beddel.adapters.litellm")
+
+
+# Well-known env vars for each provider prefix that LiteLLM recognises.
+_PROVIDER_KEY_ENV_VARS: dict[str, str] = {
+    "gemini/": "GEMINI_API_KEY",
+    "openai/": "OPENAI_API_KEY",
+    "anthropic/": "ANTHROPIC_API_KEY",
+}
 
 
 class LiteLLMAdapter:
@@ -68,6 +77,15 @@ class LiteLLMAdapter:
 
         if self.api_key is not None:
             params["api_key"] = self.api_key
+        else:
+            # LiteLLM >=1.81 may not auto-resolve env vars for some providers.
+            # Explicitly look up the well-known env var for the model prefix.
+            for prefix, env_var in _PROVIDER_KEY_ENV_VARS.items():
+                if request.model.startswith(prefix):
+                    env_key = os.environ.get(env_var)
+                    if env_key:
+                        params["api_key"] = env_key
+                    break
 
         if self.api_base is not None:
             params["api_base"] = self.api_base

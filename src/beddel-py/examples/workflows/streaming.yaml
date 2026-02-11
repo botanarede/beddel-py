@@ -18,8 +18,8 @@ workflow:
   - id: "stream-answer"                   # Unique step identifier
     type: "llm"                           # Primitive type — invokes an LLM provider
     config:
-      provider: "openai"                  # LLM provider (openai, google, anthropic, etc.)
-      model: "gpt-4o"                     # Model to use for this step
+      provider: "google"                  # LLM provider (openai, google, anthropic, etc.)
+      model: "gemini/gemini-2.0-flash"    # Model to use for this step (gemini/ prefix = AI Studio)
       stream: true                        # Enable streaming — tokens are yielded as they arrive
       system: "You are a helpful assistant. Answer concisely."  # System prompt
       messages:

@@ -120,10 +120,20 @@ def create_beddel_handler(
         register_builtins(effective_registry)
     else:
         effective_registry = registry
+
+    # Auto-create a LiteLLM provider when none is supplied
+    effective_provider: ILLMProvider | None = provider
+    if effective_provider is None:
+        from beddel.adapters.litellm import LiteLLMAdapter
+
+        effective_provider = LiteLLMAdapter()
+        logger.debug("auto-created LiteLLMAdapter as default provider")
+
     executor = WorkflowExecutor(
         registry=effective_registry,
         tracer=tracer,
         hooks=hooks,
+        provider=effective_provider,
     )
 
     streaming = _is_streaming_workflow(workflow_def)
