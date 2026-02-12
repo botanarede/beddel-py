@@ -165,6 +165,11 @@ class EventType(StrEnum):
     ERROR = "error"
     RETRY = "retry"
 
+    # --- Reserved for future epics (not yet implemented) ---
+    # CHECKPOINT = "checkpoint"    # Epic 5: emitted when execution state is checkpointed
+    # SUSPENDED = "suspended"      # Epic 5: emitted when execution is suspended for HITL
+    # MEMORY_READ = "memory_read"  # Epic 6: emitted when episodic memory is accessed
+
 
 class BeddelEvent(BaseModel):
     """An observable event emitted during workflow execution.
