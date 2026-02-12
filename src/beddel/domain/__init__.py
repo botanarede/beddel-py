@@ -21,6 +21,8 @@ from beddel.domain.models import (
     Workflow,
 )
 from beddel.domain.parser import WorkflowParser
+from beddel.domain.ports import ILLMProvider, IPrimitive
+from beddel.domain.registry import PrimitiveRegistry, primitive
 from beddel.domain.resolver import VariableResolver
 
 __all__ = [
@@ -31,8 +33,11 @@ __all__ = [
     "ExecutionContext",
     "ExecutionError",
     "ExecutionStrategy",
+    "ILLMProvider",
+    "IPrimitive",
     "ParseError",
     "PrimitiveError",
+    "PrimitiveRegistry",
     "ResolveError",
     "RetryConfig",
     "Step",
@@ -40,4 +45,5 @@ __all__ = [
     "VariableResolver",
     "Workflow",
     "WorkflowParser",
+    "primitive",
 ]
