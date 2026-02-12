@@ -21,6 +21,7 @@ from beddel.domain.models import (
     Workflow,
 )
 from beddel.domain.parser import WorkflowParser
+from beddel.domain.resolver import VariableResolver
 
 __all__ = [
     "AdapterError",
@@ -36,6 +37,7 @@ __all__ = [
     "RetryConfig",
     "Step",
     "StrategyType",
+    "VariableResolver",
     "Workflow",
     "WorkflowParser",
 ]
