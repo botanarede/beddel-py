@@ -8,6 +8,7 @@ Ports defined here:
 
 - :class:`IPrimitive` — contract for all workflow primitives.
 - :class:`ILLMProvider` — contract for LLM provider adapters.
+- :class:`ILifecycleHook` — contract for workflow lifecycle hooks.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from typing import Any
 from beddel.domain.models import ExecutionContext
 
 __all__ = [
+    "ILifecycleHook",
     "ILLMProvider",
     "IPrimitive",
 ]
@@ -131,3 +133,67 @@ class ILLMProvider(ABC):
         # https://docs.python.org/3/library/abc.html — yield required for
         # abstract async generators so the method is recognised as a generator.
         yield ""  # pragma: no cover
+
+
+class ILifecycleHook:
+    """Contract for workflow lifecycle hooks.
+
+    Hooks receive notifications at key points during workflow execution.
+    All methods have default no-op implementations — subclasses override
+    only the callbacks they need.
+
+    Example::
+
+        class LoggingHook(ILifecycleHook):
+            async def on_step_start(self, step_id: str, primitive: str) -> None:
+                print(f"Starting step {step_id} ({primitive})")
+    """
+
+    async def on_workflow_start(self, workflow_id: str, inputs: dict[str, Any]) -> None:
+        """Called when a workflow execution begins.
+
+        Args:
+            workflow_id: Identifier of the workflow being executed.
+            inputs: User-supplied inputs for the workflow run.
+        """
+
+    async def on_workflow_end(self, workflow_id: str, result: dict[str, Any]) -> None:
+        """Called when a workflow execution completes successfully.
+
+        Args:
+            workflow_id: Identifier of the workflow that completed.
+            result: The final workflow result dict.
+        """
+
+    async def on_step_start(self, step_id: str, primitive: str) -> None:
+        """Called before a step begins execution.
+
+        Args:
+            step_id: Identifier of the step about to execute.
+            primitive: Name of the primitive being invoked.
+        """
+
+    async def on_step_end(self, step_id: str, result: Any) -> None:
+        """Called after a step completes successfully.
+
+        Args:
+            step_id: Identifier of the step that completed.
+            result: The step's return value.
+        """
+
+    async def on_error(self, step_id: str, error: Exception) -> None:
+        """Called when a step encounters an error.
+
+        Args:
+            step_id: Identifier of the step that failed.
+            error: The exception that was raised.
+        """
+
+    async def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:
+        """Called when a step retry is attempted.
+
+        Args:
+            step_id: Identifier of the step being retried.
+            attempt: The retry attempt number (1-based).
+            error: The exception that triggered the retry.
+        """
