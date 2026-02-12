@@ -26,34 +26,94 @@ Requires Python 3.11+.
 
 ## Quickstart
 
+Get a workflow running in under 15 minutes.
+
+### 1. Install
+
+```bash
+pip install beddel
+```
+
+### 2. Set your API key
+
+Get a free API key from [Google AI Studio](https://aistudio.google.com/apikey), then export it:
+
+```bash
+export GEMINI_API_KEY="your-key-here"
+```
+
+### 3. Create a workflow
+
+Save this as `workflow.yaml`:
+
 ```yaml
-# workflow.yaml
-name: summarize
-description: Summarize a topic in one paragraph
+id: hello-world
+name: Hello World
+description: A minimal workflow that greets the user with a fun fact about a topic.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+  required:
+    - topic
 
 steps:
-  - id: generate
+  - id: greet
     primitive: llm
     config:
-      # Model names may need updating as providers evolve.
-      # Use stable names only — never experimental (-exp) suffixes.
+      # Model names may need updating as providers release new versions.
       model: gemini/gemini-2.0-flash
+      prompt: "Say hello and share one fun fact about $input.topic"
       temperature: 0.7
-    input:
-      prompt: "Summarize the following topic in one paragraph: $input.topic"
 ```
+
+### 4. Create a runner script
+
+Save this as `run_workflow.py`:
 
 ```python
 import asyncio
-from beddel import Engine
+from pathlib import Path
+
+from beddel.adapters.litellm_adapter import LiteLLMAdapter
+from beddel.domain.executor import WorkflowExecutor
+from beddel.domain.parser import WorkflowParser
+from beddel.domain.registry import PrimitiveRegistry
+from beddel.primitives import register_builtins
 
 async def main():
-    engine = Engine.from_yaml("workflow.yaml")
-    result = await engine.execute({"topic": "declarative AI workflows"})
-    print(result.steps["generate"].output)
+    # Parse the workflow YAML
+    yaml_str = Path("workflow.yaml").read_text()
+    workflow = WorkflowParser.parse(yaml_str)
+
+    # Build the primitive registry
+    registry = PrimitiveRegistry()
+    register_builtins(registry)
+
+    # Create the LLM adapter (reads GEMINI_API_KEY from env)
+    adapter = LiteLLMAdapter()
+
+    # Wire up and execute
+    executor = WorkflowExecutor(registry, provider=adapter)
+    result = await executor.execute(workflow, inputs={"topic": "astronomy"})
+
+    # Print the response
+    print(result["step_results"]["greet"]["content"])
 
 asyncio.run(main())
 ```
+
+### 5. Run it
+
+```bash
+python run_workflow.py
+```
+
+The model responds with a friendly greeting and a fun fact about astronomy. The exact output varies per run since `temperature` is set above zero.
+
+> **Note:** Model names use the stable [LiteLLM](https://docs.litellm.ai/) format (`provider/model`). Avoid experimental (`-exp`) suffixes. Update the model name if a version becomes unavailable.
 
 ## Development Setup
 
