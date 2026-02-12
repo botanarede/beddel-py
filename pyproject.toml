@@ -39,6 +39,12 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[project.urls]
+Homepage = "https://beddel.com.br"
+Repository = "https://github.com/botanarede/beddel-py"
+Documentation = "https://beddel.com.br/docs"
+"Bug Tracker" = "https://github.com/botanarede/beddel-py/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest",

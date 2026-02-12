@@ -1,7 +1,7 @@
 # Beddel
 
-<!-- Badges (update URLs once repo and PyPI are live)
-[![CI](https://github.com/OWNER/beddel/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/beddel/actions)
+<!-- Badges (update URLs once CI is live)
+[![CI](https://github.com/botanarede/beddel-py/actions/workflows/ci.yml/badge.svg)](https://github.com/botanarede/beddel-py/actions)
 [![PyPI version](https://img.shields.io/pypi/v/beddel.svg)](https://pypi.org/project/beddel/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 -->
@@ -120,7 +120,7 @@ The model responds with a friendly greeting and a fun fact about astronomy. The 
 Clone the repo and install dev dependencies from the SDK directory:
 
 ```bash
-git clone https://github.com/OWNER/beddel.git
+git clone https://github.com/botanarede/beddel-py.git
 cd beddel/src/beddel-py
 pip install -e ".[dev]"
 ```
