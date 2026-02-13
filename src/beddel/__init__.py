@@ -10,6 +10,8 @@ from beddel.domain.errors import (
     PrimitiveError,
     ResolveError,
 )
+from beddel.domain.executor import SequentialStrategy
+from beddel.domain.ports import IExecutionStrategy
 
 __version__ = "0.1.0"
 
@@ -21,4 +23,6 @@ __all__ = [
     "ExecutionError",
     "PrimitiveError",
     "AdapterError",
+    "IExecutionStrategy",
+    "SequentialStrategy",
 ]

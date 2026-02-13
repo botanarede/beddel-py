@@ -6,6 +6,7 @@ library — only stdlib, ``abc``, typing, and domain models are allowed.
 
 Ports defined here:
 
+- :class:`IExecutionStrategy` — contract for workflow execution strategies.
 - :class:`IPrimitive` — contract for all workflow primitives.
 - :class:`ILLMProvider` — contract for LLM provider adapters.
 - :class:`ILifecycleHook` — contract for workflow lifecycle hooks.
@@ -15,15 +16,54 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, Protocol
 
-from beddel.domain.models import ExecutionContext
+from beddel.domain.models import ExecutionContext, Workflow
 
 __all__ = [
+    "IExecutionStrategy",
     "ILifecycleHook",
     "ILLMProvider",
     "IPrimitive",
 ]
+
+
+class IExecutionStrategy(Protocol):
+    """Contract for workflow execution strategies.
+
+    Strategies control how a workflow's steps are iterated and executed.
+    The default ``SequentialStrategy`` runs steps in declaration order;
+    future strategies (parallel, goal-oriented, reflection) can be
+    plugged in without modifying the executor core.
+
+    The ``step_runner`` callback handles all per-step concerns (condition
+    evaluation, timeout, error strategies, lifecycle hooks) — the strategy
+    only decides *which* steps to run and in *what order*.
+
+    [Source: docs/architecture/6-port-interfaces.md#65-iexecutionstrategy]
+    """
+
+    async def execute(
+        self,
+        workflow: Workflow,
+        context: ExecutionContext,
+        step_runner: Any,
+    ) -> None:
+        """Execute the workflow steps using this strategy.
+
+        The strategy iterates the workflow's steps and calls
+        ``await step_runner(step, context)`` for each one.  Results are
+        stored in ``context.step_results`` as a side-effect of the
+        callback — the strategy itself returns ``None``.
+
+        Args:
+            workflow: The workflow definition containing steps to execute.
+            context: Mutable runtime context carrying inputs, step results,
+                and metadata for the current workflow execution.
+            step_runner: Async callback ``(step, context) -> Any`` that
+                executes a single step with full lifecycle handling.
+        """
+        ...
 
 
 class IPrimitive(ABC):

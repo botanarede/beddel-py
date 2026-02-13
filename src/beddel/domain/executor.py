@@ -26,15 +26,49 @@ from beddel.domain.models import (
     StrategyType,
     Workflow,
 )
-from beddel.domain.ports import ILifecycleHook, ILLMProvider, IPrimitive
+from beddel.domain.ports import IExecutionStrategy, ILifecycleHook, ILLMProvider, IPrimitive
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.resolver import VariableResolver
 
 __all__ = [
+    "SequentialStrategy",
     "WorkflowExecutor",
 ]
 
 logger = logging.getLogger(__name__)
+
+
+class SequentialStrategy:
+    """Execute workflow steps sequentially in declaration order.
+
+    This is the default execution strategy used by
+    :class:`WorkflowExecutor`.  It iterates ``workflow.steps`` and calls
+    the ``step_runner`` callback for each step in order.
+
+    The ``step_runner`` callback handles all per-step concerns (condition
+    evaluation, timeout, error strategies, lifecycle hooks) — this
+    strategy only controls iteration order.
+
+    [Source: docs/architecture/6-port-interfaces.md#65-iexecutionstrategy]
+    """
+
+    async def execute(
+        self,
+        workflow: Workflow,
+        context: ExecutionContext,
+        step_runner: Any,
+    ) -> None:
+        """Execute steps sequentially in declaration order.
+
+        Args:
+            workflow: The workflow definition containing steps to execute.
+            context: Mutable runtime context carrying inputs, step results,
+                and metadata for the current workflow execution.
+            step_runner: Async callback ``(step, context) -> Any`` that
+                executes a single step with full lifecycle handling.
+        """
+        for step in workflow.steps:
+            await step_runner(step, context)
 
 
 class WorkflowExecutor:
@@ -52,6 +86,9 @@ class WorkflowExecutor:
         hooks: Optional lifecycle hooks injected into
             ``context.metadata["lifecycle_hooks"]`` and called during
             execution.
+        strategy: Optional execution strategy controlling how workflow
+            steps are iterated.  Defaults to :class:`SequentialStrategy`
+            when ``None``.
 
     Example::
 
@@ -64,11 +101,13 @@ class WorkflowExecutor:
         registry: PrimitiveRegistry,
         provider: ILLMProvider | None = None,
         hooks: list[ILifecycleHook] | None = None,
+        strategy: IExecutionStrategy | None = None,
     ) -> None:
         self._registry = registry
         self._provider = provider
         self._hooks: list[ILifecycleHook] = hooks or []
         self._resolver = VariableResolver()
+        self._strategy: IExecutionStrategy = strategy or SequentialStrategy()
 
     async def execute(
         self,
@@ -106,8 +145,7 @@ class WorkflowExecutor:
 
         await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
 
-        for step in workflow.steps:
-            await self._execute_step(step, context)
+        await self._strategy.execute(workflow, context, self._execute_step)
 
         result: dict[str, Any] = {
             "step_results": dict(context.step_results),

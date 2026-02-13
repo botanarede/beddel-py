@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from beddel.domain.errors import ExecutionError
-from beddel.domain.executor import WorkflowExecutor
+from beddel.domain.executor import SequentialStrategy, WorkflowExecutor
 from beddel.domain.models import (
     BeddelEvent,
     EventType,
@@ -919,3 +919,68 @@ class TestExecuteStream:
                 pass
 
         assert executor._hooks == [original_hook]
+
+
+# ---------------------------------------------------------------------------
+# AC-6 — Strategy injection
+# ---------------------------------------------------------------------------
+
+
+class TestStrategyInjection:
+    """Custom IExecutionStrategy can be injected and is invoked by the executor."""
+
+    async def test_custom_strategy_is_invoked(self) -> None:
+        """A ReverseStrategy iterates steps in reverse and the executor honours it."""
+        call_order: list[str] = []
+
+        async def _side_effect(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            call_order.append(config["id"])
+            return config["id"]
+
+        class ReverseStrategy:
+            """Iterate workflow steps in reverse declaration order."""
+
+            async def execute(
+                self,
+                workflow: Workflow,
+                context: ExecutionContext,
+                step_runner: Any,
+            ) -> None:
+                """Execute steps in reverse order."""
+                for step in reversed(workflow.steps):
+                    await step_runner(step, context)
+
+        registry, _ = _registry_with_stub(side_effect=_side_effect)
+        steps = [
+            _make_step("s1", config={"id": "first"}),
+            _make_step("s2", config={"id": "second"}),
+            _make_step("s3", config={"id": "third"}),
+        ]
+        wf = _make_workflow(steps)
+        executor = WorkflowExecutor(registry, strategy=ReverseStrategy())
+
+        await executor.execute(wf)
+
+        assert call_order == ["third", "second", "first"]
+
+    async def test_default_strategy_is_sequential(self) -> None:
+        """WorkflowExecutor uses SequentialStrategy by default (declaration order)."""
+        call_order: list[str] = []
+
+        async def _side_effect(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            call_order.append(config["id"])
+            return config["id"]
+
+        registry, _ = _registry_with_stub(side_effect=_side_effect)
+        steps = [
+            _make_step("s1", config={"id": "first"}),
+            _make_step("s2", config={"id": "second"}),
+            _make_step("s3", config={"id": "third"}),
+        ]
+        wf = _make_workflow(steps)
+        executor = WorkflowExecutor(registry)
+
+        await executor.execute(wf)
+
+        assert call_order == ["first", "second", "third"]
+        assert isinstance(executor._strategy, SequentialStrategy)
