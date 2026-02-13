@@ -476,7 +476,8 @@ class WorkflowExecutor:
         Raises:
             ExecutionError: ``BEDDEL-EXEC-002`` for fail strategy,
                 ``BEDDEL-EXEC-003`` when retries are exhausted,
-                ``BEDDEL-EXEC-004`` when no fallback step is defined.
+                ``BEDDEL-EXEC-004`` when no fallback step is defined,
+                ``BEDDEL-EXEC-010``/``BEDDEL-EXEC-011`` for delegate failures.
         """
         strategy = step.execution_strategy.type
 
@@ -493,6 +494,9 @@ class WorkflowExecutor:
 
         if strategy == StrategyType.FALLBACK:
             return await self._fallback_step(step, error, context)
+
+        if strategy == StrategyType.DELEGATE:
+            return await self._delegate_step(step, error, context)
 
         # StrategyType.FAIL (default) and any unhandled strategy type
         raise ExecutionError(
@@ -590,3 +594,90 @@ class WorkflowExecutor:
             ) from error
 
         return await self._execute_step(fallback, context)
+
+    async def _delegate_step(
+        self, step: Step, error: Exception, context: ExecutionContext
+    ) -> Any | None:
+        """Delegate error recovery to an LLM that chooses retry, skip, or fallback.
+
+        Constructs a structured prompt describing the failure and asks the
+        LLM provider to pick a recovery action.  The chosen action is then
+        dispatched to the corresponding handler.
+
+        Args:
+            step: The step that failed.
+            error: The exception raised during step execution.
+            context: Mutable execution context for the current workflow run.
+
+        Returns:
+            The recovery result (``None`` for skip, primitive result for
+            retry/fallback).
+
+        Raises:
+            ExecutionError: ``BEDDEL-EXEC-010`` when the LLM provider is
+                missing or the LLM call fails.
+            ExecutionError: ``BEDDEL-EXEC-011`` when the LLM returns an
+                unparseable or invalid action.
+        """
+        provider: Any = context.metadata.get("llm_provider")
+        if provider is None:
+            raise ExecutionError(
+                code="BEDDEL-EXEC-010",
+                message=(
+                    f"Step '{step.id}' uses DELEGATE strategy but no LLM provider is configured"
+                ),
+                details={"step_id": step.id},
+            ) from error
+
+        actions = ["retry", "skip"]
+        if step.execution_strategy.fallback_step is not None:
+            actions.append("fallback")
+
+        user_prompt = (
+            f"Step: {step.id}\n"
+            f"Primitive: {step.primitive}\n"
+            f"Error: {error}\n"
+            f"Error type: {type(error).__name__}\n"
+            f"Available actions: {', '.join(actions)}"
+        )
+
+        try:
+            result = await provider.complete(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": f"Respond with exactly one word: {', '.join(actions)}",
+                    },
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+        except Exception as llm_err:
+            raise ExecutionError(
+                code="BEDDEL-EXEC-010",
+                message=(
+                    f"LLM call failed during DELEGATE recovery for step '{step.id}': {llm_err}"
+                ),
+                details={"step_id": step.id, "llm_error": str(llm_err)},
+            ) from llm_err
+
+        action = result.get("content", "").strip().lower()
+
+        if action == "retry":
+            original_retry = step.execution_strategy.retry
+            step.execution_strategy.retry = RetryConfig(max_attempts=2)
+            try:
+                return await self._retry_step(step, error, context)
+            finally:
+                step.execution_strategy.retry = original_retry
+        if action == "skip":
+            logger.warning("Step '%s' failed — DELEGATE chose SKIP: %s", step.id, error)
+            return None
+        if action == "fallback" and step.execution_strategy.fallback_step is not None:
+            return await self._fallback_step(step, error, context)
+
+        raise ExecutionError(
+            code="BEDDEL-EXEC-011",
+            message=f"DELEGATE strategy for step '{step.id}' returned invalid action: '{action}'",
+            details={"step_id": step.id, "raw_response": result.get("content", "")},
+        ) from error

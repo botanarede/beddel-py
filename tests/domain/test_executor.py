@@ -1082,3 +1082,159 @@ class TestInterruptibleContext:
         ctx = ExecutionContext(workflow_id="wf-1")
 
         assert ctx.suspended is False
+
+
+# ---------------------------------------------------------------------------
+# 14.3 — DELEGATE recovery strategy
+# ---------------------------------------------------------------------------
+
+
+class TestDelegateStrategy:
+    """DELEGATE strategy asks an LLM to choose retry, skip, or fallback."""
+
+    @patch("beddel.domain.executor.random.uniform", return_value=1.0)
+    @patch("beddel.domain.executor.asyncio.sleep", new_callable=AsyncMock)
+    async def test_delegate_retry_path(
+        self, mock_sleep: AsyncMock, mock_uniform: MagicMock
+    ) -> None:
+        """LLM returns 'retry' → primitive re-executed, result stored."""
+        call_count = 0
+
+        async def _flaky(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 1:
+                raise RuntimeError("transient")
+            return "recovered"
+
+        registry, _ = _registry_with_stub(side_effect=_flaky)
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        mock_provider.complete = AsyncMock(return_value={"content": "retry"})
+
+        step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, provider=mock_provider)
+
+        result = await executor.execute(wf)
+
+        assert result["step_results"]["del-s"] == "recovered"
+        assert call_count == 2
+        mock_provider.complete.assert_called_once()
+
+    async def test_delegate_skip_path(self) -> None:
+        """LLM returns 'skip' → step result is None, execution continues."""
+        registry, _ = _registry_with_stub(side_effect=RuntimeError("boom"))
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        mock_provider.complete = AsyncMock(return_value={"content": "skip"})
+
+        step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, provider=mock_provider)
+
+        result = await executor.execute(wf)
+
+        assert result["step_results"]["del-s"] is None
+        mock_provider.complete.assert_called_once()
+
+    async def test_delegate_fallback_path(self) -> None:
+        """LLM returns 'fallback' → fallback step executes, result stored."""
+        from beddel.domain.ports import IPrimitive
+
+        main_mock = AsyncMock(side_effect=RuntimeError("main failed"))
+        fallback_mock = AsyncMock(return_value="fallback-result")
+
+        class _MainStub(IPrimitive):
+            async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
+                return await main_mock(config, context)
+
+        class _FallbackStub(IPrimitive):
+            async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
+                return await fallback_mock(config, context)
+
+        registry = PrimitiveRegistry()
+        registry.register("main-prim", _MainStub())
+        registry.register("fb-prim", _FallbackStub())
+
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        mock_provider.complete = AsyncMock(return_value={"content": "fallback"})
+
+        fb_step = _make_step("fb-s", primitive="fb-prim")
+        step = _make_step(
+            "del-s",
+            primitive="main-prim",
+            strategy_type=StrategyType.DELEGATE,
+            fallback_step=fb_step,
+        )
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, provider=mock_provider)
+
+        result = await executor.execute(wf)
+
+        assert result["step_results"]["del-s"] == "fallback-result"
+        fallback_mock.assert_called_once()
+
+    async def test_delegate_unparseable_response(self) -> None:
+        """LLM returns gibberish → BEDDEL-EXEC-011, original error chained."""
+        registry, _ = _registry_with_stub(side_effect=RuntimeError("boom"))
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        mock_provider.complete = AsyncMock(return_value={"content": "I'm not sure what to do"})
+
+        step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, provider=mock_provider)
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await executor.execute(wf)
+
+        assert exc_info.value.code == "BEDDEL-EXEC-011"
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+    async def test_delegate_llm_call_fails(self) -> None:
+        """LLM provider raises → BEDDEL-EXEC-010."""
+        registry, _ = _registry_with_stub(side_effect=RuntimeError("step fail"))
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        mock_provider.complete = AsyncMock(side_effect=ConnectionError("LLM unreachable"))
+
+        step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, provider=mock_provider)
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await executor.execute(wf)
+
+        assert exc_info.value.code == "BEDDEL-EXEC-010"
+        assert "LLM call failed" in exc_info.value.message
+
+    async def test_delegate_no_provider_raises_error(self) -> None:
+        """No llm_provider in metadata → BEDDEL-EXEC-010."""
+        registry, _ = _registry_with_stub(side_effect=RuntimeError("boom"))
+
+        step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry)  # no provider
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await executor.execute(wf)
+
+        assert exc_info.value.code == "BEDDEL-EXEC-010"
+        assert "no LLM provider" in exc_info.value.message
+
+    async def test_delegate_fallback_without_fallback_step(self) -> None:
+        """LLM returns 'fallback' but no fallback_step → BEDDEL-EXEC-011."""
+        registry, _ = _registry_with_stub(side_effect=RuntimeError("boom"))
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        mock_provider.complete = AsyncMock(return_value={"content": "fallback"})
+
+        step = _make_step(
+            "del-s",
+            strategy_type=StrategyType.DELEGATE,
+            fallback_step=None,
+        )
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, provider=mock_provider)
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await executor.execute(wf)
+
+        assert exc_info.value.code == "BEDDEL-EXEC-011"
+        assert "invalid action" in exc_info.value.message

@@ -12,13 +12,18 @@ from __future__ import annotations
 import json
 import logging
 import time
+import warnings
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from beddel.domain.ports import ILifecycleHook, ILLMProvider
 
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "BeddelEvent",
+    "DefaultDependencies",
     "EventType",
     "ExecutionContext",
     "ExecutionStrategy",
@@ -39,7 +44,7 @@ class StrategyType(StrEnum):
     - ``SKIP``: Ignore the error and continue to the next step.
     - ``RETRY``: Re-execute the step according to ``RetryConfig``.
     - ``FALLBACK``: Execute an alternative fallback step.
-    - ``DELEGATE``: Reserved for Epic 4+ (agent delegation).
+    - ``DELEGATE``: Agent-judged recovery — LLM decides retry, skip, or fallback (see §14.3).
     """
 
     FAIL = "fail"
@@ -120,6 +125,57 @@ class Step(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class DefaultDependencies:
+    """Concrete dependency container for workflow execution.
+
+    Provides typed access to the LLM provider and lifecycle hooks,
+    satisfying the :class:`~beddel.domain.ports.ExecutionDependencies`
+    protocol via structural subtyping.
+
+    Args:
+        llm_provider: The LLM provider adapter, or ``None`` if not configured.
+        lifecycle_hooks: Lifecycle hooks to notify during execution.
+            Defaults to an empty list when ``None`` is passed.
+    """
+
+    __slots__ = ("_llm_provider", "_lifecycle_hooks")
+
+    def __init__(
+        self,
+        llm_provider: ILLMProvider | None = None,
+        lifecycle_hooks: list[ILifecycleHook] | None = None,
+    ) -> None:
+        self._llm_provider = llm_provider
+        self._lifecycle_hooks = lifecycle_hooks if lifecycle_hooks is not None else []
+
+    @property
+    def llm_provider(self) -> ILLMProvider | None:
+        """The LLM provider adapter, or ``None`` if not configured."""
+        return self._llm_provider
+
+    @property
+    def lifecycle_hooks(self) -> list[ILifecycleHook]:
+        """Lifecycle hooks to notify during workflow execution."""
+        return self._lifecycle_hooks
+
+
+class _DeprecatedMetadataDict(dict[str, Any]):
+    """Warns on access to deprecated metadata keys."""
+
+    _DEPRECATED_KEYS: frozenset[str] = frozenset({"llm_provider", "lifecycle_hooks"})
+
+    def __getitem__(self, key: str) -> Any:
+        if key in self._DEPRECATED_KEYS:
+            warnings.warn(
+                f"Access context.deps.{key} instead of context.metadata['{key}']. "
+                "Direct metadata access is deprecated and will be removed in a "
+                "future version.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return super().__getitem__(key)
+
+
 _log = logging.getLogger(__name__)
 
 
@@ -181,6 +237,8 @@ class ExecutionContext(InterruptibleContext, BaseModel):
         metadata: Arbitrary runtime metadata.
         current_step_id: The id of the step currently being executed.
         suspended: When True the executor skips remaining steps gracefully.
+        deps: Typed dependency container satisfying the
+            :class:`~beddel.domain.ports.ExecutionDependencies` protocol.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -188,8 +246,10 @@ class ExecutionContext(InterruptibleContext, BaseModel):
     workflow_id: str
     inputs: dict[str, Any] = Field(default_factory=dict)
     step_results: dict[str, Any] = Field(default_factory=dict)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=_DeprecatedMetadataDict)
     current_step_id: str | None = None
+    deps: DefaultDependencies = Field(default_factory=DefaultDependencies)
+    """Typed dependency container satisfying the ExecutionDependencies protocol."""
 
 
 class EventType(StrEnum):
