@@ -429,6 +429,7 @@ class TestAllExports:
             "EventType",
             "ExecutionContext",
             "ExecutionStrategy",
+            "InterruptibleContext",
             "RetryConfig",
             "Step",
             "StrategyType",

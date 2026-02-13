@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -984,3 +985,100 @@ class TestStrategyInjection:
 
         assert call_order == ["first", "second", "third"]
         assert isinstance(executor._strategy, SequentialStrategy)
+
+
+class TestInterruptibleContext:
+    """Tests for InterruptibleContext mixin (serialize/restore/suspend)."""
+
+    async def test_serialize_excludes_non_serializable_metadata(self) -> None:
+        """Non-serializable metadata values are silently excluded."""
+        ctx = ExecutionContext(workflow_id="wf-1")
+        ctx.step_results = {"s1": "result1"}
+        ctx.metadata = {"key1": "value1", "provider": MagicMock()}
+
+        data = ctx.serialize()
+
+        # Must be fully JSON-serializable
+        json.dumps(data)
+        assert "provider" not in data["metadata"]
+        assert data["metadata"]["key1"] == "value1"
+        assert data["step_results"] == {"s1": "result1"}
+
+    async def test_restore_reconstructs_state(self) -> None:
+        """restore() faithfully reconstructs all serializable fields."""
+        original = ExecutionContext(workflow_id="wf-1", inputs={"topic": "AI"})
+        original.step_results = {"s1": "r1", "s2": "r2"}
+        original.current_step_id = "s2"
+        original.suspended = True
+        original.metadata = {"run_id": "abc123"}
+
+        data = original.serialize()
+
+        restored = ExecutionContext(workflow_id="empty")
+        restored.restore(data)
+
+        assert restored.workflow_id == original.workflow_id
+        assert restored.inputs == original.inputs
+        assert restored.step_results == original.step_results
+        assert restored.current_step_id == original.current_step_id
+        assert restored.suspended == original.suspended
+        assert restored.metadata == {"run_id": "abc123"}
+
+    async def test_suspended_stops_execution_early(self) -> None:
+        """Setting suspended=True mid-run causes the executor to skip remaining steps."""
+        call_count = 0
+
+        async def _side_effect(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                ctx.suspended = True
+            return f"result-{call_count}"
+
+        registry, _ = _registry_with_stub(side_effect=_side_effect)
+        steps = [
+            _make_step("s1"),
+            _make_step("s2"),
+            _make_step("s3"),
+            _make_step("s4"),
+        ]
+        wf = _make_workflow(steps)
+        executor = WorkflowExecutor(registry)
+
+        result = await executor.execute(wf)
+
+        assert call_count == 2
+        assert len(result["step_results"]) == 2
+        assert "s1" in result["step_results"]
+        assert "s2" in result["step_results"]
+        assert "s3" not in result["step_results"]
+        assert "s4" not in result["step_results"]
+
+    async def test_serialize_restore_round_trip(self) -> None:
+        """Round-trip: populate 2-of-4 steps → suspend → serialize → restore → verify."""
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={"topic": "AI"})
+        ctx.step_results = {"s1": "r1", "s2": "r2"}
+        ctx.current_step_id = "s2"
+        ctx.suspended = True
+        ctx.metadata = {"run_id": "abc123"}
+
+        checkpoint = ctx.serialize()
+
+        # Verify checkpoint is JSON-safe
+        json.dumps(checkpoint)
+
+        new_ctx = ExecutionContext(workflow_id="empty")
+        new_ctx.restore(checkpoint)
+
+        assert new_ctx.workflow_id == "wf-1"
+        assert new_ctx.inputs == {"topic": "AI"}
+        assert new_ctx.step_results == {"s1": "r1", "s2": "r2"}
+        assert new_ctx.current_step_id == "s2"
+        assert new_ctx.suspended is True
+        assert new_ctx.metadata == {"run_id": "abc123"}
+
+    async def test_suspended_default_is_false(self) -> None:
+        """A fresh ExecutionContext has suspended=False by default."""
+        ctx = ExecutionContext(workflow_id="wf-1")
+
+        assert ctx.suspended is False

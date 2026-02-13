@@ -9,6 +9,8 @@ Only stdlib + pydantic imports are allowed in this module (domain core rule).
 
 from __future__ import annotations
 
+import json
+import logging
 import time
 from enum import StrEnum
 from typing import Any
@@ -20,6 +22,7 @@ __all__ = [
     "EventType",
     "ExecutionContext",
     "ExecutionStrategy",
+    "InterruptibleContext",
     "RetryConfig",
     "Step",
     "StrategyType",
@@ -117,11 +120,59 @@ class Step(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class ExecutionContext(BaseModel):
+_log = logging.getLogger(__name__)
+
+
+class InterruptibleContext:
+    """Mixin providing checkpoint/resume capabilities for execution contexts.
+
+    Adds ``serialize()`` / ``restore()`` methods and a ``suspended`` flag so
+    that a running workflow can be paused, persisted, and later resumed.
+
+    [Source: Architecture §4.7 — InterruptibleContext mixin]
+    """
+
+    suspended: bool = False
+
+    def serialize(self) -> dict[str, Any]:
+        """Capture context state into a JSON-serializable dictionary.
+
+        Non-serializable metadata values (e.g. provider instances, callables)
+        are silently excluded with a warning log.
+        """
+        safe_metadata: dict[str, Any] = {}
+        for key, value in getattr(self, "metadata", {}).items():
+            try:
+                json.dumps(value)
+                safe_metadata[key] = value
+            except (TypeError, ValueError, OverflowError):
+                _log.warning("Excluding non-serializable metadata key: %s", key)
+
+        return {
+            "workflow_id": getattr(self, "workflow_id", ""),
+            "inputs": getattr(self, "inputs", {}),
+            "step_results": getattr(self, "step_results", {}),
+            "metadata": safe_metadata,
+            "current_step_id": getattr(self, "current_step_id", None),
+            "suspended": self.suspended,
+        }
+
+    def restore(self, data: dict[str, Any]) -> None:
+        """Reconstruct context state from a previously serialized dictionary."""
+        self.workflow_id = data.get("workflow_id", "")  # type: ignore[attr-defined]
+        self.inputs = data.get("inputs", {})  # type: ignore[attr-defined]
+        self.step_results = data.get("step_results", {})  # type: ignore[attr-defined]
+        self.metadata = data.get("metadata", {})  # type: ignore[attr-defined]
+        self.current_step_id = data.get("current_step_id")  # type: ignore[attr-defined]
+        self.suspended = data.get("suspended", False)
+
+
+class ExecutionContext(InterruptibleContext, BaseModel):
     """Mutable runtime context threaded through workflow execution.
 
     Carries workflow inputs, accumulated step results, and metadata that
-    primitives and the executor can read and write during a run.
+    primitives and the executor can read and write during a run.  Inherits
+    checkpoint/resume capabilities from :class:`InterruptibleContext`.
 
     Attributes:
         workflow_id: Identifier of the workflow being executed.
@@ -129,6 +180,7 @@ class ExecutionContext(BaseModel):
         step_results: Results keyed by step id, populated during execution.
         metadata: Arbitrary runtime metadata.
         current_step_id: The id of the step currently being executed.
+        suspended: When True the executor skips remaining steps gracefully.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

@@ -68,6 +68,8 @@ class SequentialStrategy:
                 executes a single step with full lifecycle handling.
         """
         for step in workflow.steps:
+            if context.suspended:
+                break
             await step_runner(step, context)
 
 

@@ -11,6 +11,7 @@ from beddel.domain.errors import (
     ResolveError,
 )
 from beddel.domain.executor import SequentialStrategy
+from beddel.domain.models import InterruptibleContext
 from beddel.domain.ports import IExecutionStrategy
 
 __version__ = "0.1.0"
@@ -24,5 +25,6 @@ __all__ = [
     "PrimitiveError",
     "AdapterError",
     "IExecutionStrategy",
+    "InterruptibleContext",
     "SequentialStrategy",
 ]
