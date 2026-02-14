@@ -175,6 +175,23 @@ class _DeprecatedMetadataDict(dict[str, Any]):
             )
         return super().__getitem__(key)
 
+    def get(self, key: str, default: Any = None) -> Any:
+        """Return value for *key* with a deprecation warning for migrated keys.
+
+        Overrides :meth:`dict.get` to emit a :class:`DeprecationWarning`
+        when callers access keys that have been migrated to
+        ``context.deps``.
+        """
+        if key in self._DEPRECATED_KEYS and key in self:
+            warnings.warn(
+                f"Access context.deps.{key} instead of context.metadata['{key}']. "
+                "Direct metadata access is deprecated and will be removed in a "
+                "future version.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return super().get(key, default)
+
 
 _log = logging.getLogger(__name__)
 

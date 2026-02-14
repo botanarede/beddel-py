@@ -13,6 +13,7 @@ from beddel.domain.errors import (
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
     BeddelEvent,
+    DefaultDependencies,
     EventType,
     ExecutionContext,
     ExecutionStrategy,
@@ -22,7 +23,7 @@ from beddel.domain.models import (
     Workflow,
 )
 from beddel.domain.parser import WorkflowParser
-from beddel.domain.ports import ILifecycleHook, ILLMProvider, IPrimitive
+from beddel.domain.ports import ExecutionDependencies, ILifecycleHook, ILLMProvider, IPrimitive
 from beddel.domain.registry import PrimitiveRegistry, primitive
 from beddel.domain.resolver import VariableResolver
 
@@ -30,8 +31,10 @@ __all__ = [
     "AdapterError",
     "BeddelError",
     "BeddelEvent",
+    "DefaultDependencies",
     "EventType",
     "ExecutionContext",
+    "ExecutionDependencies",
     "ExecutionError",
     "ExecutionStrategy",
     "ILifecycleHook",

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from beddel.domain.errors import PrimitiveError
-from beddel.domain.models import ExecutionContext
+from beddel.domain.models import DefaultDependencies, ExecutionContext
 from beddel.domain.ports import ILLMProvider
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.primitives import register_builtins
@@ -25,13 +25,10 @@ def _make_context(
     llm_provider: ILLMProvider | None = None,
     step_id: str | None = "step-1",
 ) -> ExecutionContext:
-    """Build an ExecutionContext with an optional LLM provider in metadata."""
-    metadata: dict[str, Any] = {}
-    if llm_provider is not None:
-        metadata["llm_provider"] = llm_provider
+    """Build an ExecutionContext with an optional LLM provider in deps."""
     return ExecutionContext(
         workflow_id="wf-test",
-        metadata=metadata,
+        deps=DefaultDependencies(llm_provider=llm_provider),
         current_step_id=step_id,
     )
 

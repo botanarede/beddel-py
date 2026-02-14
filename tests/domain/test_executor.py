@@ -1238,3 +1238,183 @@ class TestDelegateStrategy:
 
         assert exc_info.value.code == "BEDDEL-EXEC-011"
         assert "invalid action" in exc_info.value.message
+
+
+# ---------------------------------------------------------------------------
+# Story 1.11 / Task 6 — Execution Dependencies Tests
+# ---------------------------------------------------------------------------
+
+
+class TestExecutionDependencies:
+    """Tests for DefaultDependencies and ExecutionContext.deps integration."""
+
+    def test_default_dependencies_defaults(self) -> None:
+        # Arrange / Act
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+
+        # Assert
+        assert deps.llm_provider is None
+        assert deps.lifecycle_hooks == []
+
+    def test_default_dependencies_stores_values(self) -> None:
+        # Arrange
+        from beddel.domain.models import DefaultDependencies
+
+        mock_provider = MagicMock(spec=ILLMProvider)
+        mock_hook = MagicMock(spec=ILifecycleHook)
+
+        # Act
+        deps = DefaultDependencies(
+            llm_provider=mock_provider,
+            lifecycle_hooks=[mock_hook],
+        )
+
+        # Assert
+        assert deps.llm_provider is mock_provider
+        assert deps.lifecycle_hooks == [mock_hook]
+
+    def test_execution_context_has_deps_attribute(self) -> None:
+        # Arrange / Act
+        from beddel.domain.models import DefaultDependencies
+
+        context = ExecutionContext(workflow_id="test")
+
+        # Assert
+        assert isinstance(context.deps, DefaultDependencies)
+        assert context.deps.llm_provider is None
+        assert context.deps.lifecycle_hooks == []
+
+
+class TestMetadataDeprecationWarnings:
+    """Tests for deprecation warnings on metadata access to migrated keys."""
+
+    def test_metadata_deprecation_warning_llm_provider(self) -> None:
+        # Arrange
+        context = ExecutionContext(workflow_id="test")
+        context.metadata["llm_provider"] = MagicMock()
+
+        # Act / Assert
+        with pytest.warns(DeprecationWarning, match="context.deps.llm_provider"):
+            _ = context.metadata["llm_provider"]
+
+    def test_metadata_deprecation_warning_lifecycle_hooks(self) -> None:
+        # Arrange
+        context = ExecutionContext(workflow_id="test")
+        context.metadata["lifecycle_hooks"] = [MagicMock()]
+
+        # Act / Assert
+        with pytest.warns(DeprecationWarning, match="context.deps.lifecycle_hooks"):
+            _ = context.metadata["lifecycle_hooks"]
+
+    def test_metadata_non_deprecated_key_no_warning(self) -> None:
+        # Arrange
+        import warnings
+
+        context = ExecutionContext(workflow_id="test")
+        context.metadata["some_key"] = "value"
+
+        # Act / Assert — any warning would raise, proving none are emitted
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            result = context.metadata["some_key"]
+
+        assert result == "value"
+
+    def test_metadata_get_deprecation_warning_llm_provider(self) -> None:
+        # Arrange
+        context = ExecutionContext(workflow_id="test")
+        context.metadata["llm_provider"] = MagicMock()
+
+        # Act / Assert
+        with pytest.warns(DeprecationWarning, match="context.deps.llm_provider"):
+            _ = context.metadata.get("llm_provider")
+
+    def test_metadata_get_non_deprecated_key_no_warning(self) -> None:
+        # Arrange
+        import warnings
+
+        context = ExecutionContext(workflow_id="test")
+        context.metadata["some_key"] = "value"
+
+        # Act / Assert — any warning would raise, proving none are emitted
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            result = context.metadata.get("some_key")
+
+        assert result == "value"
+
+
+@pytest.mark.asyncio
+class TestLLMPrimitiveUsesDeps:
+    """Tests that LLMPrimitive reads provider from context.deps."""
+
+    async def test_llm_primitive_uses_deps(self) -> None:
+        # Arrange
+        from beddel.domain.models import DefaultDependencies
+        from beddel.primitives.llm import LLMPrimitive
+
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        mock_provider.complete = AsyncMock(return_value={"content": "hello"})
+
+        context = ExecutionContext(
+            workflow_id="test",
+            deps=DefaultDependencies(llm_provider=mock_provider),
+        )
+        # Deliberately do NOT set context.metadata["llm_provider"]
+
+        primitive = LLMPrimitive()
+        config = {"model": "test-model", "prompt": "hi"}
+
+        # Act
+        result = await primitive.execute(config, context)
+
+        # Assert
+        mock_provider.complete.assert_called_once()
+        assert result == {"content": "hello"}
+
+
+@pytest.mark.asyncio
+class TestExecutorPopulatesBothDepsAndMetadata:
+    """Tests that WorkflowExecutor.execute() populates both deps and metadata."""
+
+    async def test_executor_populates_both_deps_and_metadata(self) -> None:
+        # Arrange
+        import warnings
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        mock_hook = AsyncMock(spec=ILifecycleHook)
+
+        captured_context: list[ExecutionContext] = []
+
+        async def capture_prim(config: dict[str, Any], context: ExecutionContext) -> str:
+            captured_context.append(context)
+            return "ok"
+
+        stub = AsyncMock(side_effect=capture_prim)
+        registry = _make_registry(("test-prim", stub))
+
+        step = _make_step("s1", primitive="test-prim")
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, provider=mock_provider, hooks=[mock_hook])
+
+        # Act
+        await executor.execute(wf)
+
+        # Assert — context was captured
+        assert len(captured_context) == 1
+        ctx = captured_context[0]
+
+        # deps populated correctly
+        assert isinstance(ctx.deps, DefaultDependencies)
+        assert ctx.deps.llm_provider is mock_provider
+        assert mock_hook in ctx.deps.lifecycle_hooks
+
+        # metadata populated correctly (suppress deprecation warnings for reads)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            assert ctx.metadata["llm_provider"] is mock_provider
+            assert mock_hook in ctx.metadata["lifecycle_hooks"]

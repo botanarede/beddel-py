@@ -19,6 +19,7 @@ from typing import Any
 from beddel.domain.errors import ExecutionError
 from beddel.domain.models import (
     BeddelEvent,
+    DefaultDependencies,
     EventType,
     ExecutionContext,
     RetryConfig,
@@ -141,6 +142,11 @@ class WorkflowExecutor:
             inputs=effective_inputs,
         )
 
+        context.deps = DefaultDependencies(
+            llm_provider=self._provider,
+            lifecycle_hooks=self._hooks,
+        )
+
         if self._provider is not None:
             context.metadata["llm_provider"] = self._provider
         context.metadata["lifecycle_hooks"] = self._hooks
@@ -255,6 +261,10 @@ class WorkflowExecutor:
             context = ExecutionContext(
                 workflow_id=workflow.id,
                 inputs=effective_inputs,
+            )
+            context.deps = DefaultDependencies(
+                llm_provider=self._provider,
+                lifecycle_hooks=self._hooks,
             )
             if self._provider is not None:
                 context.metadata["llm_provider"] = self._provider
@@ -601,8 +611,8 @@ class WorkflowExecutor:
         """Delegate error recovery to an LLM that chooses retry, skip, or fallback.
 
         Constructs a structured prompt describing the failure and asks the
-        LLM provider to pick a recovery action.  The chosen action is then
-        dispatched to the corresponding handler.
+        LLM provider (from ``context.deps``) to pick a recovery action.
+        The chosen action is then dispatched to the corresponding handler.
 
         Args:
             step: The step that failed.
@@ -619,7 +629,7 @@ class WorkflowExecutor:
             ExecutionError: ``BEDDEL-EXEC-011`` when the LLM returns an
                 unparseable or invalid action.
         """
-        provider: Any = context.metadata.get("llm_provider")
+        provider = context.deps.llm_provider
         if provider is None:
             raise ExecutionError(
                 code="BEDDEL-EXEC-010",

@@ -426,6 +426,7 @@ class TestAllExports:
 
         expected = {
             "BeddelEvent",
+            "DefaultDependencies",
             "EventType",
             "ExecutionContext",
             "ExecutionStrategy",

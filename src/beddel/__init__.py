@@ -11,20 +11,22 @@ from beddel.domain.errors import (
     ResolveError,
 )
 from beddel.domain.executor import SequentialStrategy
-from beddel.domain.models import InterruptibleContext
-from beddel.domain.ports import IExecutionStrategy
+from beddel.domain.models import DefaultDependencies, InterruptibleContext
+from beddel.domain.ports import ExecutionDependencies, IExecutionStrategy
 
 __version__ = "0.1.0"
 
 __all__ = [
     "__version__",
-    "BeddelError",
-    "ParseError",
-    "ResolveError",
-    "ExecutionError",
-    "PrimitiveError",
     "AdapterError",
+    "BeddelError",
+    "DefaultDependencies",
+    "ExecutionDependencies",
+    "ExecutionError",
     "IExecutionStrategy",
     "InterruptibleContext",
+    "ParseError",
+    "PrimitiveError",
+    "ResolveError",
     "SequentialStrategy",
 ]

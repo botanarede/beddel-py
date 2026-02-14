@@ -21,11 +21,34 @@ from typing import Any, Protocol
 from beddel.domain.models import ExecutionContext, Workflow
 
 __all__ = [
+    "ExecutionDependencies",
     "IExecutionStrategy",
     "ILifecycleHook",
     "ILLMProvider",
     "IPrimitive",
 ]
+
+
+class ExecutionDependencies(Protocol):
+    """Typed access to execution context dependencies.
+
+    Defines the structural contract for dependency containers passed to
+    the executor via ``ExecutionContext.deps``.  Uses structural subtyping
+    (``Protocol``) so any object exposing the required read-only properties
+    satisfies the contract without explicit inheritance.
+
+    [Source: Architecture §4.8 — ExecutionDependencies protocol]
+    """
+
+    @property
+    def llm_provider(self) -> ILLMProvider | None:
+        """The LLM provider adapter, or ``None`` if not configured."""
+        ...
+
+    @property
+    def lifecycle_hooks(self) -> list[ILifecycleHook]:
+        """Lifecycle hooks to notify during workflow execution."""
+        ...
 
 
 class IExecutionStrategy(Protocol):

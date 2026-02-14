@@ -2,7 +2,7 @@
 
 Provides :class:`LLMPrimitive`, which implements :class:`~beddel.domain.ports.IPrimitive`
 and delegates to an :class:`~beddel.domain.ports.ILLMProvider` instance read from
-``context.metadata["llm_provider"]``.
+``context.deps.llm_provider``.
 
 Supports both synchronous (request/response) and streaming modes.
 """
@@ -23,7 +23,7 @@ __all__ = [
 class LLMPrimitive(IPrimitive):
     """Single-turn LLM invocation primitive.
 
-    Reads the LLM provider from ``context.metadata["llm_provider"]`` and
+    Reads the LLM provider from ``context.deps.llm_provider`` and
     forwards the call with model, messages, and optional parameters.
 
     Config keys:
@@ -55,7 +55,7 @@ class LLMPrimitive(IPrimitive):
                 ``temperature``, ``max_tokens``, and ``stream``.
             context: Execution context — must contain an
                 :class:`~beddel.domain.ports.ILLMProvider` instance at
-                ``context.metadata["llm_provider"]``.
+                ``context.deps.llm_provider``.
 
         Returns:
             When ``stream`` is ``False`` (default): the provider's response
@@ -65,7 +65,7 @@ class LLMPrimitive(IPrimitive):
 
         Raises:
             PrimitiveError: ``BEDDEL-PRIM-003`` if ``llm_provider`` is
-                missing from ``context.metadata``.
+                missing from ``context.deps``.
             PrimitiveError: ``BEDDEL-PRIM-004`` if required config key
                 ``model`` is missing.
         """
@@ -80,7 +80,7 @@ class LLMPrimitive(IPrimitive):
         return await provider.complete(model, messages, **kwargs)
 
     def _get_provider(self, context: ExecutionContext) -> ILLMProvider:
-        """Extract and validate the LLM provider from context metadata.
+        """Extract and validate the LLM provider from context deps.
 
         Args:
             context: The current execution context.
@@ -90,19 +90,19 @@ class LLMPrimitive(IPrimitive):
 
         Raises:
             PrimitiveError: ``BEDDEL-PRIM-003`` if ``llm_provider`` is
-                missing from metadata.
+                missing from deps.
         """
-        provider = context.metadata.get("llm_provider")
+        provider = context.deps.llm_provider
         if provider is None:
             raise PrimitiveError(
                 "BEDDEL-PRIM-003",
-                "Missing 'llm_provider' in execution context metadata",
+                "Missing 'llm_provider' in execution context deps",
                 {
                     "step_id": context.current_step_id,
                     "primitive_type": "llm",
                 },
             )
-        return provider  # type: ignore[return-value]
+        return provider
 
     def _get_model(self, config: dict[str, Any], context: ExecutionContext) -> str:
         """Extract and validate the model identifier from config.

@@ -1,7 +1,7 @@
 """Integration tests for full execution path: executor → context → primitive → adapter.
 
 Verifies that the LLM primitive correctly reads the LiteLLM adapter from
-execution context metadata and that results propagate back through the
+execution context deps and that results propagate back through the
 entire chain — without any real API calls.
 """
 
@@ -11,7 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from beddel.adapters.litellm_adapter import LiteLLMAdapter
-from beddel.domain.models import ExecutionContext
+from beddel.domain.models import DefaultDependencies, ExecutionContext
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.primitives import register_builtins
 from beddel.primitives.llm import LLMPrimitive
@@ -69,7 +69,7 @@ def _make_context(adapter: LiteLLMAdapter, step_id: str = "step-1") -> Execution
     """Build an ExecutionContext wired with the given adapter."""
     return ExecutionContext(
         workflow_id="integration-test",
-        metadata={"llm_provider": adapter},
+        deps=DefaultDependencies(llm_provider=adapter),
         current_step_id=step_id,
     )
 
