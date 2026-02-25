@@ -22,6 +22,14 @@ With FastAPI integration:
 pip install beddel[fastapi]
 ```
 
+For a minimal install without optional integrations:
+
+```bash
+pip install beddel[lite]
+```
+
+*Available in a future release.*
+
 Requires Python 3.11+.
 
 ## Quickstart
@@ -115,6 +123,20 @@ The model responds with a friendly greeting and a fun fact about astronomy. The 
 
 > **Note:** Model names use the stable [LiteLLM](https://docs.litellm.ai/) format (`provider/model`). Avoid experimental (`-exp`) suffixes. Update the model name if a version becomes unavailable.
 
+## Variable Resolution
+
+Beddel workflows use `$input.<field>` placeholders in YAML templates to inject values at runtime. When you call `executor.execute(workflow, inputs={"topic": "astronomy"})`, the engine resolves every `$input.<field>` reference before the step executes.
+
+```yaml
+steps:
+  - id: greet
+    primitive: llm
+    config:
+      prompt: "Tell me about $input.topic"
+```
+
+In this example, `$input.topic` resolves to `"astronomy"` at execution time. Other namespaces are also available: `$stepResult.*` references outputs from previously executed steps, and `$env.*` reads environment variables.
+
 ## Development Setup
 
 Clone the repo and install dev dependencies from the SDK directory:
@@ -128,8 +150,10 @@ pip install -e ".[dev]"
 Run tests:
 
 ```bash
-pytest
+python -Wd -m pytest
 ```
+
+The `-Wd` flag turns `DeprecationWarning` into errors, catching deprecated API usage early. This is the recommended way to run tests during development. Plain `pytest` still works if you don't need deprecation checks.
 
 Lint and format:
 
