@@ -17,7 +17,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from beddel.domain.ports import ILifecycleHook, ILLMProvider
+    from beddel.domain.ports import IExecutionStrategy, ILifecycleHook, ILLMProvider
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -128,25 +128,35 @@ class Step(BaseModel):
 class DefaultDependencies:
     """Concrete dependency container for workflow execution.
 
-    Provides typed access to the LLM provider and lifecycle hooks,
-    satisfying the :class:`~beddel.domain.ports.ExecutionDependencies`
-    protocol via structural subtyping.
+    Provides typed access to the LLM provider, lifecycle hooks, execution
+    strategy, and delegate model name, satisfying the
+    :class:`~beddel.domain.ports.ExecutionDependencies` protocol via
+    structural subtyping.
 
     Args:
         llm_provider: The LLM provider adapter, or ``None`` if not configured.
         lifecycle_hooks: Lifecycle hooks to notify during execution.
             Defaults to an empty list when ``None`` is passed.
+        execution_strategy: Optional execution strategy controlling how
+            workflow steps are iterated.  Defaults to ``None``, which
+            causes the executor to fall back to :class:`SequentialStrategy`.
+        delegate_model: Model name used for DELEGATE step LLM calls.
+            Defaults to ``"gpt-4o-mini"``.
     """
 
-    __slots__ = ("_llm_provider", "_lifecycle_hooks")
+    __slots__ = ("_llm_provider", "_lifecycle_hooks", "_execution_strategy", "_delegate_model")
 
     def __init__(
         self,
         llm_provider: ILLMProvider | None = None,
         lifecycle_hooks: list[ILifecycleHook] | None = None,
+        execution_strategy: IExecutionStrategy | None = None,
+        delegate_model: str = "gpt-4o-mini",
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks if lifecycle_hooks is not None else []
+        self._execution_strategy = execution_strategy
+        self._delegate_model = delegate_model
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -157,6 +167,16 @@ class DefaultDependencies:
     def lifecycle_hooks(self) -> list[ILifecycleHook]:
         """Lifecycle hooks to notify during workflow execution."""
         return self._lifecycle_hooks
+
+    @property
+    def execution_strategy(self) -> IExecutionStrategy | None:
+        """Return the injected execution strategy, or None to use default."""
+        return self._execution_strategy
+
+    @property
+    def delegate_model(self) -> str:
+        """Return the model name used for delegate step LLM calls."""
+        return self._delegate_model
 
 
 class _DeprecatedMetadataDict(dict[str, Any]):

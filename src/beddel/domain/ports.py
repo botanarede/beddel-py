@@ -50,6 +50,16 @@ class ExecutionDependencies(Protocol):
         """Lifecycle hooks to notify during workflow execution."""
         ...
 
+    @property
+    def execution_strategy(self) -> IExecutionStrategy | None:
+        """The injected execution strategy, or ``None`` to use the default."""
+        ...
+
+    @property
+    def delegate_model(self) -> str:
+        """Model name used for DELEGATE step LLM calls."""
+        ...
+
 
 class IExecutionStrategy(Protocol):
     """Contract for workflow execution strategies.

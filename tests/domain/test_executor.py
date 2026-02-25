@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from beddel.domain.errors import ExecutionError
-from beddel.domain.executor import SequentialStrategy, WorkflowExecutor
+from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
     BeddelEvent,
     EventType,
@@ -921,6 +921,44 @@ class TestExecuteStream:
 
         assert executor._hooks == [original_hook]
 
+    async def test_execute_stream_respects_custom_strategy(self) -> None:
+        """execute_stream() honours a custom IExecutionStrategy injected via execution_strategy."""
+        call_order: list[str] = []
+
+        async def _side_effect(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            call_order.append(config.get("id", ""))
+            return config.get("id", "")
+
+        class ReverseStrategy:
+            """Iterate workflow steps in reverse declaration order."""
+
+            async def execute(
+                self,
+                workflow: Workflow,
+                context: ExecutionContext,
+                step_runner: Any,
+            ) -> None:
+                """Execute steps in reverse order."""
+                for step in reversed(workflow.steps):
+                    await step_runner(step, context)
+
+        registry, _ = _registry_with_stub(side_effect=_side_effect)
+        steps = [
+            _make_step("s1", config={"id": "first"}),
+            _make_step("s2", config={"id": "second"}),
+            _make_step("s3", config={"id": "third"}),
+        ]
+        wf = _make_workflow(steps)
+        executor = WorkflowExecutor(registry)
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf, execution_strategy=ReverseStrategy()):
+            events.append(event)
+
+        step_start_events = [e for e in events if e.event_type == EventType.STEP_START]
+        step_ids = [e.step_id for e in step_start_events]
+        assert step_ids == ["s3", "s2", "s1"]
+
 
 # ---------------------------------------------------------------------------
 # AC-6 — Strategy injection
@@ -928,7 +966,7 @@ class TestExecuteStream:
 
 
 class TestStrategyInjection:
-    """Custom IExecutionStrategy can be injected and is invoked by the executor."""
+    """Custom IExecutionStrategy can be injected via deps and is invoked by the executor."""
 
     async def test_custom_strategy_is_invoked(self) -> None:
         """A ReverseStrategy iterates steps in reverse and the executor honours it."""
@@ -958,9 +996,9 @@ class TestStrategyInjection:
             _make_step("s3", config={"id": "third"}),
         ]
         wf = _make_workflow(steps)
-        executor = WorkflowExecutor(registry, strategy=ReverseStrategy())
+        executor = WorkflowExecutor(registry)
 
-        await executor.execute(wf)
+        await executor.execute(wf, execution_strategy=ReverseStrategy())
 
         assert call_order == ["third", "second", "first"]
 
@@ -984,7 +1022,6 @@ class TestStrategyInjection:
         await executor.execute(wf)
 
         assert call_order == ["first", "second", "third"]
-        assert isinstance(executor._strategy, SequentialStrategy)
 
 
 class TestInterruptibleContext:
@@ -1238,6 +1275,71 @@ class TestDelegateStrategy:
 
         assert exc_info.value.code == "BEDDEL-EXEC-011"
         assert "invalid action" in exc_info.value.message
+
+    @patch("beddel.domain.executor.random.uniform", return_value=1.0)
+    @patch("beddel.domain.executor.asyncio.sleep", new_callable=AsyncMock)
+    async def test_delegate_step_does_not_mutate_original_step(
+        self, mock_sleep: AsyncMock, mock_uniform: MagicMock
+    ) -> None:
+        """_delegate_step() must not mutate the original step's retry config."""
+        call_count = 0
+
+        async def _flaky(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 1:
+                raise RuntimeError("transient")
+            return "recovered"
+
+        registry, _ = _registry_with_stub(side_effect=_flaky)
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        mock_provider.complete = AsyncMock(return_value={"content": "retry"})
+
+        original_retry = RetryConfig(max_attempts=5)
+        step = _make_step(
+            "del-s",
+            strategy_type=StrategyType.DELEGATE,
+            retry=original_retry,
+        )
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, provider=mock_provider)
+
+        await executor.execute(wf)
+
+        # The original step's retry config must be unchanged after execution
+        assert step.execution_strategy.retry is not None
+        assert step.execution_strategy.retry.max_attempts == 5
+
+    @patch("beddel.domain.executor.DefaultDependencies")
+    async def test_delegate_step_uses_delegate_model_from_deps(
+        self, mock_deps_cls: MagicMock
+    ) -> None:
+        """Custom delegate_model on DefaultDependencies is forwarded to provider.complete."""
+        from beddel.domain.models import DefaultDependencies
+
+        # Arrange — real DefaultDependencies with custom delegate_model
+        mock_provider = AsyncMock(spec=ILLMProvider)
+        real_deps = DefaultDependencies(
+            llm_provider=mock_provider,
+            lifecycle_hooks=[],
+            delegate_model="custom-model",
+        )
+        mock_deps_cls.return_value = real_deps
+
+        mock_provider.complete = AsyncMock(return_value={"content": "skip"})
+
+        registry, _ = _registry_with_stub(side_effect=RuntimeError("boom"))
+        step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, provider=mock_provider)
+
+        # Act
+        await executor.execute(wf)
+
+        # Assert — provider.complete must have been called with the custom model
+        mock_provider.complete.assert_called_once()
+        call_kwargs = mock_provider.complete.call_args
+        assert call_kwargs.kwargs.get("model") == "custom-model"
 
 
 # ---------------------------------------------------------------------------

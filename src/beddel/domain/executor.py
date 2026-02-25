@@ -82,6 +82,10 @@ class WorkflowExecutor:
     :class:`ExecutionContext` through the entire run.  Optional lifecycle
     hooks receive notifications at key execution points.
 
+    The execution strategy is resolved at runtime from
+    ``context.deps.execution_strategy``, falling back to
+    :class:`SequentialStrategy` when ``None``.
+
     Args:
         registry: Primitive registry used to look up step primitives.
         provider: Optional LLM provider injected into
@@ -89,9 +93,6 @@ class WorkflowExecutor:
         hooks: Optional lifecycle hooks injected into
             ``context.metadata["lifecycle_hooks"]`` and called during
             execution.
-        strategy: Optional execution strategy controlling how workflow
-            steps are iterated.  Defaults to :class:`SequentialStrategy`
-            when ``None``.
 
     Example::
 
@@ -104,18 +105,18 @@ class WorkflowExecutor:
         registry: PrimitiveRegistry,
         provider: ILLMProvider | None = None,
         hooks: list[ILifecycleHook] | None = None,
-        strategy: IExecutionStrategy | None = None,
     ) -> None:
         self._registry = registry
         self._provider = provider
         self._hooks: list[ILifecycleHook] = hooks or []
         self._resolver = VariableResolver()
-        self._strategy: IExecutionStrategy = strategy or SequentialStrategy()
 
     async def execute(
         self,
         workflow: Workflow,
         inputs: dict[str, Any] | None = None,
+        *,
+        execution_strategy: IExecutionStrategy | None = None,
     ) -> dict[str, Any]:
         """Execute a workflow sequentially, returning collected results.
 
@@ -127,6 +128,10 @@ class WorkflowExecutor:
             workflow: The workflow definition to execute.
             inputs: Optional input dict available as ``$input.*`` in step
                 configs.
+            execution_strategy: Optional execution strategy override.  When
+                provided, takes precedence over any strategy stored in
+                ``context.deps``.  Defaults to :class:`SequentialStrategy`
+                when both are ``None``.
 
         Returns:
             A dict with ``"step_results"`` mapping step ids to their return
@@ -145,6 +150,7 @@ class WorkflowExecutor:
         context.deps = DefaultDependencies(
             llm_provider=self._provider,
             lifecycle_hooks=self._hooks,
+            execution_strategy=execution_strategy,
         )
 
         if self._provider is not None:
@@ -153,7 +159,8 @@ class WorkflowExecutor:
 
         await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
 
-        await self._strategy.execute(workflow, context, self._execute_step)
+        strategy = context.deps.execution_strategy or SequentialStrategy()
+        await strategy.execute(workflow, context, self._execute_step)
 
         result: dict[str, Any] = {
             "step_results": dict(context.step_results),
@@ -167,6 +174,8 @@ class WorkflowExecutor:
         self,
         workflow: Workflow,
         inputs: dict[str, Any] | None = None,
+        *,
+        execution_strategy: IExecutionStrategy | None = None,
     ) -> AsyncGenerator[BeddelEvent, None]:
         """Stream workflow execution as a sequence of events.
 
@@ -176,9 +185,8 @@ class WorkflowExecutor:
 
         A temporary :class:`ILifecycleHook` is installed to capture events
         produced by the existing execution internals (``_execute_step``,
-        ``_retry_step``, etc.).  After each internal call the captured
-        events are yielded and the buffer is cleared, giving the caller
-        incremental visibility into the run.
+        ``_retry_step``, etc.).  All step events are buffered during strategy
+        execution and yielded in a batch after the strategy completes.
 
         For steps with ``stream=True``, the stored async-generator result
         is consumed and each chunk is yielded as a ``TEXT_CHUNK`` event.
@@ -187,6 +195,10 @@ class WorkflowExecutor:
             workflow: The workflow definition to execute.
             inputs: Optional input dict available as ``$input.*`` in step
                 configs.
+            execution_strategy: Optional execution strategy override.  When
+                provided, takes precedence over any strategy stored in
+                ``context.deps``.  Defaults to :class:`SequentialStrategy`
+                when both are ``None``.
 
         Yields:
             :class:`BeddelEvent` instances for workflow start/end, step
@@ -265,6 +277,7 @@ class WorkflowExecutor:
             context.deps = DefaultDependencies(
                 llm_provider=self._provider,
                 lifecycle_hooks=self._hooks,
+                execution_strategy=execution_strategy,
             )
             if self._provider is not None:
                 context.metadata["llm_provider"] = self._provider
@@ -275,14 +288,17 @@ class WorkflowExecutor:
                 yield event
             events.clear()
 
+            strategy = context.deps.execution_strategy or SequentialStrategy()
+            await strategy.execute(workflow, context, self._execute_step)
+
+            for event in events:
+                yield event
+            events.clear()
+
+            # Consume streaming results for all steps in declaration order.
+            # Execution order was determined by the strategy above; this loop
+            # only reads already-completed results.
             for step in workflow.steps:
-                await self._execute_step(step, context)
-
-                for event in events:
-                    yield event
-                events.clear()
-
-                # Consume streaming results and yield TEXT_CHUNK events.
                 step_result = context.step_results.get(step.id)
                 if step.stream and isinstance(step_result, dict) and "stream" in step_result:
                     async for chunk in step_result["stream"]:
@@ -651,9 +667,10 @@ class WorkflowExecutor:
             f"Available actions: {', '.join(actions)}"
         )
 
+        delegate_model = context.deps.delegate_model
         try:
             result = await provider.complete(
-                model="gpt-4o-mini",
+                model=delegate_model,
                 messages=[
                     {
                         "role": "system",
@@ -674,12 +691,11 @@ class WorkflowExecutor:
         action = result.get("content", "").strip().lower()
 
         if action == "retry":
-            original_retry = step.execution_strategy.retry
-            step.execution_strategy.retry = RetryConfig(max_attempts=2)
-            try:
-                return await self._retry_step(step, error, context)
-            finally:
-                step.execution_strategy.retry = original_retry
+            patched_strategy = step.execution_strategy.model_copy(
+                update={"retry": RetryConfig(max_attempts=2)}
+            )
+            patched_step = step.model_copy(update={"execution_strategy": patched_strategy})
+            return await self._retry_step(patched_step, error, context)
         if action == "skip":
             logger.warning("Step '%s' failed — DELEGATE chose SKIP: %s", step.id, error)
             return None
