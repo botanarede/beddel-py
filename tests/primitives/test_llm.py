@@ -224,6 +224,46 @@ class TestMissingLLMProvider:
 
 
 # ---------------------------------------------------------------------------
+# Tests: Invalid llm_provider type (story 1.15, task 4)
+# ---------------------------------------------------------------------------
+
+
+class TestInvalidLLMProvider:
+    """Tests for BEDDEL-PRIM-003 when llm_provider does not implement ILLMProvider."""
+
+    async def test_raises_primitive_error_for_non_provider_object(self) -> None:
+        ctx = ExecutionContext(workflow_id="wf-test", current_step_id="step-1")
+        # Inject a non-ILLMProvider object via a mock deps
+        mock_deps = MagicMock()
+        mock_deps.llm_provider = object()  # plain object, not ILLMProvider
+        mock_deps.lifecycle_hooks = []
+        ctx.deps = mock_deps
+        config = {"model": "gpt-4o", "prompt": "Hi"}
+
+        prim = LLMPrimitive()
+        with pytest.raises(PrimitiveError) as exc_info:
+            await prim.execute(config, ctx)
+
+        assert exc_info.value.code == "BEDDEL-PRIM-003"
+        assert "ILLMProvider" in exc_info.value.message
+
+    async def test_error_details_contain_provider_type(self) -> None:
+        ctx = ExecutionContext(workflow_id="wf-test", current_step_id="step-1")
+        mock_deps = MagicMock()
+        mock_deps.llm_provider = "not-a-provider"  # string, not ILLMProvider
+        mock_deps.lifecycle_hooks = []
+        ctx.deps = mock_deps
+        config = {"model": "gpt-4o", "prompt": "Hi"}
+
+        prim = LLMPrimitive()
+        with pytest.raises(PrimitiveError) as exc_info:
+            await prim.execute(config, ctx)
+
+        assert exc_info.value.details["provider_type"] == "str"
+        assert exc_info.value.details["primitive_type"] == "llm"
+
+
+# ---------------------------------------------------------------------------
 # Tests: Missing model error (subtask 6.6)
 # ---------------------------------------------------------------------------
 

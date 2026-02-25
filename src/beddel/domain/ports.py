@@ -15,10 +15,10 @@ Ports defined here:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any, Protocol
 
-from beddel.domain.models import ExecutionContext, Workflow
+from beddel.domain.models import ExecutionContext, Step, Workflow
 
 __all__ = [
     "ExecutionDependencies",
@@ -26,7 +26,12 @@ __all__ = [
     "ILifecycleHook",
     "ILLMProvider",
     "IPrimitive",
+    "StepRunner",
 ]
+
+
+StepRunner = Callable[[Step, ExecutionContext], Awaitable[Any]]
+"""Type alias for the step-runner callback passed to execution strategies."""
 
 
 class ExecutionDependencies(Protocol):
@@ -80,7 +85,7 @@ class IExecutionStrategy(Protocol):
         self,
         workflow: Workflow,
         context: ExecutionContext,
-        step_runner: Any,
+        step_runner: StepRunner,
     ) -> None:
         """Execute the workflow steps using this strategy.
 
@@ -93,8 +98,8 @@ class IExecutionStrategy(Protocol):
             workflow: The workflow definition containing steps to execute.
             context: Mutable runtime context carrying inputs, step results,
                 and metadata for the current workflow execution.
-            step_runner: Async callback ``(step, context) -> Any`` that
-                executes a single step with full lifecycle handling.
+            step_runner: :data:`StepRunner` callback that executes a single
+                step with full lifecycle handling.
         """
         ...
 
@@ -139,7 +144,7 @@ class ILLMProvider(ABC):
 
     Implementations bridge the domain core to a specific LLM backend
     (e.g. LiteLLM, OpenAI, Anthropic).  The ``llm`` primitive reads the
-    provider instance from ``context.metadata["llm_provider"]`` (AC-7).
+    provider instance from ``context.deps.llm_provider``.
 
     Example::
 

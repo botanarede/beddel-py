@@ -27,7 +27,13 @@ from beddel.domain.models import (
     StrategyType,
     Workflow,
 )
-from beddel.domain.ports import IExecutionStrategy, ILifecycleHook, ILLMProvider, IPrimitive
+from beddel.domain.ports import (
+    IExecutionStrategy,
+    ILifecycleHook,
+    ILLMProvider,
+    IPrimitive,
+    StepRunner,
+)
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.resolver import VariableResolver
 
@@ -57,7 +63,7 @@ class SequentialStrategy:
         self,
         workflow: Workflow,
         context: ExecutionContext,
-        step_runner: Any,
+        step_runner: StepRunner,
     ) -> None:
         """Execute steps sequentially in declaration order.
 
@@ -65,8 +71,8 @@ class SequentialStrategy:
             workflow: The workflow definition containing steps to execute.
             context: Mutable runtime context carrying inputs, step results,
                 and metadata for the current workflow execution.
-            step_runner: Async callback ``(step, context) -> Any`` that
-                executes a single step with full lifecycle handling.
+            step_runner: :data:`StepRunner` callback that executes a single
+                step with full lifecycle handling.
         """
         for step in workflow.steps:
             if context.suspended:

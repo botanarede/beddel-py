@@ -23,7 +23,13 @@ from beddel.domain.models import (
     Workflow,
 )
 from beddel.domain.parser import WorkflowParser
-from beddel.domain.ports import ExecutionDependencies, ILifecycleHook, ILLMProvider, IPrimitive
+from beddel.domain.ports import (
+    ExecutionDependencies,
+    ILifecycleHook,
+    ILLMProvider,
+    IPrimitive,
+    StepRunner,
+)
 from beddel.domain.registry import PrimitiveRegistry, primitive
 from beddel.domain.resolver import VariableResolver
 
@@ -46,6 +52,7 @@ __all__ = [
     "ResolveError",
     "RetryConfig",
     "Step",
+    "StepRunner",
     "StrategyType",
     "VariableResolver",
     "Workflow",

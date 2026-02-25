@@ -1,6 +1,6 @@
 """Primitive registry for the Beddel SDK.
 
-Provides :class:`PrimitiveRegistry` — a thread-safe, in-memory mapping of
+Provides :class:`PrimitiveRegistry` — an async-safe, in-memory mapping of
 primitive names to :class:`~beddel.domain.ports.IPrimitive` implementations —
 and the :func:`primitive` convenience decorator that registers classes in the
 module-level :data:`default_registry`.

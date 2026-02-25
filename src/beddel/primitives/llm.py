@@ -90,7 +90,7 @@ class LLMPrimitive(IPrimitive):
 
         Raises:
             PrimitiveError: ``BEDDEL-PRIM-003`` if ``llm_provider`` is
-                missing from deps.
+                missing from deps or does not implement :class:`ILLMProvider`.
         """
         provider = context.deps.llm_provider
         if provider is None:
@@ -100,6 +100,16 @@ class LLMPrimitive(IPrimitive):
                 {
                     "step_id": context.current_step_id,
                     "primitive_type": "llm",
+                },
+            )
+        if not isinstance(provider, ILLMProvider):
+            raise PrimitiveError(
+                "BEDDEL-PRIM-003",
+                "llm_provider in context.deps does not implement ILLMProvider",
+                {
+                    "step_id": context.current_step_id,
+                    "primitive_type": "llm",
+                    "provider_type": type(provider).__name__,
                 },
             )
         return provider
