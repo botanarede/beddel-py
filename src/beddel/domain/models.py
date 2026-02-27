@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import logging
 import time
-import warnings
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -179,40 +178,6 @@ class DefaultDependencies:
         return self._delegate_model
 
 
-class _DeprecatedMetadataDict(dict[str, Any]):
-    """Warns on access to deprecated metadata keys."""
-
-    _DEPRECATED_KEYS: frozenset[str] = frozenset({"llm_provider", "lifecycle_hooks"})
-
-    def __getitem__(self, key: str) -> Any:
-        if key in self._DEPRECATED_KEYS:
-            warnings.warn(
-                f"Access context.deps.{key} instead of context.metadata['{key}']. "
-                "Direct metadata access is deprecated and will be removed in a "
-                "future version.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        return super().__getitem__(key)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        """Return value for *key* with a deprecation warning for migrated keys.
-
-        Overrides :meth:`dict.get` to emit a :class:`DeprecationWarning`
-        when callers access keys that have been migrated to
-        ``context.deps``.
-        """
-        if key in self._DEPRECATED_KEYS and key in self:
-            warnings.warn(
-                f"Access context.deps.{key} instead of context.metadata['{key}']. "
-                "Direct metadata access is deprecated and will be removed in a "
-                "future version.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        return super().get(key, default)
-
-
 _log = logging.getLogger(__name__)
 
 
@@ -283,7 +248,7 @@ class ExecutionContext(InterruptibleContext, BaseModel):
     workflow_id: str
     inputs: dict[str, Any] = Field(default_factory=dict)
     step_results: dict[str, Any] = Field(default_factory=dict)
-    metadata: dict[str, Any] = Field(default_factory=_DeprecatedMetadataDict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     current_step_id: str | None = None
     deps: DefaultDependencies = Field(default_factory=DefaultDependencies)
     """Typed dependency container satisfying the ExecutionDependencies protocol."""

@@ -94,10 +94,10 @@ class WorkflowExecutor:
 
     Args:
         registry: Primitive registry used to look up step primitives.
-        provider: Optional LLM provider injected into
-            ``context.metadata["llm_provider"]``.
-        hooks: Optional lifecycle hooks injected into
-            ``context.metadata["lifecycle_hooks"]`` and called during
+        provider: Optional LLM provider available via
+            ``context.deps.llm_provider``.
+        hooks: Optional lifecycle hooks available via
+            ``context.deps.lifecycle_hooks`` and called during
             execution.
 
     Example::
@@ -126,9 +126,9 @@ class WorkflowExecutor:
     ) -> dict[str, Any]:
         """Execute a workflow sequentially, returning collected results.
 
-        Creates an :class:`ExecutionContext`, injects the LLM provider and
-        lifecycle hooks into metadata, iterates steps in order, and returns
-        the accumulated step results and metadata.
+        Creates an :class:`ExecutionContext`, injects dependencies via
+        ``context.deps``, iterates steps in order, and returns the
+        accumulated step results and metadata.
 
         Args:
             workflow: The workflow definition to execute.
@@ -158,10 +158,6 @@ class WorkflowExecutor:
             lifecycle_hooks=self._hooks,
             execution_strategy=execution_strategy,
         )
-
-        if self._provider is not None:
-            context.metadata["llm_provider"] = self._provider
-        context.metadata["lifecycle_hooks"] = self._hooks
 
         await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
 
@@ -285,9 +281,6 @@ class WorkflowExecutor:
                 lifecycle_hooks=self._hooks,
                 execution_strategy=execution_strategy,
             )
-            if self._provider is not None:
-                context.metadata["llm_provider"] = self._provider
-            context.metadata["lifecycle_hooks"] = self._hooks
 
             await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
             for event in events:
