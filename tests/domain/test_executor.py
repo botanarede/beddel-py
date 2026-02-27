@@ -1346,6 +1346,32 @@ class TestExecutionDependencies:
         assert context.deps.llm_provider is None
         assert context.deps.lifecycle_hooks == []
 
+    def test_default_dependencies_new_keys_default_none(self) -> None:
+        """New framework-owned dependency properties default to None."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+        assert deps.workflow_loader is None
+        assert deps.registry is None
+        assert deps.tool_registry is None
+
+    def test_default_dependencies_stores_new_keys(self) -> None:
+        """New framework-owned dependency properties are stored and accessible."""
+        from beddel.domain.models import DefaultDependencies, Workflow
+        from beddel.domain.registry import PrimitiveRegistry
+
+        loader = lambda name: Workflow(id=name, steps=[])  # noqa: E731
+        reg = PrimitiveRegistry()
+        tools: dict[str, Any] = {"my_tool": lambda: "result"}
+        deps = DefaultDependencies(
+            workflow_loader=loader,
+            registry=reg,
+            tool_registry=tools,
+        )
+        assert deps.workflow_loader is loader
+        assert deps.registry is reg
+        assert deps.tool_registry is tools
+
 
 @pytest.mark.asyncio
 class TestLLMPrimitiveUsesDeps:

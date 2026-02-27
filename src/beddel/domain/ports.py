@@ -16,9 +16,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from beddel.domain.models import ExecutionContext, Step, Workflow
+
+if TYPE_CHECKING:
+    from beddel.domain.registry import PrimitiveRegistry
 
 __all__ = [
     "ExecutionDependencies",
@@ -63,6 +66,21 @@ class ExecutionDependencies(Protocol):
     @property
     def delegate_model(self) -> str:
         """Model name used for DELEGATE step LLM calls."""
+        ...
+
+    @property
+    def workflow_loader(self) -> Callable[[str], Workflow] | None:
+        """Callable that loads a sub-workflow by name, or ``None``."""
+        ...
+
+    @property
+    def registry(self) -> PrimitiveRegistry | None:
+        """The primitive registry, or ``None`` if not provided."""
+        ...
+
+    @property
+    def tool_registry(self) -> dict[str, Callable[..., Any]] | None:
+        """Registry of tool callables, or ``None`` if not provided."""
         ...
 
 

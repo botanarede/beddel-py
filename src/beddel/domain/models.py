@@ -12,11 +12,13 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Callable
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from beddel.domain.ports import IExecutionStrategy, ILifecycleHook, ILLMProvider
+    from beddel.domain.registry import PrimitiveRegistry
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -141,9 +143,22 @@ class DefaultDependencies:
             causes the executor to fall back to :class:`SequentialStrategy`.
         delegate_model: Model name used for DELEGATE step LLM calls.
             Defaults to ``"gpt-4o-mini"``.
+        workflow_loader: Callable that loads a sub-workflow by name,
+            or ``None`` if not configured.
+        registry: The primitive registry, or ``None`` if not provided.
+        tool_registry: Registry of tool callables keyed by name,
+            or ``None`` if not provided.
     """
 
-    __slots__ = ("_llm_provider", "_lifecycle_hooks", "_execution_strategy", "_delegate_model")
+    __slots__ = (
+        "_llm_provider",
+        "_lifecycle_hooks",
+        "_execution_strategy",
+        "_delegate_model",
+        "_workflow_loader",
+        "_registry",
+        "_tool_registry",
+    )
 
     def __init__(
         self,
@@ -151,11 +166,17 @@ class DefaultDependencies:
         lifecycle_hooks: list[ILifecycleHook] | None = None,
         execution_strategy: IExecutionStrategy | None = None,
         delegate_model: str = "gpt-4o-mini",
+        workflow_loader: Callable[[str], Workflow] | None = None,
+        registry: PrimitiveRegistry | None = None,
+        tool_registry: dict[str, Callable[..., Any]] | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks if lifecycle_hooks is not None else []
         self._execution_strategy = execution_strategy
         self._delegate_model = delegate_model
+        self._workflow_loader = workflow_loader
+        self._registry = registry
+        self._tool_registry = tool_registry
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -176,6 +197,21 @@ class DefaultDependencies:
     def delegate_model(self) -> str:
         """Return the model name used for delegate step LLM calls."""
         return self._delegate_model
+
+    @property
+    def workflow_loader(self) -> Callable[[str], Workflow] | None:
+        """Callable that loads a sub-workflow by name, or ``None``."""
+        return self._workflow_loader
+
+    @property
+    def registry(self) -> PrimitiveRegistry | None:
+        """The primitive registry, or ``None`` if not provided."""
+        return self._registry
+
+    @property
+    def tool_registry(self) -> dict[str, Callable[..., Any]] | None:
+        """Registry of tool callables, or ``None`` if not provided."""
+        return self._tool_registry
 
 
 _log = logging.getLogger(__name__)
