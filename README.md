@@ -22,13 +22,7 @@ With FastAPI integration:
 pip install beddel[fastapi]
 ```
 
-For a minimal install without optional integrations:
-
-```bash
-pip install beddel[lite]
-```
-
-*Available in a future release.*
+> **Planned:** A `beddel[lite]` extra for minimal installs (without optional integrations) is planned for a future release.
 
 Requires Python 3.11+.
 
