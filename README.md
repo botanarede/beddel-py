@@ -13,16 +13,18 @@ Define outcome-driven AI workflows in YAML — the engine handles execution with
 ## Installation
 
 ```bash
+# Core-only (parser, resolver, executor — no adapters)
 pip install beddel
-```
 
-With FastAPI integration:
+# With adapters (LiteLLM, OpenTelemetry, httpx)
+pip install beddel[adapters]
 
-```bash
+# Everything (adapters + future extras)
+pip install beddel[all]
+
+# With FastAPI integration
 pip install beddel[fastapi]
 ```
-
-> **Planned:** A `beddel[lite]` extra for minimal installs (without optional integrations) is planned for a future release.
 
 Requires Python 3.11+.
 
@@ -33,8 +35,10 @@ Get a workflow running in under 15 minutes.
 ### 1. Install
 
 ```bash
-pip install beddel
+pip install beddel[adapters]
 ```
+
+The `[adapters]` extra includes LiteLLM (for multi-provider LLM support), OpenTelemetry, and httpx.
 
 ### 2. Set your API key
 

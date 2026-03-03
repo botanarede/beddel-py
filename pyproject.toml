@@ -33,10 +33,7 @@ classifiers = [
 
 dependencies = [
     "pydantic>=2.0",
-    "litellm",
     "pyyaml>=6.0",
-    "opentelemetry-api>=1.0",
-    "httpx>=0.27",
 ]
 
 [project.urls]
@@ -46,7 +43,17 @@ Documentation = "https://beddel.com.br/docs"
 "Bug Tracker" = "https://github.com/botanarede/beddel-py/issues"
 
 [project.optional-dependencies]
+adapters = [
+    "litellm",
+    "opentelemetry-api>=1.0",
+    "httpx>=0.27",
+]
+lite = []  # Alias for core-only install (explicit marker)
+all = [
+    "beddel[adapters]",
+]
 dev = [
+    "beddel[adapters]",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
