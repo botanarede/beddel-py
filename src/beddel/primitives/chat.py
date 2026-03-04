@@ -194,19 +194,46 @@ class ChatPrimitive(IPrimitive):
         1. If ``max_messages`` is set and the non-system message count exceeds
            it, keep only the last ``max_messages`` non-system messages.
         2. If ``max_context_tokens`` is set, estimate tokens per message
-           (``len(content) // 4``) and drop the oldest non-system messages
-           until the total is within budget.
+           via :func:`_estimate_tokens` and drop the oldest non-system
+           messages until the total is within budget.
 
         System messages are never dropped — they define the conversation
         persona and are always placed first in the output.
+
+        FIFO trimming:
+            When the token budget is exceeded, the oldest non-system messages
+            are dropped first (first-in, first-out).  This means early
+            conversation context is lost before recent messages.  For
+            long-running conversations, consumers should consider
+            application-layer summarization — e.g., periodically condensing
+            older messages into a single summary message — to preserve
+            important context that would otherwise be silently dropped.
+
+        Token estimation:
+            Each message's token cost is estimated as
+            ``max(1, len(content) // 4) + 4``:
+
+            * The ``// 4`` divisor approximates the "1 token ≈ 4 characters"
+              heuristic.  Actual counts vary by model and tokenizer.
+            * ``max(1, ...)`` ensures every message contributes at least 1
+              content token, preventing short or empty messages from being
+              invisible to the budget.
+            * The ``+ 4`` adds per-message framing overhead (~4 tokens for
+              role, delimiters, and special tokens common across most LLM
+              tokenizers).
+
+            A future ``ITokenCounter`` port will allow injecting a precise,
+            model-specific tokenizer instead of this heuristic, enabling
+            accurate per-model token counting.
 
         Args:
             messages: Full message list including system and non-system messages.
             max_messages: Maximum number of non-system messages to retain.
                 Defaults to ``50``.  ``None`` disables the count limit.
             max_context_tokens: Maximum estimated token budget for all messages.
-                Defaults to ``None`` (unlimited).  Uses ``len(content) // 4``
-                as the per-message token estimate.
+                Defaults to ``None`` (unlimited).  Uses
+                ``max(1, len(content) // 4) + 4`` as the per-message token
+                estimate.
 
         Returns:
             A trimmed message list with system messages first, followed by
@@ -222,7 +249,7 @@ class ChatPrimitive(IPrimitive):
         # Step 2: Apply max_context_tokens budget.
         if max_context_tokens is not None:
             # Calculate system message token cost (always included).
-            system_tokens = sum(len(m.get("content", "")) // 4 for m in system_msgs)
+            system_tokens = sum(_estimate_tokens(m.get("content", "")) for m in system_msgs)
             budget = max_context_tokens - system_tokens
 
             # Guard: if budget is non-positive, no non-system messages can fit.
@@ -230,10 +257,10 @@ class ChatPrimitive(IPrimitive):
                 non_system_msgs = []
             else:
                 # O(n) trimming: compute total once, subtract as we drop.
-                total = sum(len(m.get("content", "")) // 4 for m in non_system_msgs)
+                total = sum(_estimate_tokens(m.get("content", "")) for m in non_system_msgs)
                 while non_system_msgs and total > budget:
                     removed = non_system_msgs.pop(0)
-                    total -= len(removed.get("content", "")) // 4
+                    total -= _estimate_tokens(removed.get("content", ""))
 
         return system_msgs + non_system_msgs
 
@@ -255,3 +282,18 @@ class ChatPrimitive(IPrimitive):
         if "max_tokens" in config:
             kwargs["max_tokens"] = config["max_tokens"]
         return kwargs
+
+
+def _estimate_tokens(content: str) -> int:
+    """Estimate the token count for a message's content.
+
+    Uses a heuristic of ~4 characters per token with a minimum of 1 content
+    token, plus 4 tokens of per-message framing overhead (role, delimiters).
+
+    Args:
+        content: The message content string.
+
+    Returns:
+        Estimated token count (always >= 5).
+    """
+    return max(1, len(content) // 4) + 4

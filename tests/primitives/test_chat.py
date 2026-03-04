@@ -266,15 +266,15 @@ class TestContextWindowingByMaxContextTokens:
     async def test_trims_oldest_when_over_token_budget(self) -> None:
         provider = _make_provider()
         ctx = _make_context(llm_provider=provider)
-        # Each "x" * 40 content => 40 // 4 = 10 tokens per message
+        # Each "x" * 40 content => max(1, 10) + 4 = 14 tokens per message
         config = {
             "model": "gpt-4o",
             "messages": [
-                {"role": "user", "content": "x" * 40},  # 10 tokens
-                {"role": "user", "content": "y" * 40},  # 10 tokens
-                {"role": "user", "content": "z" * 40},  # 10 tokens
+                {"role": "user", "content": "x" * 40},  # 14 tokens
+                {"role": "user", "content": "y" * 40},  # 14 tokens
+                {"role": "user", "content": "z" * 40},  # 14 tokens
             ],
-            "max_context_tokens": 20,  # budget for 2 messages only
+            "max_context_tokens": 28,  # budget for 2 messages only (2 × 14)
             "max_messages": None,  # disable count limit
         }
 
@@ -283,7 +283,7 @@ class TestContextWindowingByMaxContextTokens:
 
         args, _ = provider.complete.call_args
         messages = args[1]
-        # Oldest message dropped, last 2 kept (20 tokens fits 2 × 10)
+        # Oldest message dropped, last 2 kept (28 tokens fits 2 × 14)
         assert len(messages) == 2
         assert messages[0]["content"] == "y" * 40
         assert messages[1]["content"] == "z" * 40
@@ -291,17 +291,17 @@ class TestContextWindowingByMaxContextTokens:
     async def test_system_tokens_deducted_from_budget(self) -> None:
         provider = _make_provider()
         ctx = _make_context(llm_provider=provider)
-        # System: "s" * 20 => 20 // 4 = 5 tokens
-        # Each user msg: "u" * 40 => 40 // 4 = 10 tokens
-        # Budget = 15, system costs 5, leaves 10 for non-system (1 message)
+        # System: "s" * 20 => max(1, 5) + 4 = 9 tokens
+        # Each user msg: "u" * 40 => max(1, 10) + 4 = 14 tokens
+        # Budget = 23, system costs 9, leaves 14 for non-system (1 message)
         config = {
             "model": "gpt-4o",
             "system": "s" * 20,
             "messages": [
-                {"role": "user", "content": "u" * 40},  # 10 tokens
-                {"role": "user", "content": "v" * 40},  # 10 tokens
+                {"role": "user", "content": "u" * 40},  # 14 tokens
+                {"role": "user", "content": "v" * 40},  # 14 tokens
             ],
-            "max_context_tokens": 15,
+            "max_context_tokens": 23,
             "max_messages": None,
         }
 
@@ -321,8 +321,8 @@ class TestContextWindowingByMaxContextTokens:
         config = {
             "model": "gpt-4o",
             "messages": [
-                {"role": "user", "content": "x" * 40},  # 10 tokens
-                {"role": "user", "content": "y" * 40},  # 10 tokens
+                {"role": "user", "content": "x" * 40},
+                {"role": "user", "content": "y" * 40},
             ],
             "max_context_tokens": 1000,  # plenty of budget
             "max_messages": None,
@@ -364,7 +364,7 @@ class TestContextWindowingByMaxContextTokens:
         # System message alone exceeds budget
         config = {
             "model": "gpt-4o",
-            "system": "s" * 100,  # 25 tokens, exceeds budget of 5
+            "system": "s" * 100,  # 29 tokens, exceeds budget of 5
             "messages": [{"role": "user", "content": "hi"}],
             "max_context_tokens": 5,
             "max_messages": None,
@@ -398,6 +398,32 @@ class TestContextWindowingByMaxContextTokens:
         args, _ = provider.complete.call_args
         messages = args[1]
         assert len(messages) == 3
+
+    async def test_short_messages_estimated_as_nonzero_tokens(self) -> None:
+        """Short messages like 'ok' (2 chars) must count as >=1 token, not 0."""
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+        # "ok" (2 chars) => max(1, 2 // 4) + 4 = max(1, 0) + 4 = 5 tokens each
+        config = {
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "user", "content": "ok"},  # 5 tokens
+                {"role": "user", "content": "ok"},  # 5 tokens
+                {"role": "user", "content": "ok"},  # 5 tokens
+            ],
+            "max_context_tokens": 10,  # budget for 2 messages only (2 x 5)
+            "max_messages": None,  # disable count limit
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        messages = args[1]
+        # Oldest message dropped — proves short messages are NOT zero-cost
+        assert len(messages) == 2
+        assert messages[0]["content"] == "ok"
+        assert messages[1]["content"] == "ok"
 
 
 # ---------------------------------------------------------------------------
