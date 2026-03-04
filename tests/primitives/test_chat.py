@@ -427,6 +427,411 @@ class TestContextWindowingByMaxContextTokens:
 
 
 # ---------------------------------------------------------------------------
+# Tests: Tool-call pair preservation during token-budget trimming (Story 1.27)
+# ---------------------------------------------------------------------------
+
+
+class TestToolCallPairPreservation:
+    """Tests that tool-call / tool-response pairs are dropped atomically.
+
+    When token-budget trimming removes one side of a tool-call pair, the
+    other side must also be removed to prevent invalid message sequences
+    that LLM providers would reject.
+    """
+
+    async def test_dropping_tool_response_also_drops_assistant_tool_call(
+        self,
+    ) -> None:
+        """AC 1: Dropping a tool response also drops the paired assistant."""
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+
+        # Token costs:
+        #   user "x"*40          = 14 tokens
+        #   assistant (content=None, tool_calls) = 5 tokens
+        #   tool "result" (6 chars) = 5 tokens
+        #   user "y"*40          = 14 tokens
+        #   assistant "ok"       = 5 tokens
+        # Total non-system = 14 + 5 + 5 + 14 + 5 = 43 tokens
+        #
+        # Budget = 19 → only the last user + last assistant fit (14 + 5).
+        # FIFO pops user("x"*40) first (14 tokens, total→29, still > 19).
+        # Next pop: assistant(tool_calls) — pair-aware logic also drops
+        # the tool response, removing 5 + 5 = 10 tokens (total→19, fits).
+        config = {
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "user", "content": "x" * 40},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{"id": "tc1", "type": "function", "function": {"name": "f"}}],
+                },
+                {"role": "tool", "tool_call_id": "tc1", "content": "result"},
+                {"role": "user", "content": "y" * 40},
+                {"role": "assistant", "content": "ok"},
+            ],
+            "max_context_tokens": 19,
+            "max_messages": None,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        messages = args[1]
+
+        # Only the last user + last assistant survive.
+        assert len(messages) == 2
+        assert messages[0] == {"role": "user", "content": "y" * 40}
+        assert messages[1] == {"role": "assistant", "content": "ok"}
+        # Verify no tool messages leaked through.
+        roles = [m["role"] for m in messages]
+        assert "tool" not in roles
+
+    async def test_dropping_assistant_tool_call_also_drops_tool_responses(
+        self,
+    ) -> None:
+        """AC 2: Dropping an assistant tool_call drops all tool responses."""
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+
+        # Token costs:
+        #   assistant (content=None, tool_calls) = 5 tokens
+        #   tool "result" (6 chars) = 5 tokens
+        #   user "y"*40          = 14 tokens
+        # Total non-system = 5 + 5 + 14 = 24 tokens
+        #
+        # Budget = 14 → only the last user fits.
+        # FIFO pops assistant(tool_calls) first — pair-aware logic also
+        # drops the tool response (5 + 5 = 10 removed, total→14, fits).
+        config = {
+            "model": "gpt-4o",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{"id": "tc1", "type": "function", "function": {"name": "f"}}],
+                },
+                {"role": "tool", "tool_call_id": "tc1", "content": "result"},
+                {"role": "user", "content": "y" * 40},
+            ],
+            "max_context_tokens": 14,
+            "max_messages": None,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        messages = args[1]
+
+        # Only the last user message survives.
+        assert len(messages) == 1
+        assert messages[0] == {"role": "user", "content": "y" * 40}
+
+    async def test_multi_tool_call_pair_all_responses_dropped(self) -> None:
+        """AC 2 + multi: Dropping assistant with multiple tool_calls drops all responses."""
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+
+        # Token costs:
+        #   assistant (content=None, 2 tool_calls) = 5 tokens
+        #   tool "result" tc1 (6 chars) = 5 tokens
+        #   tool "result" tc2 (6 chars) = 5 tokens
+        #   user "y"*40          = 14 tokens
+        # Total non-system = 5 + 5 + 5 + 14 = 29 tokens
+        #
+        # Budget = 14 → only the last user fits.
+        # FIFO pops assistant(tool_calls) first — pair-aware logic also
+        # drops both tool responses (5 + 5 + 5 = 15 removed, total→14).
+        config = {
+            "model": "gpt-4o",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {"id": "tc1", "type": "function", "function": {"name": "f1"}},
+                        {"id": "tc2", "type": "function", "function": {"name": "f2"}},
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "tc1", "content": "result"},
+                {"role": "tool", "tool_call_id": "tc2", "content": "result"},
+                {"role": "user", "content": "y" * 40},
+            ],
+            "max_context_tokens": 14,
+            "max_messages": None,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        messages = args[1]
+
+        # Only the last user message survives — both tool responses removed.
+        assert len(messages) == 1
+        assert messages[0] == {"role": "user", "content": "y" * 40}
+        # Double-check no tool or tool_call messages leaked.
+        for m in messages:
+            assert m.get("role") != "tool"
+            assert "tool_calls" not in m
+
+    async def test_non_tool_messages_unaffected_by_pair_logic(self) -> None:
+        """AC 5: Non-tool conversations behave identically to pre-change FIFO."""
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+
+        # Token costs (no tool_calls anywhere):
+        #   user "x"*40          = 14 tokens
+        #   assistant "ok"       = 5 tokens
+        #   user "y"*40          = 14 tokens
+        #   assistant "ok"       = 5 tokens
+        # Total non-system = 14 + 5 + 14 + 5 = 38 tokens
+        #
+        # Budget = 19 → only the last user + last assistant fit (14 + 5).
+        # FIFO pops user("x"*40) first (14 tokens, total→24, still > 19).
+        # Next pop: assistant("ok") (5 tokens, total→19, fits).
+        config = {
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "user", "content": "x" * 40},
+                {"role": "assistant", "content": "ok"},
+                {"role": "user", "content": "y" * 40},
+                {"role": "assistant", "content": "ok"},
+            ],
+            "max_context_tokens": 19,
+            "max_messages": None,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        messages = args[1]
+
+        # Oldest messages dropped via plain FIFO — pair logic is a no-op.
+        assert len(messages) == 2
+        assert messages[0] == {"role": "user", "content": "y" * 40}
+        assert messages[1] == {"role": "assistant", "content": "ok"}
+        # No tool artefacts should appear.
+        for m in messages:
+            assert m.get("role") != "tool"
+            assert "tool_calls" not in m
+
+    async def test_system_messages_never_dropped_with_tool_pairs(self) -> None:
+        """AC 3: System messages survive even when tool-call pairs are dropped."""
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+
+        # Token costs:
+        #   system "You are a bot" (13 chars) = 7 tokens  (always preserved)
+        #   assistant (content=None, tool_calls) = 5 tokens
+        #   tool "result" (6 chars) = 5 tokens
+        #   user "y"*40          = 14 tokens
+        # Non-system total = 5 + 5 + 14 = 24 tokens
+        # System cost = 7 tokens → remaining budget = 14 - 7 = 7 tokens
+        #
+        # Budget = 14 → after reserving 7 for system, only 7 left.
+        # FIFO pops assistant(tool_calls) — pair-aware logic also drops
+        # the tool response (5 + 5 = 10 removed, non-system total→14).
+        # Still over 7 remaining budget? 14 > 7, so user("y"*40) also
+        # gets dropped.  Let's use a bigger budget so user survives.
+        #
+        # Revised budget = 21 → system 7 → remaining 14.
+        # Non-system = 5 + 5 + 14 = 24 > 14.
+        # FIFO pops assistant(tool_calls) + paired tool → 10 removed → 14.
+        # 14 == 14, fits. User message survives.
+        config = {
+            "model": "gpt-4o",
+            "system": "You are a bot",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{"id": "tc1", "type": "function", "function": {"name": "f"}}],
+                },
+                {"role": "tool", "tool_call_id": "tc1", "content": "result"},
+                {"role": "user", "content": "y" * 40},
+            ],
+            "max_context_tokens": 21,
+            "max_messages": None,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        messages = args[1]
+
+        # System message always preserved at position 0.
+        assert messages[0] == {"role": "system", "content": "You are a bot"}
+        # User message survives; tool pair was dropped.
+        assert len(messages) == 2
+        assert messages[1] == {"role": "user", "content": "y" * 40}
+        # No tool artefacts leaked.
+        roles = [m["role"] for m in messages]
+        assert "tool" not in roles
+
+    async def test_max_messages_trim_does_not_orphan_tool_response(
+        self,
+    ) -> None:
+        """AC 1+4: max_messages slice that cuts between tool_call and tool response.
+
+        When the max_messages slice boundary falls between an assistant
+        tool_call and its tool response, the orphaned tool response at
+        the start of the retained list must also be dropped.
+        """
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+
+        # 5 non-system messages:
+        #   [0] user "msg1"
+        #   [1] user "msg2"
+        #   [2] assistant (tool_calls=[tc1])
+        #   [3] tool tc1 "result"
+        #   [4] user "msg3"
+        #
+        # max_messages=2 → slice keeps last 2: [tool(tc1), user("msg3")]
+        # tool at position 0 is orphaned (its assistant was sliced off).
+        # The while-loop drops it → only [user("msg3")] remains.
+        config = {
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "user", "content": "msg1"},
+                {"role": "user", "content": "msg2"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {"id": "tc1", "type": "function", "function": {"name": "f"}},
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "tc1", "content": "result"},
+                {"role": "user", "content": "msg3"},
+            ],
+            "max_context_tokens": None,
+            "max_messages": 2,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        messages = args[1]
+
+        # Only the last user message survives — orphaned tool was dropped.
+        assert len(messages) == 1
+        assert messages[0] == {"role": "user", "content": "msg3"}
+        # No tool artefacts leaked.
+        roles = [m["role"] for m in messages]
+        assert "tool" not in roles
+
+    async def test_max_messages_trim_does_not_orphan_tool_call(
+        self,
+    ) -> None:
+        """AC 2+4: max_messages slice drops assistant but retains its tool responses.
+
+        When the assistant tool_call is dropped by the max_messages slice
+        but its tool responses land at the start of the retained list,
+        all orphaned tool responses must be cleaned up.
+        """
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+
+        # 5 non-system messages:
+        #   [0] user "msg1"
+        #   [1] assistant (tool_calls=[tc1, tc2])
+        #   [2] tool tc1 "r1"
+        #   [3] tool tc2 "r2"
+        #   [4] user "msg3"
+        #
+        # max_messages=3 → slice keeps last 3: [tool(tc1), tool(tc2), user("msg3")]
+        # Both tool responses at positions 0-1 are orphaned (their assistant
+        # was sliced off). The while-loop drops both → only [user("msg3")].
+        config = {
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "user", "content": "msg1"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {"id": "tc1", "type": "function", "function": {"name": "f1"}},
+                        {"id": "tc2", "type": "function", "function": {"name": "f2"}},
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "tc1", "content": "r1"},
+                {"role": "tool", "tool_call_id": "tc2", "content": "r2"},
+                {"role": "user", "content": "msg3"},
+            ],
+            "max_context_tokens": None,
+            "max_messages": 3,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        messages = args[1]
+
+        # Only the last user message survives — both orphaned tools dropped.
+        assert len(messages) == 1
+        assert messages[0] == {"role": "user", "content": "msg3"}
+        # No tool or tool_call artefacts leaked.
+        for m in messages:
+            assert m.get("role") != "tool"
+            assert "tool_calls" not in m
+
+    async def test_max_messages_trim_drops_trailing_orphaned_assistant_tool_call(
+        self,
+    ) -> None:
+        """CR-5 fix: max_messages slice keeps assistant(tool_calls) at end but
+        its tool responses were sliced off — the orphaned assistant is dropped."""
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+
+        # 4 non-system messages:
+        #   [0] user "msg1"
+        #   [1] user "msg2"
+        #   [2] user "msg3"
+        #   [3] assistant (tool_calls=[tc1])   <-- no tool response follows
+        #
+        # max_messages=2 → slice keeps last 2: [user("msg3"), assistant(tc1)]
+        # assistant at end has tool_calls but no tool responses in the list.
+        # Reverse orphan cleanup drops it → only [user("msg3")] remains.
+        config = {
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "user", "content": "msg1"},
+                {"role": "user", "content": "msg2"},
+                {"role": "user", "content": "msg3"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {"id": "tc1", "type": "function", "function": {"name": "f"}},
+                    ],
+                },
+            ],
+            "max_context_tokens": None,
+            "max_messages": 2,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        messages = args[1]
+
+        assert len(messages) == 1
+        assert messages[0] == {"role": "user", "content": "msg3"}
+        for m in messages:
+            assert "tool_calls" not in m
+
+
+# ---------------------------------------------------------------------------
 # Tests: Streaming mode (subtask 3.5)
 # ---------------------------------------------------------------------------
 

@@ -261,6 +261,24 @@ class ChatPrimitive(IPrimitive):
             while non_system_msgs and non_system_msgs[0].get("role") == "tool":
                 non_system_msgs.pop(0)
 
+            # Drop orphaned assistant tool_calls at the end of the retained
+            # list.  If the slice kept an assistant with tool_calls but its
+            # tool responses were trimmed away, remove the assistant (and any
+            # trailing orphaned tool messages from the same call).
+            while (
+                non_system_msgs
+                and non_system_msgs[-1].get("role") == "assistant"
+                and _collect_tool_call_ids(non_system_msgs[-1])
+            ):
+                assistant = non_system_msgs.pop()
+                ids = _collect_tool_call_ids(assistant)
+                while (
+                    non_system_msgs
+                    and non_system_msgs[-1].get("role") == "tool"
+                    and non_system_msgs[-1].get("tool_call_id") in ids
+                ):
+                    non_system_msgs.pop()
+
         # Step 2: Apply max_context_tokens budget (pair-aware).
         if max_context_tokens is not None:
             system_tokens = sum(_estimate_tokens(m.get("content", "")) for m in system_msgs)
@@ -298,11 +316,11 @@ class ChatPrimitive(IPrimitive):
                             # Find the paired assistant's full set of IDs.
                             all_ids: set[str] = set()
                             for m in non_system_msgs:
-                                if m.get(
-                                    "role"
-                                ) == "assistant" and removed_tc_id in _collect_tool_call_ids(m):
-                                    all_ids = _collect_tool_call_ids(m)
-                                    break
+                                if m.get("role") == "assistant":
+                                    m_ids = _collect_tool_call_ids(m)
+                                    if removed_tc_id in m_ids:
+                                        all_ids = m_ids
+                                        break
 
                             if all_ids:
                                 kept = []
