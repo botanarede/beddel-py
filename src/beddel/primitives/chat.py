@@ -296,4 +296,4 @@ def _estimate_tokens(content: str) -> int:
     Returns:
         Estimated token count (always >= 5).
     """
-    return max(1, len(content) // 4) + 4
+    return max(1, len(content or "") // 4) + 4
