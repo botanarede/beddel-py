@@ -23,6 +23,8 @@ def register_builtins(registry: PrimitiveRegistry) -> None:
     Args:
         registry: The :class:`PrimitiveRegistry` to populate.
     """
+    from beddel.primitives.chat import ChatPrimitive
     from beddel.primitives.llm import LLMPrimitive
 
     registry.register("llm", LLMPrimitive())
+    registry.register("chat", ChatPrimitive())
