@@ -197,6 +197,15 @@ class ChatPrimitive(IPrimitive):
            via :func:`_estimate_tokens` and drop the oldest non-system
            messages until the total is within budget.
 
+        Tool-call pair preservation:
+            Tool-call assistant messages (those containing a ``tool_calls``
+            key) and their corresponding tool-response messages (``role:
+            "tool"`` with a matching ``tool_call_id``) are treated as atomic
+            units.  Dropping one side of a pair automatically drops the other
+            to prevent invalid message sequences that LLM providers would
+            reject with a 400 error.  This applies to both count-based and
+            token-based trimming.
+
         System messages are never dropped — they define the conversation
         persona and are always placed first in the output.
 
@@ -242,25 +251,73 @@ class ChatPrimitive(IPrimitive):
         system_msgs = [m for m in messages if m.get("role") == "system"]
         non_system_msgs = [m for m in messages if m.get("role") != "system"]
 
-        # Step 1: Apply max_messages count limit.
+        # Step 1: Apply max_messages count limit (pair-aware).
         if max_messages is not None and len(non_system_msgs) > max_messages:
             non_system_msgs = non_system_msgs[-max_messages:]
 
-        # Step 2: Apply max_context_tokens budget.
+            # Drop orphaned tool responses at the start of the retained list.
+            # If the trim boundary split a tool-call pair, the first retained
+            # message(s) may be tool responses whose assistant is gone.
+            while non_system_msgs and non_system_msgs[0].get("role") == "tool":
+                non_system_msgs.pop(0)
+
+        # Step 2: Apply max_context_tokens budget (pair-aware).
         if max_context_tokens is not None:
-            # Calculate system message token cost (always included).
             system_tokens = sum(_estimate_tokens(m.get("content", "")) for m in system_msgs)
             budget = max_context_tokens - system_tokens
 
-            # Guard: if budget is non-positive, no non-system messages can fit.
             if budget <= 0:
                 non_system_msgs = []
             else:
-                # O(n) trimming: compute total once, subtract as we drop.
                 total = sum(_estimate_tokens(m.get("content", "")) for m in non_system_msgs)
                 while non_system_msgs and total > budget:
                     removed = non_system_msgs.pop(0)
                     total -= _estimate_tokens(removed.get("content", ""))
+
+                    if removed.get("role") == "assistant" and removed.get("tool_calls"):
+                        # Dropped an assistant with tool_calls — also drop
+                        # all corresponding tool-response messages.
+                        ids_to_drop = _collect_tool_call_ids(removed)
+                        if ids_to_drop:
+                            kept: list[dict[str, Any]] = []
+                            for m in non_system_msgs:
+                                if (
+                                    m.get("role") == "tool"
+                                    and m.get("tool_call_id") in ids_to_drop
+                                ):
+                                    total -= _estimate_tokens(m.get("content", ""))
+                                else:
+                                    kept.append(m)
+                            non_system_msgs = kept
+
+                    elif removed.get("role") == "tool":
+                        # Dropped a tool response — also drop the paired
+                        # assistant and all sibling tool responses.
+                        removed_tc_id = removed.get("tool_call_id")
+                        if removed_tc_id:
+                            # Find the paired assistant's full set of IDs.
+                            all_ids: set[str] = set()
+                            for m in non_system_msgs:
+                                if m.get(
+                                    "role"
+                                ) == "assistant" and removed_tc_id in _collect_tool_call_ids(m):
+                                    all_ids = _collect_tool_call_ids(m)
+                                    break
+
+                            if all_ids:
+                                kept = []
+                                for m in non_system_msgs:
+                                    if (
+                                        m.get("role") == "assistant"
+                                        and _collect_tool_call_ids(m) == all_ids
+                                    ) or (
+                                        m.get("role") == "tool"
+                                        and m.get("tool_call_id") in all_ids
+                                    ):
+                                        total -= _estimate_tokens(m.get("content", ""))
+                                    else:
+                                        kept.append(m)
+                                non_system_msgs = kept
 
         return system_msgs + non_system_msgs
 
@@ -297,3 +354,19 @@ def _estimate_tokens(content: str) -> int:
         Estimated token count (always >= 5).
     """
     return max(1, len(content or "") // 4) + 4
+
+
+def _collect_tool_call_ids(message: dict[str, Any]) -> set[str]:
+    """Extract tool_call IDs from an assistant message's ``tool_calls`` list.
+
+    Args:
+        message: A message dict that may contain a ``tool_calls`` key.
+
+    Returns:
+        A set of tool_call ID strings.  Empty if the message has no
+        ``tool_calls`` or is not an assistant message.
+    """
+    tool_calls = message.get("tool_calls")
+    if not tool_calls:
+        return set()
+    return {tc["id"] for tc in tool_calls if "id" in tc}
