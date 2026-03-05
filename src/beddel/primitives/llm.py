@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import ExecutionContext
 from beddel.domain.ports import ILLMProvider, IPrimitive
+from beddel.primitives._llm_utils import build_kwargs, get_model, get_provider
 
 __all__ = [
     "LLMPrimitive",
@@ -92,27 +92,7 @@ class LLMPrimitive(IPrimitive):
             PrimitiveError: ``BEDDEL-PRIM-003`` if ``llm_provider`` is
                 missing from deps or does not implement :class:`ILLMProvider`.
         """
-        provider = context.deps.llm_provider
-        if provider is None:
-            raise PrimitiveError(
-                "BEDDEL-PRIM-003",
-                "Missing 'llm_provider' in execution context deps",
-                {
-                    "step_id": context.current_step_id,
-                    "primitive_type": "llm",
-                },
-            )
-        if not isinstance(provider, ILLMProvider):
-            raise PrimitiveError(
-                "BEDDEL-PRIM-003",
-                "llm_provider in context.deps does not implement ILLMProvider",
-                {
-                    "step_id": context.current_step_id,
-                    "primitive_type": "llm",
-                    "provider_type": type(provider).__name__,
-                },
-            )
-        return provider
+        return get_provider(context, "llm")
 
     def _get_model(self, config: dict[str, Any], context: ExecutionContext) -> str:
         """Extract and validate the model identifier from config.
@@ -127,18 +107,7 @@ class LLMPrimitive(IPrimitive):
         Raises:
             PrimitiveError: ``BEDDEL-PRIM-004`` if ``model`` is missing.
         """
-        model = config.get("model")
-        if model is None:
-            raise PrimitiveError(
-                "BEDDEL-PRIM-004",
-                "Missing required config key: 'model'",
-                {
-                    "step_id": context.current_step_id,
-                    "primitive_type": "llm",
-                    "missing_key": "model",
-                },
-            )
-        return model
+        return get_model(config, context, "llm")
 
     @staticmethod
     def _build_messages(config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -172,9 +141,4 @@ class LLMPrimitive(IPrimitive):
         Returns:
             A dict of keyword arguments to forward to the provider.
         """
-        kwargs: dict[str, Any] = {}
-        if "temperature" in config:
-            kwargs["temperature"] = config["temperature"]
-        if "max_tokens" in config:
-            kwargs["max_tokens"] = config["max_tokens"]
-        return kwargs
+        return build_kwargs(config)
