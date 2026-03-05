@@ -10,6 +10,7 @@ Ports defined here:
 - :class:`IPrimitive` — contract for all workflow primitives.
 - :class:`ILLMProvider` — contract for LLM provider adapters.
 - :class:`ILifecycleHook` — contract for workflow lifecycle hooks.
+- :class:`IContextReducer` — contract for pluggable context reduction strategies.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ExecutionDependencies",
+    "IContextReducer",
     "IExecutionStrategy",
     "ILifecycleHook",
     "ILLMProvider",
@@ -293,3 +295,40 @@ class ILifecycleHook:
             attempt: The retry attempt number (1-based).
             error: The exception that triggered the retry.
         """
+
+
+class IContextReducer(Protocol):
+    """Contract for pluggable context reduction strategies.
+
+    Planned port for context-window management in chat-based primitives.
+    Implementations will provide strategies such as summarization, semantic
+    selection, or sliding-window approaches to replace the current FIFO
+    truncation in ``ChatPrimitive._apply_context_window()``.
+
+    Planned — not yet wired into any primitive.
+
+    [Source: docs/architecture/6-port-interfaces.md — context reduction]
+    """
+
+    async def reduce(
+        self,
+        messages: list[dict[str, Any]],
+        token_budget: int,
+    ) -> list[dict[str, Any]]:
+        """Reduce a message list to fit within a token budget.
+
+        Receives the full message history and returns a subset (or
+        transformed version) that fits within the given token budget.
+        The strategy decides which messages to keep, summarize, or
+        discard.
+
+        Args:
+            messages: The full chat message list, each dict containing
+                at least ``"role"`` and ``"content"`` keys.
+            token_budget: Maximum number of tokens the returned message
+                list should consume.
+
+        Returns:
+            A reduced message list that fits within ``token_budget``.
+        """
+        ...

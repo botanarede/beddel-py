@@ -63,6 +63,24 @@ class LLMPrimitive(IPrimitive):
             When ``stream`` is ``True``: a dict with a ``"stream"`` key
             holding an async generator that yields string chunks.
 
+            Streaming consumption notes:
+
+            - The async generator may raise
+              ``~beddel.adapters.errors.AdapterError`` during
+              iteration (network failures, provider timeouts,
+              rate limits). Consumers should handle this.
+            - Use ``contextlib.aclosing()`` for proper cleanup::
+
+                  async with contextlib.aclosing(
+                      result["stream"]
+                  ) as stream:
+                      async for chunk in stream:
+                          process(chunk)
+
+            - Unconsumed or partially consumed generators may
+              leak underlying provider connections. Always
+              exhaust the generator or wrap with ``aclosing()``.
+
         Raises:
             PrimitiveError: ``BEDDEL-PRIM-003`` if ``llm_provider`` is
                 missing from ``context.deps``.
