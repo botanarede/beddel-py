@@ -124,12 +124,16 @@ class WorkflowExecutor:
             registry: Primitive registry for step primitive look-ups.
             provider: Optional LLM provider for ``context.deps``.
             hooks: Optional lifecycle hooks called during execution.
+                Wrapped in a :class:`LifecycleHookManager` for unified
+                dispatch via the Composite pattern.
             tracer: Optional tracer injected into ``DefaultDependencies``
                 for automatic span creation.
         """
+        from beddel.adapters.hooks import LifecycleHookManager
+
         self._registry = registry
         self._provider = provider
-        self._hooks: list[ILifecycleHook] = hooks or []
+        self._hook_manager: ILifecycleHook = LifecycleHookManager(hooks)
         self._tracer = tracer
         self._resolver = VariableResolver()
 
@@ -176,7 +180,7 @@ class WorkflowExecutor:
 
         context.deps = DefaultDependencies(
             llm_provider=self._provider,
-            lifecycle_hooks=self._hooks,
+            lifecycle_hooks=[self._hook_manager],
             execution_strategy=execution_strategy,
             tracer=self._tracer,
         )
@@ -311,8 +315,7 @@ class WorkflowExecutor:
                 )
 
         collector = _Collector()
-        original_hooks = self._hooks
-        self._hooks = [*original_hooks, collector]
+        self._hook_manager.add_hook(collector)  # type: ignore[attr-defined]
 
         try:
             effective_inputs = inputs or {}
@@ -322,7 +325,7 @@ class WorkflowExecutor:
             )
             context.deps = DefaultDependencies(
                 llm_provider=self._provider,
-                lifecycle_hooks=self._hooks,
+                lifecycle_hooks=[self._hook_manager],
                 execution_strategy=execution_strategy,
                 tracer=self._tracer,
             )
@@ -379,7 +382,7 @@ class WorkflowExecutor:
                     except Exception:
                         logger.warning("Tracing end_span failed (ignored)", exc_info=True)
         finally:
-            self._hooks = original_hooks
+            self._hook_manager.remove_hook(collector)  # type: ignore[attr-defined]
 
     async def _execute_step(self, step: Step, context: ExecutionContext) -> Any:
         """Execute a single workflow step, with optional conditional branching.
@@ -471,27 +474,26 @@ class WorkflowExecutor:
                     logger.warning("Tracing end_span failed (ignored)", exc_info=True)
 
     async def _dispatch_hook(self, method_name: str, *args: Any) -> None:
-        """Call a lifecycle hook method on all registered hooks.
+        """Dispatch a lifecycle event via the hook manager.
 
-        Each hook call is wrapped in a try/except so that a misbehaving
-        hook never breaks workflow execution.  Exceptions from hooks are
-        logged but not re-raised.
+        Delegates to the corresponding method on ``self._hook_manager``
+        (a :class:`LifecycleHookManager` typed as
+        :class:`ILifecycleHook`).  The manager fans out to all registered
+        hooks and handles per-hook error isolation internally.
 
         Args:
             method_name: Name of the :class:`ILifecycleHook` method to call.
             *args: Positional arguments forwarded to the hook method.
         """
-        for hook in self._hooks:
-            try:
-                method = getattr(hook, method_name)
-                await method(*args)
-            except Exception:
-                logger.warning(
-                    "Lifecycle hook %s.%s raised an exception (ignored)",
-                    type(hook).__name__,
-                    method_name,
-                    exc_info=True,
-                )
+        try:
+            method = getattr(self._hook_manager, method_name)
+            await method(*args)
+        except Exception:
+            logger.warning(
+                "Lifecycle hook dispatch %s raised an exception (ignored)",
+                method_name,
+                exc_info=True,
+            )
 
     async def _run_primitive(self, step: Step, context: ExecutionContext) -> Any:
         """Resolve config, look up the primitive, execute it, and store the result.

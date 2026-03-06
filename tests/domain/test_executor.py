@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from beddel.adapters.hooks import LifecycleHookManager
 from beddel.domain.errors import ExecutionError
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
@@ -712,6 +713,17 @@ class TestLifecycleHookOrder:
 
         assert result["step_results"]["s1"] == "ok"
 
+    async def test_executor_dispatches_via_lifecycle_hook_manager(self) -> None:
+        """Executor uses a LifecycleHookManager instance as the sole dispatch mechanism."""
+        hook = AsyncMock(spec=ILifecycleHook)
+        registry, _ = _registry_with_stub(return_value="ok")
+        executor = WorkflowExecutor(registry, hooks=[hook])
+
+        # The executor's internal dispatcher is a LifecycleHookManager
+        assert isinstance(executor._hook_manager, LifecycleHookManager)
+        # The original hook is registered inside the manager
+        assert hook in executor._hook_manager._hooks
+
 
 # ---------------------------------------------------------------------------
 # 6.12 — execute_stream() event sequence
@@ -863,8 +875,8 @@ class TestExecuteStream:
         async for _ in executor.execute_stream(wf):
             pass
 
-        # After streaming, hooks should be restored to original
-        assert executor._hooks == [original_hook]
+        # After streaming, the collector should be removed from the manager
+        assert executor._hook_manager._hooks == [original_hook]  # type: ignore[union-attr]
 
     async def test_stream_restores_hooks_on_error(self) -> None:
         registry, _ = _registry_with_stub(side_effect=RuntimeError("boom"))
@@ -877,7 +889,7 @@ class TestExecuteStream:
             async for _ in executor.execute_stream(wf):
                 pass
 
-        assert executor._hooks == [original_hook]
+        assert executor._hook_manager._hooks == [original_hook]  # type: ignore[union-attr]
 
     async def test_execute_stream_respects_custom_strategy(self) -> None:
         """execute_stream() honours a custom IExecutionStrategy injected via execution_strategy."""
@@ -1448,7 +1460,7 @@ class TestLifecycleHooksDepsInjection:
     """Tests that WorkflowExecutor injects lifecycle_hooks into context.deps."""
 
     async def test_hooks_injected_into_deps(self) -> None:
-        """Hook passed to WorkflowExecutor appears in context.deps."""
+        """Hook passed to WorkflowExecutor appears in context.deps via the manager."""
         hook = AsyncMock(spec=ILifecycleHook)
         registry, captured = _capture_registry()
 
@@ -1461,10 +1473,13 @@ class TestLifecycleHooksDepsInjection:
         assert len(captured) == 1
         ctx = captured[0]
         assert isinstance(ctx.deps, DefaultDependencies)
-        assert hook in ctx.deps.lifecycle_hooks
+        # deps.lifecycle_hooks is [manager]; the original hook lives inside the manager
+        assert len(ctx.deps.lifecycle_hooks) == 1
+        manager = ctx.deps.lifecycle_hooks[0]
+        assert hook in manager._hooks  # type: ignore[union-attr]
 
     async def test_empty_hooks_in_deps_when_none_provided(self) -> None:
-        """When no hooks are passed, context.deps.lifecycle_hooks == []."""
+        """When no hooks are passed, context.deps.lifecycle_hooks contains an empty manager."""
         registry, captured = _capture_registry()
 
         step = _make_step("s1", primitive="test-prim")
@@ -1476,7 +1491,10 @@ class TestLifecycleHooksDepsInjection:
         assert len(captured) == 1
         ctx = captured[0]
         assert isinstance(ctx.deps, DefaultDependencies)
-        assert ctx.deps.lifecycle_hooks == []
+        # deps.lifecycle_hooks is [manager] where manager wraps zero hooks
+        assert len(ctx.deps.lifecycle_hooks) == 1
+        manager = ctx.deps.lifecycle_hooks[0]
+        assert manager._hooks == []  # type: ignore[union-attr]
 
 
 @pytest.mark.asyncio
@@ -1504,4 +1522,7 @@ class TestExecutorPopulatesDeps:
         # deps populated correctly
         assert isinstance(ctx.deps, DefaultDependencies)
         assert ctx.deps.llm_provider is mock_provider
-        assert mock_hook in ctx.deps.lifecycle_hooks
+        # lifecycle_hooks is [manager]; the original hook lives inside the manager
+        assert len(ctx.deps.lifecycle_hooks) == 1
+        manager = ctx.deps.lifecycle_hooks[0]
+        assert mock_hook in manager._hooks  # type: ignore[union-attr]
