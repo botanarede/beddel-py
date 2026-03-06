@@ -284,6 +284,113 @@ class TestExecutionContext:
 
 
 # ---------------------------------------------------------------------------
+# DefaultDependencies
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultDependencies:
+    """Tests for the DefaultDependencies dependency container."""
+
+    def test_tracer_defaults_to_none(self) -> None:
+        """DefaultDependencies without tracer returns None."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+
+        assert deps.tracer is None
+
+    def test_tracer_stores_and_returns_instance(self) -> None:
+        """DefaultDependencies(tracer=NoOpTracer()) stores and returns it."""
+        from beddel.domain.models import DefaultDependencies
+        from beddel.domain.ports import NoOpTracer
+
+        tracer = NoOpTracer()
+        deps = DefaultDependencies(tracer=tracer)
+
+        assert deps.tracer is tracer
+
+    def test_tracer_protocol_compliance(self) -> None:
+        """DefaultDependencies with tracer satisfies ExecutionDependencies protocol."""
+        from beddel.domain.models import DefaultDependencies
+        from beddel.domain.ports import NoOpTracer
+
+        deps = DefaultDependencies(tracer=NoOpTracer())
+
+        # Structural subtyping — isinstance won't work with Protocol at runtime,
+        # but we can verify the attribute exists and has the right type.
+        assert hasattr(deps, "tracer")
+        assert isinstance(deps.tracer, NoOpTracer)
+
+    def test_tracer_explicit_none_same_as_default(self) -> None:
+        """Passing tracer=None explicitly behaves identically to omitting it."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps_default = DefaultDependencies()
+        deps_explicit = DefaultDependencies(tracer=None)
+
+        assert deps_default.tracer is None
+        assert deps_explicit.tracer is None
+
+    def test_tracer_with_custom_itracer_subclass(self) -> None:
+        """A custom ITracer subclass is stored and returned correctly."""
+        from typing import Any
+
+        from beddel.domain.models import DefaultDependencies
+        from beddel.domain.ports import ITracer
+
+        class _StubTracer(ITracer):
+            """Minimal custom tracer for testing."""
+
+            def start_span(self, name: str, attributes: dict[str, Any] | None = None) -> Any:
+                return {"name": name}
+
+            def end_span(self, span: Any, attributes: dict[str, Any] | None = None) -> None:
+                pass
+
+        tracer = _StubTracer()
+        deps = DefaultDependencies(tracer=tracer)
+
+        assert deps.tracer is tracer
+        assert isinstance(deps.tracer, ITracer)
+
+    def test_tracer_accessible_via_execution_context(self) -> None:
+        """Tracer is reachable through ExecutionContext.deps.tracer."""
+        from beddel.domain.models import DefaultDependencies, ExecutionContext
+        from beddel.domain.ports import NoOpTracer
+
+        tracer = NoOpTracer()
+        ctx = ExecutionContext(
+            workflow_id="wf-test",
+            deps=DefaultDependencies(tracer=tracer),
+        )
+
+        assert ctx.deps.tracer is tracer
+
+    def test_tracer_none_via_execution_context(self) -> None:
+        """ExecutionContext with default deps has tracer=None."""
+        from beddel.domain.models import ExecutionContext
+
+        ctx = ExecutionContext(workflow_id="wf-test")
+
+        assert ctx.deps.tracer is None
+
+    def test_tracer_does_not_affect_other_properties(self) -> None:
+        """Setting tracer leaves all other dependency defaults unchanged."""
+        from beddel.domain.models import DefaultDependencies
+        from beddel.domain.ports import NoOpTracer
+
+        deps = DefaultDependencies(tracer=NoOpTracer())
+
+        assert deps.llm_provider is None
+        assert deps.lifecycle_hooks == []
+        assert deps.execution_strategy is None
+        assert deps.delegate_model == "gpt-4o-mini"
+        assert deps.workflow_loader is None
+        assert deps.registry is None
+        assert deps.tool_registry is None
+
+
+# ---------------------------------------------------------------------------
 # BeddelEvent
 # ---------------------------------------------------------------------------
 

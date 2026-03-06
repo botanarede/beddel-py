@@ -32,10 +32,12 @@ from beddel.domain.ports import (
     ILifecycleHook,
     ILLMProvider,
     IPrimitive,
+    ITracer,
     StepRunner,
 )
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.resolver import VariableResolver
+from beddel.domain.tracing_utils import extract_token_usage
 
 __all__ = [
     "SequentialStrategy",
@@ -99,6 +101,9 @@ class WorkflowExecutor:
         hooks: Optional lifecycle hooks available via
             ``context.deps.lifecycle_hooks`` and called during
             execution.
+        tracer: Optional tracer for OpenTelemetry span creation.
+            When provided, passed to ``DefaultDependencies`` so that
+            workflow, step, and primitive spans are emitted automatically.
 
     Example::
 
@@ -111,10 +116,21 @@ class WorkflowExecutor:
         registry: PrimitiveRegistry,
         provider: ILLMProvider | None = None,
         hooks: list[ILifecycleHook] | None = None,
+        tracer: ITracer | None = None,
     ) -> None:
+        """Initialise the executor.
+
+        Args:
+            registry: Primitive registry for step primitive look-ups.
+            provider: Optional LLM provider for ``context.deps``.
+            hooks: Optional lifecycle hooks called during execution.
+            tracer: Optional tracer injected into ``DefaultDependencies``
+                for automatic span creation.
+        """
         self._registry = registry
         self._provider = provider
         self._hooks: list[ILifecycleHook] = hooks or []
+        self._tracer = tracer
         self._resolver = VariableResolver()
 
     async def execute(
@@ -129,6 +145,11 @@ class WorkflowExecutor:
         Creates an :class:`ExecutionContext`, injects dependencies via
         ``context.deps``, iterates steps in order, and returns the
         accumulated step results and metadata.
+
+        When ``context.deps.tracer`` is not ``None``, a
+        ``beddel.workflow`` span wraps the entire execution with the
+        ``beddel.workflow_id`` attribute.  Tracing failures are silently
+        logged and never propagate.
 
         Args:
             workflow: The workflow definition to execute.
@@ -157,20 +178,39 @@ class WorkflowExecutor:
             llm_provider=self._provider,
             lifecycle_hooks=self._hooks,
             execution_strategy=execution_strategy,
+            tracer=self._tracer,
         )
 
-        await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
+        tracer = context.deps.tracer
+        workflow_span: Any = None
+        if tracer is not None:
+            try:
+                workflow_span = tracer.start_span(
+                    "beddel.workflow",
+                    {"beddel.workflow_id": workflow.id},
+                )
+            except Exception:
+                logger.warning("Tracing start_span failed (ignored)", exc_info=True)
 
-        strategy = context.deps.execution_strategy or SequentialStrategy()
-        await strategy.execute(workflow, context, self._execute_step)
+        try:
+            await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
 
-        result: dict[str, Any] = {
-            "step_results": dict(context.step_results),
-            "metadata": dict(context.metadata),
-        }
+            strategy = context.deps.execution_strategy or SequentialStrategy()
+            await strategy.execute(workflow, context, self._execute_step)
 
-        await self._dispatch_hook("on_workflow_end", workflow.id, result)
-        return result
+            result: dict[str, Any] = {
+                "step_results": dict(context.step_results),
+                "metadata": dict(context.metadata),
+            }
+
+            await self._dispatch_hook("on_workflow_end", workflow.id, result)
+            return result
+        finally:
+            if tracer is not None and workflow_span is not None:
+                try:
+                    tracer.end_span(workflow_span)
+                except Exception:
+                    logger.warning("Tracing end_span failed (ignored)", exc_info=True)
 
     async def execute_stream(
         self,
@@ -192,6 +232,10 @@ class WorkflowExecutor:
 
         For steps with ``stream=True``, the stored async-generator result
         is consumed and each chunk is yielded as a ``TEXT_CHUNK`` event.
+
+        When ``context.deps.tracer`` is not ``None``, a
+        ``beddel.workflow`` span wraps the entire streaming execution
+        with the ``beddel.workflow_id`` attribute.
 
         Args:
             workflow: The workflow definition to execute.
@@ -280,41 +324,60 @@ class WorkflowExecutor:
                 llm_provider=self._provider,
                 lifecycle_hooks=self._hooks,
                 execution_strategy=execution_strategy,
+                tracer=self._tracer,
             )
 
-            await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
-            for event in events:
-                yield event
-            events.clear()
+            tracer = context.deps.tracer
+            workflow_span: Any = None
+            if tracer is not None:
+                try:
+                    workflow_span = tracer.start_span(
+                        "beddel.workflow",
+                        {"beddel.workflow_id": workflow.id},
+                    )
+                except Exception:
+                    logger.warning("Tracing start_span failed (ignored)", exc_info=True)
 
-            strategy = context.deps.execution_strategy or SequentialStrategy()
-            await strategy.execute(workflow, context, self._execute_step)
+            try:
+                await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
+                for event in events:
+                    yield event
+                events.clear()
 
-            for event in events:
-                yield event
-            events.clear()
+                strategy = context.deps.execution_strategy or SequentialStrategy()
+                await strategy.execute(workflow, context, self._execute_step)
 
-            # Consume streaming results for all steps in declaration order.
-            # Execution order was determined by the strategy above; this loop
-            # only reads already-completed results.
-            for step in workflow.steps:
-                step_result = context.step_results.get(step.id)
-                if step.stream and isinstance(step_result, dict) and "stream" in step_result:
-                    async for chunk in step_result["stream"]:
-                        yield BeddelEvent(
-                            event_type=EventType.TEXT_CHUNK,
-                            step_id=step.id,
-                            data={"text": chunk},
-                        )
+                for event in events:
+                    yield event
+                events.clear()
 
-            result: dict[str, Any] = {
-                "step_results": dict(context.step_results),
-                "metadata": dict(context.metadata),
-            }
-            await self._dispatch_hook("on_workflow_end", workflow.id, result)
-            for event in events:
-                yield event
-            events.clear()
+                # Consume streaming results for all steps in declaration order.
+                # Execution order was determined by the strategy above; this loop
+                # only reads already-completed results.
+                for step in workflow.steps:
+                    step_result = context.step_results.get(step.id)
+                    if step.stream and isinstance(step_result, dict) and "stream" in step_result:
+                        async for chunk in step_result["stream"]:
+                            yield BeddelEvent(
+                                event_type=EventType.TEXT_CHUNK,
+                                step_id=step.id,
+                                data={"text": chunk},
+                            )
+
+                result: dict[str, Any] = {
+                    "step_results": dict(context.step_results),
+                    "metadata": dict(context.metadata),
+                }
+                await self._dispatch_hook("on_workflow_end", workflow.id, result)
+                for event in events:
+                    yield event
+                events.clear()
+            finally:
+                if tracer is not None and workflow_span is not None:
+                    try:
+                        tracer.end_span(workflow_span)
+                    except Exception:
+                        logger.warning("Tracing end_span failed (ignored)", exc_info=True)
         finally:
             self._hooks = original_hooks
 
@@ -325,6 +388,14 @@ class WorkflowExecutor:
         truthy the step's primitive runs and any ``then_steps`` are executed
         afterwards.  When falsy the primitive is skipped and ``else_steps``
         are executed instead.  Steps without a condition run unconditionally.
+
+        When ``context.deps.tracer`` is not ``None``, a
+        ``beddel.step.{step_id}`` span wraps the step execution with
+        ``beddel.step_id``, ``beddel.primitive``, and
+        ``beddel.execution_strategy`` attributes.  Token usage attributes
+        (``gen_ai.usage.*``) are added when the step result contains a
+        ``usage`` dict.  On error, ``error`` and ``error.message``
+        attributes are set before the span ends.
 
         Args:
             step: The step definition to execute.
@@ -339,6 +410,21 @@ class WorkflowExecutor:
         """
         context.current_step_id = step.id
         await self._dispatch_hook("on_step_start", step.id, step.primitive)
+
+        tracer = context.deps.tracer
+        step_span: Any = None
+        if tracer is not None:
+            try:
+                step_span = tracer.start_span(
+                    f"beddel.step.{step.id}",
+                    {
+                        "beddel.step_id": step.id,
+                        "beddel.primitive": step.primitive,
+                        "beddel.execution_strategy": step.execution_strategy.type.value,
+                    },
+                )
+            except Exception:
+                logger.warning("Tracing start_span failed (ignored)", exc_info=True)
 
         try:
             if step.if_condition is not None:
@@ -358,11 +444,31 @@ class WorkflowExecutor:
             await self._dispatch_hook("on_step_end", step.id, result)
             return result
         except Exception as exc:
+            if tracer is not None and step_span is not None:
+                try:
+                    tracer.end_span(
+                        step_span,
+                        {"error": True, "error.message": str(exc)},
+                    )
+                except Exception:
+                    logger.warning("Tracing error span failed (ignored)", exc_info=True)
+                step_span = None  # Prevent double-end in finally
+
             await self._dispatch_hook("on_error", step.id, exc)
             result = await self._apply_strategy(step, exc, context)
             context.step_results[step.id] = result
             await self._dispatch_hook("on_step_end", step.id, result)
             return result
+        finally:
+            if tracer is not None and step_span is not None:
+                try:
+                    step_result = context.step_results.get(step.id)
+                    end_attrs = (
+                        extract_token_usage(step_result) if isinstance(step_result, dict) else {}
+                    )
+                    tracer.end_span(step_span, end_attrs or None)
+                except Exception:
+                    logger.warning("Tracing end_span failed (ignored)", exc_info=True)
 
     async def _dispatch_hook(self, method_name: str, *args: Any) -> None:
         """Call a lifecycle hook method on all registered hooks.
@@ -388,12 +494,47 @@ class WorkflowExecutor:
                 )
 
     async def _run_primitive(self, step: Step, context: ExecutionContext) -> Any:
-        """Resolve config, look up the primitive, execute it, and store the result."""
-        resolved_config = self._resolver.resolve(step.config, context)
-        primitive: IPrimitive = self._registry.get(step.primitive)
-        result = await primitive.execute(resolved_config, context)
-        context.step_results[step.id] = result
-        return result
+        """Resolve config, look up the primitive, execute it, and store the result.
+
+        When ``context.deps.tracer`` is not ``None``, a
+        ``beddel.primitive.{primitive_name}`` span wraps the primitive
+        invocation with ``beddel.primitive``, ``beddel.model``, and
+        ``beddel.provider`` attributes (model/provider extracted from
+        ``step.config`` when present).
+
+        Args:
+            step: The step definition whose primitive to execute.
+            context: Mutable execution context for the current workflow run.
+
+        Returns:
+            The primitive's return value.
+        """
+        tracer = context.deps.tracer
+        prim_span: Any = None
+        if tracer is not None:
+            try:
+                attrs: dict[str, Any] = {"beddel.primitive": step.primitive}
+                model = step.config.get("model")
+                if isinstance(model, str):
+                    attrs["beddel.model"] = model
+                    if "/" in model:
+                        attrs["beddel.provider"] = model.split("/", 1)[0]
+                prim_span = tracer.start_span(f"beddel.primitive.{step.primitive}", attrs)
+            except Exception:
+                logger.warning("Tracing start_span failed (ignored)", exc_info=True)
+
+        try:
+            resolved_config = self._resolver.resolve(step.config, context)
+            primitive: IPrimitive = self._registry.get(step.primitive)
+            result = await primitive.execute(resolved_config, context)
+            context.step_results[step.id] = result
+            return result
+        finally:
+            if tracer is not None and prim_span is not None:
+                try:
+                    tracer.end_span(prim_span)
+                except Exception:
+                    logger.warning("Tracing end_span failed (ignored)", exc_info=True)
 
     async def _run_with_timeout(self, step: Step, context: ExecutionContext) -> Any:
         """Run a primitive with optional timeout enforcement.

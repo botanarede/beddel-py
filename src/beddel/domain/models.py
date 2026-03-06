@@ -17,7 +17,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from beddel.domain.ports import IExecutionStrategy, ILifecycleHook, ILLMProvider
+    from beddel.domain.ports import IExecutionStrategy, ILifecycleHook, ILLMProvider, ITracer
     from beddel.domain.registry import PrimitiveRegistry
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -148,6 +148,8 @@ class DefaultDependencies:
         registry: The primitive registry, or ``None`` if not provided.
         tool_registry: Registry of tool callables keyed by name,
             or ``None`` if not provided.
+        tracer: The observability tracer, or ``None`` if not configured.
+            Defaults to ``None``.
     """
 
     __slots__ = (
@@ -158,6 +160,7 @@ class DefaultDependencies:
         "_workflow_loader",
         "_registry",
         "_tool_registry",
+        "_tracer",
     )
 
     def __init__(
@@ -169,6 +172,7 @@ class DefaultDependencies:
         workflow_loader: Callable[[str], Workflow] | None = None,
         registry: PrimitiveRegistry | None = None,
         tool_registry: dict[str, Callable[..., Any]] | None = None,
+        tracer: ITracer[Any] | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks if lifecycle_hooks is not None else []
@@ -177,6 +181,7 @@ class DefaultDependencies:
         self._workflow_loader = workflow_loader
         self._registry = registry
         self._tool_registry = tool_registry
+        self._tracer = tracer
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -212,6 +217,11 @@ class DefaultDependencies:
     def tool_registry(self) -> dict[str, Callable[..., Any]] | None:
         """Registry of tool callables, or ``None`` if not provided."""
         return self._tool_registry
+
+    @property
+    def tracer(self) -> ITracer[Any] | None:
+        """The observability tracer, or ``None`` if not configured."""
+        return self._tracer
 
 
 _log = logging.getLogger(__name__)

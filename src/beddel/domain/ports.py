@@ -11,26 +11,34 @@ Ports defined here:
 - :class:`ILLMProvider` — contract for LLM provider adapters.
 - :class:`ILifecycleHook` — contract for workflow lifecycle hooks.
 - :class:`IContextReducer` — contract for pluggable context reduction strategies.
+- :class:`ITracer` — contract for observability tracing.
+- :class:`NoOpTracer` — no-op tracer for testing and explicit opt-out.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
 
 from beddel.domain.models import ExecutionContext, Step, Workflow
+
+SpanT = TypeVar("SpanT")
+"""Type variable for the opaque span handle used by :class:`ITracer` implementations."""
 
 if TYPE_CHECKING:
     from beddel.domain.registry import PrimitiveRegistry
 
 __all__ = [
+    "SpanT",
     "ExecutionDependencies",
     "IContextReducer",
     "IExecutionStrategy",
     "ILifecycleHook",
     "ILLMProvider",
     "IPrimitive",
+    "ITracer",
+    "NoOpTracer",
     "StepRunner",
 ]
 
@@ -83,6 +91,11 @@ class ExecutionDependencies(Protocol):
     @property
     def tool_registry(self) -> dict[str, Callable[..., Any]] | None:
         """Registry of tool callables, or ``None`` if not provided."""
+        ...
+
+    @property
+    def tracer(self) -> ITracer[Any] | None:
+        """The observability tracer, or ``None`` if not configured."""
         ...
 
 
@@ -332,3 +345,74 @@ class IContextReducer(Protocol):
             A reduced message list that fits within ``token_budget``.
         """
         ...
+
+
+class ITracer(ABC, Generic[SpanT]):
+    """Port interface for observability tracing.
+
+    Defines the contract for trace span management.  Implementations
+    bridge the domain core to a tracing backend (e.g. OpenTelemetry).
+
+    The generic type parameter ``SpanT`` represents the opaque span handle
+    type used by the concrete implementation (e.g. ``None`` for
+    :class:`NoOpTracer`, ``Span`` for an OpenTelemetry adapter).
+
+    Both methods are **synchronous** — OpenTelemetry's span API does not
+    perform I/O, so ``async`` is unnecessary.
+
+    [Source: docs/architecture/6-port-interfaces.md#64-itracer]
+    """
+
+    @abstractmethod
+    def start_span(self, name: str, attributes: dict[str, Any] | None = None) -> SpanT | None:
+        """Start a trace span.
+
+        Args:
+            name: Human-readable span name (e.g. ``"workflow.execute"``).
+            attributes: Optional key-value attributes to attach to the span.
+
+        Returns:
+            An opaque span handle passed back to :meth:`end_span`, or
+            ``None`` if span creation fails.
+        """
+        ...
+
+    @abstractmethod
+    def end_span(self, span: SpanT | None, attributes: dict[str, Any] | None = None) -> None:
+        """End a trace span with optional final attributes.
+
+        Args:
+            span: The opaque span handle returned by :meth:`start_span`,
+                or ``None`` if no span was created.
+            attributes: Optional key-value attributes to attach before closing.
+        """
+        ...
+
+
+class NoOpTracer(ITracer[None]):
+    """No-op tracer for testing and explicit opt-out.
+
+    Returns ``None`` from :meth:`start_span` and silently ignores
+    :meth:`end_span`.  Used as the default when no tracing backend
+    is configured.
+    """
+
+    def start_span(self, name: str, attributes: dict[str, Any] | None = None) -> None:
+        """Return ``None`` — no span is created.
+
+        Args:
+            name: Span name (ignored).
+            attributes: Span attributes (ignored).
+
+        Returns:
+            Always ``None``.
+        """
+        return None
+
+    def end_span(self, span: None, attributes: dict[str, Any] | None = None) -> None:
+        """No-op — silently ignores the call.
+
+        Args:
+            span: Span handle (ignored).
+            attributes: Final attributes (ignored).
+        """

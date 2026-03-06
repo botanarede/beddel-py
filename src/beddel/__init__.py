@@ -12,7 +12,14 @@ from beddel.domain.errors import (
 )
 from beddel.domain.executor import SequentialStrategy
 from beddel.domain.models import DefaultDependencies, InterruptibleContext
-from beddel.domain.ports import ExecutionDependencies, IExecutionStrategy, StepRunner
+from beddel.domain.ports import (
+    ExecutionDependencies,
+    IExecutionStrategy,
+    ITracer,
+    NoOpTracer,
+    SpanT,
+    StepRunner,
+)
 
 __version__ = "0.1.0"
 
@@ -24,10 +31,13 @@ __all__ = [
     "ExecutionDependencies",
     "ExecutionError",
     "IExecutionStrategy",
+    "ITracer",
     "InterruptibleContext",
+    "NoOpTracer",
     "ParseError",
     "PrimitiveError",
     "ResolveError",
     "SequentialStrategy",
+    "SpanT",
     "StepRunner",
 ]
