@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import pytest
+from _helpers import make_context
 
 from beddel.domain.errors import PrimitiveError
-from beddel.domain.models import (
-    DefaultDependencies,
-    ExecutionContext,
-)
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.primitives import register_builtins
 from beddel.primitives.tool import ToolPrimitive
@@ -19,25 +15,6 @@ from beddel.primitives.tool import ToolPrimitive
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_context(
-    *,
-    inputs: dict[str, Any] | None = None,
-    step_results: dict[str, Any] | None = None,
-    step_id: str | None = "step-1",
-    metadata: dict[str, Any] | None = None,
-    tool_registry: dict[str, Callable[..., Any]] | None = None,
-) -> ExecutionContext:
-    ctx = ExecutionContext(
-        workflow_id="wf-tool",
-        inputs=inputs or {},
-        step_results=step_results or {},
-        current_step_id=step_id,
-        metadata=metadata or {},
-    )
-    ctx.deps = DefaultDependencies(tool_registry=tool_registry)
-    return ctx
 
 
 def _sync_add(a: int, b: int) -> int:
@@ -64,7 +41,7 @@ async def _async_ping() -> str:
 class TestSyncInvocation:
     async def test_sync_tool_called_with_arguments(self) -> None:
         registry = {"add": _sync_add}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "add", "arguments": {"a": 3, "b": 4}}, ctx)
 
@@ -72,7 +49,7 @@ class TestSyncInvocation:
 
     async def test_sync_tool_result_wrapped_in_structured_format(self) -> None:
         registry = {"add": _sync_add}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "add", "arguments": {"a": 1, "b": 2}}, ctx)
 
@@ -87,7 +64,7 @@ class TestSyncInvocation:
 class TestAsyncInvocation:
     async def test_async_tool_awaited_with_arguments(self) -> None:
         registry = {"multiply": _async_multiply}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute(
             {"tool": "multiply", "arguments": {"x": 5, "y": 6}}, ctx
@@ -97,7 +74,7 @@ class TestAsyncInvocation:
 
     async def test_async_tool_result_wrapped_in_structured_format(self) -> None:
         registry = {"multiply": _async_multiply}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute(
             {"tool": "multiply", "arguments": {"x": 2, "y": 3}}, ctx
@@ -113,7 +90,7 @@ class TestAsyncInvocation:
 
 class TestMissingToolRegistry:
     async def test_raises_prim_005_when_tool_registry_none(self) -> None:
-        ctx = _make_context(tool_registry=None)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=None)
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-005") as exc_info:
             await ToolPrimitive().execute({"tool": "anything"}, ctx)
@@ -121,7 +98,7 @@ class TestMissingToolRegistry:
         assert exc_info.value.code == "BEDDEL-PRIM-005"
 
     async def test_error_details_contain_primitive_and_step_id(self) -> None:
-        ctx = _make_context(tool_registry=None, step_id="my-step")
+        ctx = make_context(workflow_id="wf-tool", tool_registry=None, step_id="my-step")
 
         with pytest.raises(PrimitiveError) as exc_info:
             await ToolPrimitive().execute({"tool": "anything"}, ctx)
@@ -138,7 +115,7 @@ class TestMissingToolRegistry:
 class TestToolNotFound:
     async def test_raises_prim_300_when_tool_not_in_registry(self) -> None:
         registry = {"existing": _sync_greet}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-300") as exc_info:
             await ToolPrimitive().execute({"tool": "missing"}, ctx)
@@ -147,7 +124,7 @@ class TestToolNotFound:
 
     async def test_error_details_contain_available_tools(self) -> None:
         registry = {"alpha": _sync_greet, "beta": _sync_add}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         with pytest.raises(PrimitiveError) as exc_info:
             await ToolPrimitive().execute({"tool": "gamma"}, ctx)
@@ -170,7 +147,7 @@ def _failing_tool() -> None:
 class TestToolExecutionFailure:
     async def test_raises_prim_301_wrapping_original_exception(self) -> None:
         registry = {"bad": _failing_tool}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-301") as exc_info:
             await ToolPrimitive().execute({"tool": "bad"}, ctx)
@@ -179,7 +156,7 @@ class TestToolExecutionFailure:
 
     async def test_error_details_contain_original_error_info(self) -> None:
         registry = {"bad": _failing_tool}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         with pytest.raises(PrimitiveError) as exc_info:
             await ToolPrimitive().execute({"tool": "bad"}, ctx)
@@ -197,7 +174,7 @@ class TestToolExecutionFailure:
             )
 
         registry = {"prim_err": _raise_prim_error}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         with pytest.raises(PrimitiveError) as exc_info:
             await ToolPrimitive().execute({"tool": "prim_err"}, ctx)
@@ -213,7 +190,7 @@ class TestToolExecutionFailure:
 class TestMissingToolConfig:
     async def test_raises_prim_302_when_tool_key_missing(self) -> None:
         registry = {"something": _sync_greet}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-302") as exc_info:
             await ToolPrimitive().execute({}, ctx)
@@ -221,7 +198,7 @@ class TestMissingToolConfig:
         assert exc_info.value.code == "BEDDEL-PRIM-302"
 
     async def test_error_details_contain_primitive_and_step_id(self) -> None:
-        ctx = _make_context(tool_registry={}, step_id="cfg-step")
+        ctx = make_context(workflow_id="wf-tool", tool_registry={}, step_id="cfg-step")
 
         with pytest.raises(PrimitiveError) as exc_info:
             await ToolPrimitive().execute({"arguments": {"a": 1}}, ctx)
@@ -239,7 +216,7 @@ class TestMissingToolConfig:
 class TestNoArguments:
     async def test_sync_tool_called_with_empty_dict_when_no_arguments(self) -> None:
         registry = {"greet": _sync_greet}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "greet"}, ctx)
 
@@ -247,7 +224,7 @@ class TestNoArguments:
 
     async def test_async_tool_called_with_no_arguments(self) -> None:
         registry = {"ping": _async_ping}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "ping"}, ctx)
 
@@ -262,7 +239,7 @@ class TestNoArguments:
 class TestStructuredResult:
     async def test_result_contains_tool_and_result_keys(self) -> None:
         registry = {"greet": _sync_greet}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "greet"}, ctx)
 
@@ -273,7 +250,7 @@ class TestStructuredResult:
             return {"count": 42}
 
         registry = {"info": _dict_tool}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "info"}, ctx)
 
@@ -284,7 +261,7 @@ class TestStructuredResult:
             return ["a", "b", "c"]
 
         registry = {"items": _list_tool}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "items"}, ctx)
 
@@ -295,7 +272,7 @@ class TestStructuredResult:
             return None
 
         registry = {"noop": _void_tool}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "noop"}, ctx)
 
@@ -317,7 +294,7 @@ class TestVariableResolution:
             return kwargs
 
         registry = {"echo": _echo}
-        ctx = _make_context(inputs={"term": "hello"}, tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", inputs={"term": "hello"}, tool_registry=registry)
 
         result = await ToolPrimitive().execute(
             {"tool": "echo", "arguments": {"query": "$input.term"}}, ctx
@@ -332,7 +309,8 @@ class TestVariableResolution:
             return kwargs
 
         registry = {"echo": _echo}
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-tool",
             step_results={"prev": {"data": "resolved"}},
             tool_registry=registry,
         )
@@ -350,7 +328,7 @@ class TestVariableResolution:
             return kwargs
 
         registry = {"echo": _echo}
-        ctx = _make_context(tool_registry=registry)
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "echo", "arguments": {}}, ctx)
 

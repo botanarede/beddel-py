@@ -6,11 +6,11 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from _helpers import make_context
 
 from beddel.constants import CALL_DEPTH_KEY
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import (
-    DefaultDependencies,
     ExecutionContext,
     Step,
     Workflow,
@@ -59,32 +59,6 @@ def _make_registry(*primitives: tuple[str, IPrimitive]) -> PrimitiveRegistry:
     return reg
 
 
-def _make_context(
-    *,
-    inputs: dict[str, Any] | None = None,
-    step_results: dict[str, Any] | None = None,
-    step_id: str | None = "step-1",
-    metadata: dict[str, Any] | None = None,
-    workflow_loader: Callable[[str], Workflow] | None = None,
-    registry: PrimitiveRegistry | None = None,
-    tool_registry: dict[str, Callable[..., Any]] | None = None,
-) -> ExecutionContext:
-    """Build an ExecutionContext with optional deps for call-agent tests."""
-    ctx = ExecutionContext(
-        workflow_id="wf-parent",
-        inputs=inputs or {},
-        step_results=step_results or {},
-        current_step_id=step_id,
-        metadata=metadata or {},
-    )
-    ctx.deps = DefaultDependencies(
-        workflow_loader=workflow_loader,
-        registry=registry,
-        tool_registry=tool_registry,
-    )
-    return ctx
-
-
 # ---------------------------------------------------------------------------
 # Tests: Successful nested workflow execution (subtask 4.2)
 # ---------------------------------------------------------------------------
@@ -101,7 +75,7 @@ class TestNestedExecution:
             steps=[Step(id="s1", primitive="echo", config={"msg": "hi"})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader, registry=registry)
 
         result = await CallAgentPrimitive().execute({"workflow": "child-wf"}, ctx)
 
@@ -116,7 +90,7 @@ class TestNestedExecution:
             steps=[Step(id="calc", primitive="compute", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader, registry=registry)
 
         result = await CallAgentPrimitive().execute({"workflow": "math-wf"}, ctx)
 
@@ -130,7 +104,7 @@ class TestNestedExecution:
             steps=[Step(id="only-step", primitive="prim-a", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader, registry=registry)
 
         result = await CallAgentPrimitive().execute({"workflow": "single-wf"}, ctx)
 
@@ -148,7 +122,7 @@ class TestNestedExecution:
             ],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader, registry=registry)
 
         result = await CallAgentPrimitive().execute({"workflow": "multi-wf"}, ctx)
 
@@ -171,7 +145,7 @@ class TestContextPassing:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader, registry=registry)
 
         await CallAgentPrimitive().execute({"workflow": "wf", "inputs": {"name": "Alice"}}, ctx)
 
@@ -188,7 +162,12 @@ class TestContextPassing:
         )
         loader = lambda wf_id: child_wf  # noqa: E731
         tool_reg: dict[str, Callable[..., Any]] = {"my_tool": lambda: None}
-        ctx = _make_context(workflow_loader=loader, registry=registry, tool_registry=tool_reg)
+        ctx = make_context(
+            workflow_id="wf-parent",
+            workflow_loader=loader,
+            registry=registry,
+            tool_registry=tool_reg,
+        )
 
         await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
 
@@ -205,7 +184,7 @@ class TestContextPassing:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader, registry=registry)
 
         await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
 
@@ -225,7 +204,8 @@ class TestMaxDepthEnforcement:
         """Verify error when _call_depth == max_depth (default 5)."""
         registry = _make_registry()
         loader = lambda wf_id: _make_workflow()  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             workflow_loader=loader,
             registry=registry,
             metadata={CALL_DEPTH_KEY: 5},
@@ -240,7 +220,8 @@ class TestMaxDepthEnforcement:
         """Verify error when _call_depth > max_depth."""
         registry = _make_registry()
         loader = lambda wf_id: _make_workflow()  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             workflow_loader=loader,
             registry=registry,
             metadata={CALL_DEPTH_KEY: 6},
@@ -255,7 +236,8 @@ class TestMaxDepthEnforcement:
         """Verify error details include current_depth, max_depth, primitive, step_id."""
         registry = _make_registry()
         loader = lambda wf_id: _make_workflow()  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             workflow_loader=loader,
             registry=registry,
             metadata={CALL_DEPTH_KEY: 5},
@@ -278,7 +260,8 @@ class TestMaxDepthEnforcement:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             workflow_loader=loader,
             registry=registry,
             metadata={CALL_DEPTH_KEY: 4},
@@ -300,7 +283,7 @@ class TestMissingWorkflowLoader:
     async def test_raises_prim_001_when_workflow_loader_none(self) -> None:
         """Verify BEDDEL-PRIM-001 when workflow_loader is None."""
         registry = _make_registry()
-        ctx = _make_context(registry=registry)
+        ctx = make_context(workflow_id="wf-parent", registry=registry)
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-001") as exc_info:
             await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
@@ -310,7 +293,7 @@ class TestMissingWorkflowLoader:
     async def test_error_message_mentions_workflow_loader(self) -> None:
         """Verify error message references workflow_loader."""
         registry = _make_registry()
-        ctx = _make_context(registry=registry)
+        ctx = make_context(workflow_id="wf-parent", registry=registry)
 
         with pytest.raises(PrimitiveError) as exc_info:
             await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
@@ -330,7 +313,7 @@ class TestMissingRegistry:
     async def test_raises_prim_002_when_registry_none(self) -> None:
         """Verify BEDDEL-PRIM-002 when registry is None."""
         loader = lambda wf_id: _make_workflow()  # noqa: E731
-        ctx = _make_context(workflow_loader=loader)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader)
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-002") as exc_info:
             await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
@@ -340,7 +323,7 @@ class TestMissingRegistry:
     async def test_error_message_mentions_registry(self) -> None:
         """Verify error message references registry."""
         loader = lambda wf_id: _make_workflow()  # noqa: E731
-        ctx = _make_context(workflow_loader=loader)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader)
 
         with pytest.raises(PrimitiveError) as exc_info:
             await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
@@ -361,7 +344,7 @@ class TestMissingWorkflowConfig:
         """Verify BEDDEL-PRIM-201 when config has no 'workflow' key."""
         registry = _make_registry()
         loader = lambda wf_id: _make_workflow()  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader, registry=registry)
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-201") as exc_info:
             await CallAgentPrimitive().execute({}, ctx)
@@ -373,7 +356,12 @@ class TestMissingWorkflowConfig:
         """Verify error details include primitive and step_id."""
         registry = _make_registry()
         loader = lambda wf_id: _make_workflow()  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry, step_id="my-step")
+        ctx = make_context(
+            workflow_id="wf-parent",
+            workflow_loader=loader,
+            registry=registry,
+            step_id="my-step",
+        )
 
         with pytest.raises(PrimitiveError) as exc_info:
             await CallAgentPrimitive().execute({}, ctx)
@@ -398,7 +386,8 @@ class TestCustomMaxDepth:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             workflow_loader=loader,
             registry=registry,
             metadata={CALL_DEPTH_KEY: 7},
@@ -412,7 +401,8 @@ class TestCustomMaxDepth:
         """Verify custom max_depth=2 blocks _call_depth=2."""
         registry = _make_registry()
         loader = lambda wf_id: _make_workflow()  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             workflow_loader=loader,
             registry=registry,
             metadata={CALL_DEPTH_KEY: 2},
@@ -438,7 +428,7 @@ class TestDepthTracking:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader, registry=registry)
 
         await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
 
@@ -453,7 +443,8 @@ class TestDepthTracking:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             workflow_loader=loader,
             registry=registry,
             metadata={CALL_DEPTH_KEY: 3},
@@ -472,7 +463,8 @@ class TestDepthTracking:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             workflow_loader=loader,
             registry=registry,
             metadata={CALL_DEPTH_KEY: 2},
@@ -523,7 +515,8 @@ class TestVariableResolution:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             inputs={"user": "Bob"},
             workflow_loader=loader,
             registry=registry,
@@ -544,7 +537,8 @@ class TestVariableResolution:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(
+        ctx = make_context(
+            workflow_id="wf-parent",
             step_results={"prev": {"data": "resolved-value"}},
             workflow_loader=loader,
             registry=registry,
@@ -566,7 +560,7 @@ class TestVariableResolution:
             steps=[Step(id="s1", primitive="echo", config={})],
         )
         loader = lambda wf_id: child_wf  # noqa: E731
-        ctx = _make_context(workflow_loader=loader, registry=registry)
+        ctx = make_context(workflow_id="wf-parent", workflow_loader=loader, registry=registry)
 
         await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
 

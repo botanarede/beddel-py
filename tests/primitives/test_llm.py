@@ -2,55 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
+from _helpers import make_context, make_provider
 
 from beddel.domain.errors import PrimitiveError
-from beddel.domain.models import DefaultDependencies, ExecutionContext
-from beddel.domain.ports import ILLMProvider
+from beddel.domain.models import ExecutionContext
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.primitives import register_builtins
 from beddel.primitives.llm import LLMPrimitive
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_context(
-    *,
-    llm_provider: ILLMProvider | None = None,
-    step_id: str | None = "step-1",
-) -> ExecutionContext:
-    """Build an ExecutionContext with an optional LLM provider in deps."""
-    return ExecutionContext(
-        workflow_id="wf-test",
-        deps=DefaultDependencies(llm_provider=llm_provider),
-        current_step_id=step_id,
-    )
-
-
-def _make_provider(
-    *,
-    complete_return: dict[str, Any] | None = None,
-    stream_chunks: list[str] | None = None,
-) -> ILLMProvider:
-    """Build a mock ILLMProvider with configurable return values."""
-    provider = MagicMock(spec=ILLMProvider)
-    provider.complete = AsyncMock(
-        return_value=complete_return or {"content": "Hello!"},
-    )
-
-    async def _stream_gen(*_args: Any, **_kwargs: Any) -> AsyncGenerator[str, None]:
-        for chunk in stream_chunks or ["He", "llo", "!"]:
-            yield chunk
-
-    provider.stream = MagicMock(side_effect=_stream_gen)
-    return provider
-
 
 # ---------------------------------------------------------------------------
 # Tests: Single-turn invocation (AC-4)
@@ -61,8 +22,8 @@ class TestSingleTurnInvocation:
     """Tests for non-streaming LLM invocation (AC-4)."""
 
     async def test_complete_called_with_model_and_messages(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "prompt": "Say hi",
@@ -78,8 +39,8 @@ class TestSingleTurnInvocation:
         assert result == {"content": "Hello!"}
 
     async def test_temperature_and_max_tokens_forwarded(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "prompt": "Hello",
@@ -98,8 +59,8 @@ class TestSingleTurnInvocation:
         )
 
     async def test_no_optional_kwargs_when_absent(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"model": "gpt-4o", "prompt": "Hi"}
 
         prim = LLMPrimitive()
@@ -110,8 +71,8 @@ class TestSingleTurnInvocation:
         assert kwargs == {}
 
     async def test_empty_messages_when_no_prompt_or_messages(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"model": "gpt-4o"}
 
         prim = LLMPrimitive()
@@ -129,8 +90,8 @@ class TestPromptConfigKey:
     """Tests for the 'prompt' config key conversion to messages."""
 
     async def test_prompt_converted_to_user_message(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"model": "gpt-4o", "prompt": "What is 2+2?"}
 
         prim = LLMPrimitive()
@@ -141,8 +102,8 @@ class TestPromptConfigKey:
         assert messages == [{"role": "user", "content": "What is 2+2?"}]
 
     async def test_prompt_takes_precedence_over_messages(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "prompt": "Use this",
@@ -166,8 +127,8 @@ class TestMessagesConfigKey:
     """Tests for the 'messages' config key pass-through."""
 
     async def test_messages_passed_through_directly(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         chat_messages = [
             {"role": "system", "content": "You are helpful."},
             {"role": "user", "content": "Hello"},
@@ -190,7 +151,7 @@ class TestMissingLLMProvider:
     """Tests for BEDDEL-PRIM-003 when llm_provider is absent."""
 
     async def test_raises_primitive_error_with_correct_code(self) -> None:
-        ctx = _make_context(llm_provider=None)
+        ctx = make_context(llm_provider=None)
         config = {"model": "gpt-4o", "prompt": "Hi"}
 
         prim = LLMPrimitive()
@@ -200,7 +161,7 @@ class TestMissingLLMProvider:
         assert exc_info.value.code == "BEDDEL-PRIM-003"
 
     async def test_error_message_mentions_llm_provider(self) -> None:
-        ctx = _make_context(llm_provider=None)
+        ctx = make_context(llm_provider=None)
         config = {"model": "gpt-4o", "prompt": "Hi"}
 
         prim = LLMPrimitive()
@@ -210,7 +171,7 @@ class TestMissingLLMProvider:
         assert "llm_provider" in exc_info.value.message
 
     async def test_error_details_contain_step_id_and_primitive_type(self) -> None:
-        ctx = _make_context(llm_provider=None, step_id="my-step")
+        ctx = make_context(llm_provider=None, step_id="my-step")
         config = {"model": "gpt-4o", "prompt": "Hi"}
 
         prim = LLMPrimitive()
@@ -272,8 +233,8 @@ class TestMissingModel:
     """Tests for BEDDEL-PRIM-004 when model config key is absent."""
 
     async def test_raises_primitive_error_with_correct_code(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"prompt": "Hi"}  # no model
 
         prim = LLMPrimitive()
@@ -283,8 +244,8 @@ class TestMissingModel:
         assert exc_info.value.code == "BEDDEL-PRIM-004"
 
     async def test_error_message_mentions_model(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"prompt": "Hi"}
 
         prim = LLMPrimitive()
@@ -294,8 +255,8 @@ class TestMissingModel:
         assert "model" in exc_info.value.message
 
     async def test_error_details_contain_missing_key(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider, step_id="s2")
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider, step_id="s2")
         config = {"prompt": "Hi"}
 
         prim = LLMPrimitive()
@@ -318,8 +279,8 @@ class TestStreamingMode:
     """Tests for streaming LLM invocation (AC-5)."""
 
     async def test_stream_returns_dict_with_stream_key(self) -> None:
-        provider = _make_provider(stream_chunks=["a", "b", "c"])
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider(stream_chunks=["a", "b", "c"])
+        ctx = make_context(llm_provider=provider)
         config = {"model": "gpt-4o", "prompt": "Stream me", "stream": True}
 
         prim = LLMPrimitive()
@@ -329,8 +290,8 @@ class TestStreamingMode:
 
     async def test_stream_yields_expected_chunks(self) -> None:
         chunks = ["He", "llo", " world"]
-        provider = _make_provider(stream_chunks=chunks)
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider(stream_chunks=chunks)
+        ctx = make_context(llm_provider=provider)
         config = {"model": "gpt-4o", "prompt": "Stream me", "stream": True}
 
         prim = LLMPrimitive()
@@ -343,8 +304,8 @@ class TestStreamingMode:
         assert collected == chunks
 
     async def test_stream_calls_provider_stream_not_complete(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"model": "gpt-4o", "prompt": "Stream", "stream": True}
 
         prim = LLMPrimitive()
@@ -357,8 +318,8 @@ class TestStreamingMode:
         provider.complete.assert_not_awaited()
 
     async def test_stream_forwards_kwargs(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "prompt": "Stream",
@@ -378,8 +339,8 @@ class TestStreamingMode:
         )
 
     async def test_non_streaming_when_stream_false(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"model": "gpt-4o", "prompt": "Hi", "stream": False}
 
         prim = LLMPrimitive()

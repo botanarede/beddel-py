@@ -2,55 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
+from _helpers import make_context, make_provider
 
 from beddel.domain.errors import PrimitiveError
-from beddel.domain.models import DefaultDependencies, ExecutionContext
-from beddel.domain.ports import ILLMProvider
+from beddel.domain.models import ExecutionContext
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.primitives import register_builtins
 from beddel.primitives.chat import ChatPrimitive
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_context(
-    *,
-    llm_provider: ILLMProvider | None = None,
-    step_id: str | None = "step-1",
-) -> ExecutionContext:
-    """Build an ExecutionContext with an optional LLM provider in deps."""
-    return ExecutionContext(
-        workflow_id="wf-test",
-        deps=DefaultDependencies(llm_provider=llm_provider),
-        current_step_id=step_id,
-    )
-
-
-def _make_provider(
-    *,
-    complete_return: dict[str, Any] | None = None,
-    stream_chunks: list[str] | None = None,
-) -> ILLMProvider:
-    """Build a mock ILLMProvider with configurable return values."""
-    provider = MagicMock(spec=ILLMProvider)
-    provider.complete = AsyncMock(
-        return_value=complete_return or {"content": "Hello!"},
-    )
-
-    async def _stream_gen(*_args: Any, **_kwargs: Any) -> AsyncGenerator[str, None]:
-        for chunk in stream_chunks or ["He", "llo", "!"]:
-            yield chunk
-
-    provider.stream = MagicMock(side_effect=_stream_gen)
-    return provider
-
 
 # ---------------------------------------------------------------------------
 # Tests: Multi-turn conversation (subtask 3.2)
@@ -61,8 +22,8 @@ class TestMultiTurnConversation:
     """Tests for multi-turn message assembly: system + history + new user message."""
 
     async def test_system_and_messages_sent_to_provider(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "system": "You are helpful",
@@ -88,8 +49,8 @@ class TestMultiTurnConversation:
         assert result == {"content": "Hello!"}
 
     async def test_system_prepended_to_messages(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "system": "Be concise",
@@ -104,8 +65,8 @@ class TestMultiTurnConversation:
         assert messages[0] == {"role": "system", "content": "Be concise"}
 
     async def test_messages_only_without_system(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [
@@ -126,8 +87,8 @@ class TestMultiTurnConversation:
         )
 
     async def test_empty_messages_defaults_to_empty_list(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"model": "gpt-4o"}
 
         prim = ChatPrimitive()
@@ -136,8 +97,8 @@ class TestMultiTurnConversation:
         provider.complete.assert_awaited_once_with("gpt-4o", [])
 
     async def test_temperature_and_max_tokens_forwarded(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [{"role": "user", "content": "Hi"}],
@@ -165,8 +126,8 @@ class TestContextWindowingByMaxMessages:
     """Tests for max_messages trimming: oldest non-system dropped, system preserved."""
 
     async def test_trims_oldest_non_system_when_over_limit(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [
@@ -192,8 +153,8 @@ class TestContextWindowingByMaxMessages:
         ]
 
     async def test_system_messages_always_preserved(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "system": "You are helpful",
@@ -219,8 +180,8 @@ class TestContextWindowingByMaxMessages:
         assert messages[2] == {"role": "user", "content": "msg5"}
 
     async def test_no_trimming_when_under_limit(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [
@@ -239,8 +200,8 @@ class TestContextWindowingByMaxMessages:
         assert len(messages) == 3
 
     async def test_default_max_messages_is_50(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         # 5 messages, well under default 50 — all should be kept
         config = {
             "model": "gpt-4o",
@@ -264,8 +225,8 @@ class TestContextWindowingByMaxContextTokens:
     """Tests for token-based trimming of conversation history."""
 
     async def test_trims_oldest_when_over_token_budget(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         # Each "x" * 40 content => max(1, 10) + 4 = 14 tokens per message
         config = {
             "model": "gpt-4o",
@@ -289,8 +250,8 @@ class TestContextWindowingByMaxContextTokens:
         assert messages[1]["content"] == "z" * 40
 
     async def test_system_tokens_deducted_from_budget(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         # System: "s" * 20 => max(1, 5) + 4 = 9 tokens
         # Each user msg: "u" * 40 => max(1, 10) + 4 = 14 tokens
         # Budget = 23, system costs 9, leaves 14 for non-system (1 message)
@@ -316,8 +277,8 @@ class TestContextWindowingByMaxContextTokens:
         assert messages[1]["content"] == "v" * 40
 
     async def test_no_trimming_when_under_budget(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [
@@ -336,8 +297,8 @@ class TestContextWindowingByMaxContextTokens:
         assert len(messages) == 2
 
     async def test_zero_budget_drops_all_non_system_messages(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "system": "Keep me",
@@ -359,8 +320,8 @@ class TestContextWindowingByMaxContextTokens:
         assert messages[0] == {"role": "system", "content": "Keep me"}
 
     async def test_negative_budget_drops_all_non_system_messages(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         # System message alone exceeds budget
         config = {
             "model": "gpt-4o",
@@ -380,8 +341,8 @@ class TestContextWindowingByMaxContextTokens:
         assert messages[0]["role"] == "system"
 
     async def test_unlimited_when_max_context_tokens_none(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         # Default max_context_tokens is None — no token trimming
         config = {
             "model": "gpt-4o",
@@ -401,8 +362,8 @@ class TestContextWindowingByMaxContextTokens:
 
     async def test_short_messages_estimated_as_nonzero_tokens(self) -> None:
         """Short messages like 'ok' (2 chars) must count as >=1 token, not 0."""
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         # "ok" (2 chars) => max(1, 2 // 4) + 4 = max(1, 0) + 4 = 5 tokens each
         config = {
             "model": "gpt-4o",
@@ -443,8 +404,8 @@ class TestToolCallPairPreservation:
         self,
     ) -> None:
         """AC 1: Dropping a tool response also drops the paired assistant."""
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
 
         # Token costs:
         #   user "x"*40          = 14 tokens
@@ -493,8 +454,8 @@ class TestToolCallPairPreservation:
         self,
     ) -> None:
         """AC 2: Dropping an assistant tool_call drops all tool responses."""
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
 
         # Token costs:
         #   assistant (content=None, tool_calls) = 5 tokens
@@ -532,8 +493,8 @@ class TestToolCallPairPreservation:
 
     async def test_multi_tool_call_pair_all_responses_dropped(self) -> None:
         """AC 2 + multi: Dropping assistant with multiple tool_calls drops all responses."""
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
 
         # Token costs:
         #   assistant (content=None, 2 tool_calls) = 5 tokens
@@ -580,8 +541,8 @@ class TestToolCallPairPreservation:
 
     async def test_non_tool_messages_unaffected_by_pair_logic(self) -> None:
         """AC 5: Non-tool conversations behave identically to pre-change FIFO."""
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
 
         # Token costs (no tool_calls anywhere):
         #   user "x"*40          = 14 tokens
@@ -622,8 +583,8 @@ class TestToolCallPairPreservation:
 
     async def test_system_messages_never_dropped_with_tool_pairs(self) -> None:
         """AC 3: System messages survive even when tool-call pairs are dropped."""
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
 
         # Token costs:
         #   system "You are a bot" (13 chars) = 7 tokens  (always preserved)
@@ -683,8 +644,8 @@ class TestToolCallPairPreservation:
         tool_call and its tool response, the orphaned tool response at
         the start of the retained list must also be dropped.
         """
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
 
         # 5 non-system messages:
         #   [0] user "msg1"
@@ -737,8 +698,8 @@ class TestToolCallPairPreservation:
         but its tool responses land at the start of the retained list,
         all orphaned tool responses must be cleaned up.
         """
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
 
         # 5 non-system messages:
         #   [0] user "msg1"
@@ -789,8 +750,8 @@ class TestToolCallPairPreservation:
     ) -> None:
         """CR-5 fix: max_messages slice keeps assistant(tool_calls) at end but
         its tool responses were sliced off — the orphaned assistant is dropped."""
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
 
         # 4 non-system messages:
         #   [0] user "msg1"
@@ -840,8 +801,8 @@ class TestStreamingMode:
     """Tests for streaming chat invocation returning async generator."""
 
     async def test_stream_returns_dict_with_stream_key(self) -> None:
-        provider = _make_provider(stream_chunks=["a", "b", "c"])
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider(stream_chunks=["a", "b", "c"])
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [{"role": "user", "content": "Stream me"}],
@@ -855,8 +816,8 @@ class TestStreamingMode:
 
     async def test_stream_yields_expected_chunks(self) -> None:
         chunks = ["He", "llo", " world"]
-        provider = _make_provider(stream_chunks=chunks)
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider(stream_chunks=chunks)
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [{"role": "user", "content": "Stream me"}],
@@ -873,8 +834,8 @@ class TestStreamingMode:
         assert collected == chunks
 
     async def test_stream_calls_provider_stream_not_complete(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [{"role": "user", "content": "Stream"}],
@@ -891,8 +852,8 @@ class TestStreamingMode:
         provider.complete.assert_not_awaited()
 
     async def test_stream_forwards_kwargs(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [{"role": "user", "content": "Stream"}],
@@ -912,8 +873,8 @@ class TestStreamingMode:
         )
 
     async def test_non_streaming_when_stream_false(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [{"role": "user", "content": "Hi"}],
@@ -936,7 +897,7 @@ class TestMissingProvider:
     """Tests for BEDDEL-PRIM-003 when llm_provider is absent or invalid."""
 
     async def test_raises_primitive_error_with_correct_code(self) -> None:
-        ctx = _make_context(llm_provider=None)
+        ctx = make_context(llm_provider=None)
         config = {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hi"}]}
 
         prim = ChatPrimitive()
@@ -946,7 +907,7 @@ class TestMissingProvider:
         assert exc_info.value.code == "BEDDEL-PRIM-003"
 
     async def test_error_message_mentions_llm_provider(self) -> None:
-        ctx = _make_context(llm_provider=None)
+        ctx = make_context(llm_provider=None)
         config = {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hi"}]}
 
         prim = ChatPrimitive()
@@ -956,7 +917,7 @@ class TestMissingProvider:
         assert "llm_provider" in exc_info.value.message
 
     async def test_error_details_contain_step_id_and_primitive_type(self) -> None:
-        ctx = _make_context(llm_provider=None, step_id="my-step")
+        ctx = make_context(llm_provider=None, step_id="my-step")
         config = {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hi"}]}
 
         prim = ChatPrimitive()
@@ -993,8 +954,8 @@ class TestMissingModel:
     """Tests for BEDDEL-PRIM-004 when model config key is absent."""
 
     async def test_raises_primitive_error_with_correct_code(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"messages": [{"role": "user", "content": "Hi"}]}  # no model
 
         prim = ChatPrimitive()
@@ -1004,8 +965,8 @@ class TestMissingModel:
         assert exc_info.value.code == "BEDDEL-PRIM-004"
 
     async def test_error_message_mentions_model(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {"messages": [{"role": "user", "content": "Hi"}]}
 
         prim = ChatPrimitive()
@@ -1015,8 +976,8 @@ class TestMissingModel:
         assert "model" in exc_info.value.message
 
     async def test_error_details_contain_missing_key(self) -> None:
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider, step_id="s2")
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider, step_id="s2")
         config = {"messages": [{"role": "user", "content": "Hi"}]}
 
         prim = ChatPrimitive()
@@ -1063,8 +1024,8 @@ class TestMessageValidation:
 
     async def test_chat_raises_on_message_missing_role(self) -> None:
         """ChatPrimitive raises PrimitiveError when a message lacks 'role'."""
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [{"content": "hi"}],  # missing role
@@ -1078,8 +1039,8 @@ class TestMessageValidation:
 
     async def test_chat_raises_on_message_missing_content(self) -> None:
         """ChatPrimitive raises PrimitiveError when a message lacks 'content'."""
-        provider = _make_provider()
-        ctx = _make_context(llm_provider=provider)
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
         config = {
             "model": "gpt-4o",
             "messages": [{"role": "user"}],  # missing content
