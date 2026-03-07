@@ -1536,3 +1536,36 @@ class TestExecutorPopulatesDeps:
         manager = ctx.deps.lifecycle_hooks
         assert manager is not None
         assert mock_hook in manager._hooks  # type: ignore[union-attr]
+
+
+class TestExecutorZeroAdapterImports:
+    """Verify executor.py has zero imports from beddel.adapters (AC: 3, 8b)."""
+
+    def test_no_adapter_imports_in_executor(self) -> None:
+        """executor.py must not import from beddel.adapters (hexagonal rule)."""
+        import ast
+        from pathlib import Path
+
+        executor_path = (
+            Path(__file__).resolve().parents[2] / "src" / "beddel" / "domain" / "executor.py"
+        )
+        source = executor_path.read_text()
+        tree = ast.parse(source)
+
+        adapter_imports: list[str] = []
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and "beddel.adapters" in node.module
+            ):
+                adapter_imports.append(f"from {node.module} import ...")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if "beddel.adapters" in alias.name:
+                        adapter_imports.append(f"import {alias.name}")
+
+        assert adapter_imports == [], (
+            f"executor.py must not import from beddel.adapters (hexagonal architecture). "
+            f"Found: {adapter_imports}"
+        )
