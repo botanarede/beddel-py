@@ -24,10 +24,13 @@ Each yielded dict has the shape::
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncGenerator
 from typing import final
 
+from beddel.domain.errors import BeddelError
 from beddel.domain.models import BeddelEvent
+from beddel.error_codes import INTERNAL_SERVER_ERROR
 
 __all__ = ["BeddelSSEAdapter"]
 
@@ -53,6 +56,14 @@ class BeddelSSEAdapter:
     ) -> AsyncGenerator[dict[str, str], None]:
         """Convert a BeddelEvent stream to SSE-compatible dicts.
 
+        Iterates over the event stream and yields SSE-formatted dicts. If an
+        exception occurs during iteration, emits a structured ``error`` event
+        followed by a ``done`` event for clean stream termination.
+
+        For :class:`~beddel.domain.errors.BeddelError` subclasses the error
+        code is taken from ``exc.code``; for all other exceptions the
+        ``INTERNAL_SERVER_ERROR`` code from the centralized registry is used.
+
         Args:
             events: Async generator yielding BeddelEvent instances.
 
@@ -66,11 +77,24 @@ class BeddelSSEAdapter:
                 # sse_dict == {"event": "text_chunk", "data": "{...}"}
                 ...
         """
-        async for event in events:
-            json_str = event.model_dump_json()
-            # W3C SSE: split multi-line JSON and join with \ndata: so
-            # sse-starlette emits each line with its own data: prefix.
-            lines = json_str.split("\n")
-            data = "\ndata: ".join(lines)
+        try:
+            async for event in events:
+                json_str = event.model_dump_json()
+                # W3C SSE: split multi-line JSON and join with \ndata: so
+                # sse-starlette emits each line with its own data: prefix.
+                lines = json_str.split("\n")
+                data = "\ndata: ".join(lines)
 
-            yield {"event": event.event_type.value, "data": data}
+                yield {"event": event.event_type.value, "data": data}
+        except BeddelError as exc:
+            yield {
+                "event": "error",
+                "data": json.dumps({"code": exc.code, "message": str(exc)}),
+            }
+            yield {"event": "done", "data": ""}
+        except Exception as exc:
+            yield {
+                "event": "error",
+                "data": json.dumps({"code": INTERNAL_SERVER_ERROR, "message": str(exc)}),
+            }
+            yield {"event": "done", "data": ""}

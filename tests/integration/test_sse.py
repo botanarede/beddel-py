@@ -6,7 +6,9 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from beddel.domain.errors import BeddelError
 from beddel.domain.models import BeddelEvent, EventType
+from beddel.error_codes import INTERNAL_SERVER_ERROR
 from beddel.integrations import BeddelSSEAdapter
 from beddel.integrations.sse import BeddelSSEAdapter as DirectSSEAdapter
 
@@ -259,3 +261,78 @@ class TestPackageExport:
     def test_import_from_integrations_package(self) -> None:
         """BeddelSSEAdapter is re-exported from beddel.integrations."""
         assert BeddelSSEAdapter is DirectSSEAdapter
+
+
+# ---------------------------------------------------------------------------
+# Error-stream helpers (Story 3.6, Task 1)
+# ---------------------------------------------------------------------------
+
+
+async def _error_stream_beddel() -> AsyncGenerator[BeddelEvent, None]:
+    """Yield one event then raise BeddelError."""
+    yield _make_event(event_type=EventType.STEP_START)
+    raise BeddelError("BEDDEL-TEST-001", "test error")
+
+
+async def _error_stream_runtime() -> AsyncGenerator[BeddelEvent, None]:
+    """Yield one event then raise RuntimeError."""
+    yield _make_event(event_type=EventType.STEP_START)
+    raise RuntimeError("unexpected failure")
+
+
+# ---------------------------------------------------------------------------
+# SSE error protocol (Story 3.6, Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestSSEErrorProtocol:
+    """Verify SSE error event protocol for stream-level exceptions."""
+
+    async def test_beddel_error_emits_error_event_with_exc_code(self) -> None:
+        """BeddelError during iteration emits error event with exc.code."""
+        results = await _collect(BeddelSSEAdapter.stream_events(_error_stream_beddel()))
+        error_events = [r for r in results if r["event"] == "error"]
+        assert len(error_events) == 1
+        payload = json.loads(error_events[0]["data"])
+        assert payload["code"] == "BEDDEL-TEST-001"
+
+    async def test_runtime_error_emits_error_event_with_internal_code(self) -> None:
+        """Generic exception emits error event with INTERNAL_SERVER_ERROR code."""
+        results = await _collect(BeddelSSEAdapter.stream_events(_error_stream_runtime()))
+        error_events = [r for r in results if r["event"] == "error"]
+        assert len(error_events) == 1
+        payload = json.loads(error_events[0]["data"])
+        assert payload["code"] == INTERNAL_SERVER_ERROR
+
+    async def test_done_event_follows_error_event(self) -> None:
+        """After error event, a done event is emitted for clean termination."""
+        results = await _collect(BeddelSSEAdapter.stream_events(_error_stream_beddel()))
+        # Last two events should be error → done
+        assert len(results) >= 2
+        assert results[-2]["event"] == "error"
+        assert results[-1]["event"] == "done"
+        assert results[-1]["data"] == ""
+
+    async def test_error_event_data_is_valid_json_with_code_and_message(self) -> None:
+        """Error event data is valid JSON containing code and message keys."""
+        results = await _collect(BeddelSSEAdapter.stream_events(_error_stream_runtime()))
+        error_events = [r for r in results if r["event"] == "error"]
+        assert len(error_events) == 1
+        payload = json.loads(error_events[0]["data"])
+        assert "code" in payload
+        assert "message" in payload
+        assert isinstance(payload["code"], str)
+        assert isinstance(payload["message"], str)
+
+    async def test_normal_stream_no_error_events(self) -> None:
+        """A stream without errors produces no error or done events (regression)."""
+        events = [
+            _make_event(event_type=EventType.WORKFLOW_START, step_id=None),
+            _make_event(event_type=EventType.TEXT_CHUNK),
+            _make_event(event_type=EventType.WORKFLOW_END, step_id=None),
+        ]
+        results = await _collect(BeddelSSEAdapter.stream_events(_multi_event_stream(events)))
+        event_types = [r["event"] for r in results]
+        assert "error" not in event_types
+        assert "done" not in event_types
+        assert len(results) == 3
