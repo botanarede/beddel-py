@@ -1291,7 +1291,6 @@ class TestDelegateStrategy:
         mock_provider = AsyncMock(spec=ILLMProvider)
         real_deps = DefaultDependencies(
             llm_provider=mock_provider,
-            lifecycle_hooks=[],
             delegate_model="custom-model",
         )
         mock_deps_cls.return_value = real_deps
@@ -1328,24 +1327,25 @@ class TestExecutionDependencies:
 
         # Assert
         assert deps.llm_provider is None
-        assert deps.lifecycle_hooks == []
+        assert deps.lifecycle_hooks is None
 
     def test_default_dependencies_stores_values(self) -> None:
         # Arrange
         from beddel.domain.models import DefaultDependencies
+        from beddel.domain.ports import IHookManager
 
         mock_provider = MagicMock(spec=ILLMProvider)
-        mock_hook = MagicMock(spec=ILifecycleHook)
+        mock_manager = MagicMock(spec=IHookManager)
 
         # Act
         deps = DefaultDependencies(
             llm_provider=mock_provider,
-            lifecycle_hooks=[mock_hook],
+            lifecycle_hooks=mock_manager,
         )
 
         # Assert
         assert deps.llm_provider is mock_provider
-        assert deps.lifecycle_hooks == [mock_hook]
+        assert deps.lifecycle_hooks is mock_manager
 
     def test_execution_context_has_deps_attribute(self) -> None:
         # Arrange / Act
@@ -1356,7 +1356,7 @@ class TestExecutionDependencies:
         # Assert
         assert isinstance(context.deps, DefaultDependencies)
         assert context.deps.llm_provider is None
-        assert context.deps.lifecycle_hooks == []
+        assert context.deps.lifecycle_hooks is None
 
     def test_default_dependencies_new_keys_default_none(self) -> None:
         """New framework-owned dependency properties default to None."""
@@ -1473,13 +1473,13 @@ class TestLifecycleHooksDepsInjection:
         assert len(captured) == 1
         ctx = captured[0]
         assert isinstance(ctx.deps, DefaultDependencies)
-        # deps.lifecycle_hooks is [manager]; the original hook lives inside the manager
-        assert len(ctx.deps.lifecycle_hooks) == 1
-        manager = ctx.deps.lifecycle_hooks[0]
+        # deps.lifecycle_hooks is the manager directly; the original hook lives inside
+        manager = ctx.deps.lifecycle_hooks
+        assert manager is not None
         assert hook in manager._hooks  # type: ignore[union-attr]
 
     async def test_empty_hooks_in_deps_when_none_provided(self) -> None:
-        """When no hooks are passed, context.deps.lifecycle_hooks contains an empty manager."""
+        """When no hooks are passed, context.deps.lifecycle_hooks is the empty manager."""
         registry, captured = _capture_registry()
 
         step = _make_step("s1", primitive="test-prim")
@@ -1491,9 +1491,9 @@ class TestLifecycleHooksDepsInjection:
         assert len(captured) == 1
         ctx = captured[0]
         assert isinstance(ctx.deps, DefaultDependencies)
-        # deps.lifecycle_hooks is [manager] where manager wraps zero hooks
-        assert len(ctx.deps.lifecycle_hooks) == 1
-        manager = ctx.deps.lifecycle_hooks[0]
+        # deps.lifecycle_hooks is the manager wrapping zero hooks
+        manager = ctx.deps.lifecycle_hooks
+        assert manager is not None
         assert manager._hooks == []  # type: ignore[union-attr]
 
 
@@ -1522,7 +1522,7 @@ class TestExecutorPopulatesDeps:
         # deps populated correctly
         assert isinstance(ctx.deps, DefaultDependencies)
         assert ctx.deps.llm_provider is mock_provider
-        # lifecycle_hooks is [manager]; the original hook lives inside the manager
-        assert len(ctx.deps.lifecycle_hooks) == 1
-        manager = ctx.deps.lifecycle_hooks[0]
+        # lifecycle_hooks is the manager directly; the original hook lives inside
+        manager = ctx.deps.lifecycle_hooks
+        assert manager is not None
         assert mock_hook in manager._hooks  # type: ignore[union-attr]

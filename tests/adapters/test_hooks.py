@@ -169,14 +169,14 @@ class TestAddRemoveHooks:
     async def test_add_hook_registers_handler(self) -> None:
         manager = LifecycleHookManager()
         hook = _RecordingHook()
-        manager.add_hook(hook)
+        await manager.add_hook(hook)
         await manager.on_step_start("s1", "llm")
         assert len(hook.calls) == 1
 
     async def test_remove_hook_unregisters_handler(self) -> None:
         hook = _RecordingHook()
         manager = LifecycleHookManager([hook])
-        manager.remove_hook(hook)
+        await manager.remove_hook(hook)
         await manager.on_step_start("s1", "llm")
         assert len(hook.calls) == 0
 
@@ -186,11 +186,11 @@ class TestAddRemoveHooks:
         await manager.on_step_end("s1", "done")
         assert len(hook.calls) == 1
 
-    def test_remove_hook_with_non_registered_hook_no_error(self) -> None:
+    async def test_remove_hook_with_non_registered_hook_no_error(self) -> None:
         """Removing a hook that was never added does not raise."""
         manager = LifecycleHookManager()
         unregistered = _RecordingHook()
-        manager.remove_hook(unregistered)  # should not raise
+        await manager.remove_hook(unregistered)  # should not raise
 
 
 # ---------------------------------------------------------------------------

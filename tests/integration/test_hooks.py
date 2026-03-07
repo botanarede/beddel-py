@@ -124,7 +124,7 @@ class _ContextCapturePrimitive(IPrimitive):
     """Mock primitive that captures context.deps.lifecycle_hooks during execution."""
 
     def __init__(self) -> None:
-        self.captured_hooks: list[Any] | None = None
+        self.captured_hooks: Any = None
 
     async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
         """Capture the lifecycle_hooks from context.deps."""
@@ -477,7 +477,7 @@ class TestLifecycleHooksDI:
     """Verify context.deps.lifecycle_hooks returns the LifecycleHookManager instance."""
 
     async def test_lifecycle_hooks_contains_hook_manager(self) -> None:
-        """context.deps.lifecycle_hooks list contains a LifecycleHookManager instance."""
+        """context.deps.lifecycle_hooks is a LifecycleHookManager instance."""
         capture_prim = _ContextCapturePrimitive()
         registry = PrimitiveRegistry()
         registry.register("llm", capture_prim)
@@ -488,11 +488,10 @@ class TestLifecycleHooksDI:
         await executor.execute(workflow, inputs={})
 
         assert capture_prim.captured_hooks is not None
-        assert len(capture_prim.captured_hooks) == 1
-        assert isinstance(capture_prim.captured_hooks[0], LifecycleHookManager)
+        assert isinstance(capture_prim.captured_hooks, LifecycleHookManager)
 
     async def test_lifecycle_hooks_is_not_raw_list_of_user_hooks(self) -> None:
-        """context.deps.lifecycle_hooks wraps user hooks in a manager, not raw list."""
+        """context.deps.lifecycle_hooks is the manager, not a raw user hook."""
         capture_prim = _ContextCapturePrimitive()
         registry = PrimitiveRegistry()
         registry.register("llm", capture_prim)
@@ -502,10 +501,9 @@ class TestLifecycleHooksDI:
 
         await executor.execute(workflow, inputs={})
 
-        # The list should NOT contain the raw _RecordingHook directly
+        # The value should be a LifecycleHookManager, not the raw _RecordingHook
         assert capture_prim.captured_hooks is not None
-        for item in capture_prim.captured_hooks:
-            assert not isinstance(item, _RecordingHook)
+        assert not isinstance(capture_prim.captured_hooks, _RecordingHook)
 
 
 # ---------------------------------------------------------------------------

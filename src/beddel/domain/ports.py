@@ -66,8 +66,8 @@ class ExecutionDependencies(Protocol):
         ...
 
     @property
-    def lifecycle_hooks(self) -> list[ILifecycleHook]:
-        """Lifecycle hooks to notify during workflow execution."""
+    def lifecycle_hooks(self) -> IHookManager | None:
+        """Hook manager for lifecycle notifications, or ``None``."""
         ...
 
     @property

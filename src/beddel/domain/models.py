@@ -17,7 +17,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from beddel.domain.ports import IExecutionStrategy, ILifecycleHook, ILLMProvider, ITracer
+    from beddel.domain.ports import IExecutionStrategy, IHookManager, ILLMProvider, ITracer
     from beddel.domain.registry import PrimitiveRegistry
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -136,8 +136,8 @@ class DefaultDependencies:
 
     Args:
         llm_provider: The LLM provider adapter, or ``None`` if not configured.
-        lifecycle_hooks: Lifecycle hooks to notify during execution.
-            Defaults to an empty list when ``None`` is passed.
+        lifecycle_hooks: Hook manager for lifecycle notifications,
+            or ``None`` if not configured.
         execution_strategy: Optional execution strategy controlling how
             workflow steps are iterated.  Defaults to ``None``, which
             causes the executor to fall back to :class:`SequentialStrategy`.
@@ -166,7 +166,7 @@ class DefaultDependencies:
     def __init__(
         self,
         llm_provider: ILLMProvider | None = None,
-        lifecycle_hooks: list[ILifecycleHook] | None = None,
+        lifecycle_hooks: IHookManager | None = None,
         execution_strategy: IExecutionStrategy | None = None,
         delegate_model: str = "gpt-4o-mini",
         workflow_loader: Callable[[str], Workflow] | None = None,
@@ -175,7 +175,7 @@ class DefaultDependencies:
         tracer: ITracer[Any] | None = None,
     ) -> None:
         self._llm_provider = llm_provider
-        self._lifecycle_hooks = lifecycle_hooks if lifecycle_hooks is not None else []
+        self._lifecycle_hooks = lifecycle_hooks
         self._execution_strategy = execution_strategy
         self._delegate_model = delegate_model
         self._workflow_loader = workflow_loader
@@ -189,8 +189,8 @@ class DefaultDependencies:
         return self._llm_provider
 
     @property
-    def lifecycle_hooks(self) -> list[ILifecycleHook]:
-        """Lifecycle hooks to notify during workflow execution."""
+    def lifecycle_hooks(self) -> IHookManager | None:
+        """Hook manager for lifecycle notifications, or ``None``."""
         return self._lifecycle_hooks
 
     @property

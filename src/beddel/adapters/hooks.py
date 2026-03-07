@@ -1,6 +1,6 @@
 """Lifecycle hook manager adapter — fan-out dispatcher for workflow hooks.
 
-Implements :class:`~beddel.domain.ports.ILifecycleHook` and dispatches
+Implements :class:`~beddel.domain.ports.IHookManager` and dispatches
 each lifecycle event to all registered hook handlers.  Each dispatch is
 wrapped in ``try/except`` so a misbehaving hook never breaks workflow
 execution.
@@ -16,17 +16,17 @@ import contextlib
 import logging
 from typing import Any
 
-from beddel.domain.ports import ILifecycleHook
+from beddel.domain.ports import IHookManager, ILifecycleHook
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["LifecycleHookManager"]
 
 
-class LifecycleHookManager(ILifecycleHook):
+class LifecycleHookManager(IHookManager):
     """Adapter that dispatches lifecycle events to multiple registered hooks.
 
-    Implements :class:`~beddel.domain.ports.ILifecycleHook` and fans out
+    Implements :class:`~beddel.domain.ports.IHookManager` and fans out
     each event to all registered hook handlers.  Each dispatch is wrapped
     in ``try/except`` — a misbehaving hook never breaks workflow execution.
 
@@ -40,14 +40,14 @@ class LifecycleHookManager(ILifecycleHook):
     Example::
 
         manager = LifecycleHookManager([my_hook])
-        manager.add_hook(another_hook)
+        await manager.add_hook(another_hook)
         await manager.on_workflow_start("wf-1", {"key": "value"})
     """
 
     def __init__(self, hooks: list[ILifecycleHook] | None = None) -> None:
         self._hooks: list[ILifecycleHook] = list(hooks) if hooks else []
 
-    def add_hook(self, hook: ILifecycleHook) -> None:
+    async def add_hook(self, hook: ILifecycleHook) -> None:
         """Register a new hook handler.
 
         Args:
@@ -55,7 +55,7 @@ class LifecycleHookManager(ILifecycleHook):
         """
         self._hooks.append(hook)
 
-    def remove_hook(self, hook: ILifecycleHook) -> None:
+    async def remove_hook(self, hook: ILifecycleHook) -> None:
         """Unregister a hook handler.
 
         Silently ignores the call if the hook is not currently registered.

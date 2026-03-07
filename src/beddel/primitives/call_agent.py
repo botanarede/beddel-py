@@ -113,10 +113,11 @@ class CallAgentPrimitive(IPrimitive):
             ),
         )
 
+        hook_manager = context.deps.lifecycle_hooks
         child_executor = WorkflowExecutor(
             registry=registry,
             provider=context.deps.llm_provider,
-            hooks=context.deps.lifecycle_hooks,
+            hooks=[hook_manager] if hook_manager is not None else None,
         )
         strategy = SequentialStrategy()
         # NOTE: Accessing _execute_step directly is a known coupling point.

@@ -29,6 +29,7 @@ from beddel.domain.models import (
 )
 from beddel.domain.ports import (
     IExecutionStrategy,
+    IHookManager,
     ILifecycleHook,
     ILLMProvider,
     IPrimitive,
@@ -133,7 +134,7 @@ class WorkflowExecutor:
 
         self._registry = registry
         self._provider = provider
-        self._hook_manager: ILifecycleHook = LifecycleHookManager(hooks)
+        self._hook_manager: IHookManager = LifecycleHookManager(hooks)
         self._tracer = tracer
         self._resolver = VariableResolver()
 
@@ -180,7 +181,7 @@ class WorkflowExecutor:
 
         context.deps = DefaultDependencies(
             llm_provider=self._provider,
-            lifecycle_hooks=[self._hook_manager],
+            lifecycle_hooks=self._hook_manager,
             execution_strategy=execution_strategy,
             tracer=self._tracer,
         )
@@ -315,7 +316,7 @@ class WorkflowExecutor:
                 )
 
         collector = _Collector()
-        self._hook_manager.add_hook(collector)  # type: ignore[attr-defined]
+        await self._hook_manager.add_hook(collector)
 
         try:
             effective_inputs = inputs or {}
@@ -325,7 +326,7 @@ class WorkflowExecutor:
             )
             context.deps = DefaultDependencies(
                 llm_provider=self._provider,
-                lifecycle_hooks=[self._hook_manager],
+                lifecycle_hooks=self._hook_manager,
                 execution_strategy=execution_strategy,
                 tracer=self._tracer,
             )
@@ -382,7 +383,7 @@ class WorkflowExecutor:
                     except Exception:
                         logger.warning("Tracing end_span failed (ignored)", exc_info=True)
         finally:
-            self._hook_manager.remove_hook(collector)  # type: ignore[attr-defined]
+            await self._hook_manager.remove_hook(collector)
 
     async def _execute_step(self, step: Step, context: ExecutionContext) -> Any:
         """Execute a single workflow step, with optional conditional branching.

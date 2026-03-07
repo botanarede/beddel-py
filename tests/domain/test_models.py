@@ -382,12 +382,45 @@ class TestDefaultDependencies:
         deps = DefaultDependencies(tracer=NoOpTracer())
 
         assert deps.llm_provider is None
-        assert deps.lifecycle_hooks == []
+        assert deps.lifecycle_hooks is None
         assert deps.execution_strategy is None
         assert deps.delegate_model == "gpt-4o-mini"
         assert deps.workflow_loader is None
         assert deps.registry is None
         assert deps.tool_registry is None
+
+    def test_lifecycle_hooks_accepts_ihookmanager(self) -> None:
+        """DefaultDependencies accepts IHookManager and returns it from property."""
+        from beddel.domain.models import DefaultDependencies
+        from beddel.domain.ports import IHookManager, ILifecycleHook
+
+        class FakeHookManager(IHookManager):
+            async def add_hook(self, hook: ILifecycleHook) -> None:
+                pass
+
+            async def remove_hook(self, hook: ILifecycleHook) -> None:
+                pass
+
+        manager = FakeHookManager()
+        deps = DefaultDependencies(lifecycle_hooks=manager)
+
+        assert deps.lifecycle_hooks is manager
+
+    def test_lifecycle_hooks_defaults_to_none(self) -> None:
+        """DefaultDependencies without lifecycle_hooks returns None."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+
+        assert deps.lifecycle_hooks is None
+
+    def test_lifecycle_hooks_explicit_none(self) -> None:
+        """DefaultDependencies(lifecycle_hooks=None) stores None."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies(lifecycle_hooks=None)
+
+        assert deps.lifecycle_hooks is None
 
 
 # ---------------------------------------------------------------------------
