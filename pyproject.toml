@@ -54,6 +54,8 @@ all = [
 ]
 dev = [
     "beddel[adapters]",
+    "beddel[fastapi]",
+    "httpx",
     "opentelemetry-sdk>=1.0",
     "pytest",
     "pytest-asyncio",
