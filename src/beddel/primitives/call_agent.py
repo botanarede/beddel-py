@@ -14,6 +14,7 @@ from typing import Any
 # SequentialStrategy is imported directly (not via IExecutionStrategy port)
 # because the call-agent primitive always runs nested workflows sequentially.
 # This is a deliberate coupling — the primitive owns the child execution strategy.
+from beddel.constants import CALL_DEPTH_KEY
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.executor import SequentialStrategy, WorkflowExecutor
 from beddel.domain.models import DefaultDependencies, ExecutionContext, Workflow
@@ -83,7 +84,7 @@ class CallAgentPrimitive(IPrimitive):
         registry = self._get_registry(context)
 
         max_depth = config.get("max_depth", _DEFAULT_MAX_DEPTH)
-        current_depth = context.metadata.get("_call_depth", 0)
+        current_depth = context.metadata.get(CALL_DEPTH_KEY, 0)
         if current_depth >= max_depth:
             raise PrimitiveError(
                 code=PRIM_MAX_DEPTH,
@@ -109,7 +110,7 @@ class CallAgentPrimitive(IPrimitive):
         child_context = ExecutionContext(
             workflow_id=workflow.id,
             inputs=resolved_inputs,
-            metadata={"_call_depth": current_depth + 1},
+            metadata={CALL_DEPTH_KEY: current_depth + 1},
             deps=DefaultDependencies(
                 llm_provider=context.deps.llm_provider,
                 lifecycle_hooks=context.deps.lifecycle_hooks,

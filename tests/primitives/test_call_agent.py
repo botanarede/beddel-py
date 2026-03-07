@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from beddel.constants import CALL_DEPTH_KEY
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import (
     DefaultDependencies,
@@ -209,7 +210,7 @@ class TestContextPassing:
         await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
 
         _, child_ctx = recorder.calls[0]
-        assert child_ctx.metadata["_call_depth"] == 1
+        assert child_ctx.metadata[CALL_DEPTH_KEY] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +228,7 @@ class TestMaxDepthEnforcement:
         ctx = _make_context(
             workflow_loader=loader,
             registry=registry,
-            metadata={"_call_depth": 5},
+            metadata={CALL_DEPTH_KEY: 5},
         )
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-200") as exc_info:
@@ -242,7 +243,7 @@ class TestMaxDepthEnforcement:
         ctx = _make_context(
             workflow_loader=loader,
             registry=registry,
-            metadata={"_call_depth": 6},
+            metadata={CALL_DEPTH_KEY: 6},
         )
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-200") as exc_info:
@@ -257,7 +258,7 @@ class TestMaxDepthEnforcement:
         ctx = _make_context(
             workflow_loader=loader,
             registry=registry,
-            metadata={"_call_depth": 5},
+            metadata={CALL_DEPTH_KEY: 5},
         )
 
         with pytest.raises(PrimitiveError) as exc_info:
@@ -280,7 +281,7 @@ class TestMaxDepthEnforcement:
         ctx = _make_context(
             workflow_loader=loader,
             registry=registry,
-            metadata={"_call_depth": 4},
+            metadata={CALL_DEPTH_KEY: 4},
         )
 
         result = await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
@@ -400,7 +401,7 @@ class TestCustomMaxDepth:
         ctx = _make_context(
             workflow_loader=loader,
             registry=registry,
-            metadata={"_call_depth": 7},
+            metadata={CALL_DEPTH_KEY: 7},
         )
 
         result = await CallAgentPrimitive().execute({"workflow": "wf", "max_depth": 10}, ctx)
@@ -414,7 +415,7 @@ class TestCustomMaxDepth:
         ctx = _make_context(
             workflow_loader=loader,
             registry=registry,
-            metadata={"_call_depth": 2},
+            metadata={CALL_DEPTH_KEY: 2},
         )
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-200"):
@@ -442,7 +443,7 @@ class TestDepthTracking:
         await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
 
         _, child_ctx = recorder.calls[0]
-        assert child_ctx.metadata["_call_depth"] == 1
+        assert child_ctx.metadata[CALL_DEPTH_KEY] == 1
 
     async def test_depth_increments_from_parent(self) -> None:
         """Verify child _call_depth is parent + 1."""
@@ -455,13 +456,13 @@ class TestDepthTracking:
         ctx = _make_context(
             workflow_loader=loader,
             registry=registry,
-            metadata={"_call_depth": 3},
+            metadata={CALL_DEPTH_KEY: 3},
         )
 
         await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
 
         _, child_ctx = recorder.calls[0]
-        assert child_ctx.metadata["_call_depth"] == 4
+        assert child_ctx.metadata[CALL_DEPTH_KEY] == 4
 
     async def test_depth_propagated_to_child_context_metadata(self) -> None:
         """Verify child_context.metadata['_call_depth'] == parent + 1."""
@@ -474,13 +475,13 @@ class TestDepthTracking:
         ctx = _make_context(
             workflow_loader=loader,
             registry=registry,
-            metadata={"_call_depth": 2},
+            metadata={CALL_DEPTH_KEY: 2},
         )
 
         await CallAgentPrimitive().execute({"workflow": "wf"}, ctx)
 
         _, child_ctx = recorder.calls[0]
-        assert child_ctx.metadata["_call_depth"] == 3
+        assert child_ctx.metadata[CALL_DEPTH_KEY] == 3
 
 
 # ---------------------------------------------------------------------------
