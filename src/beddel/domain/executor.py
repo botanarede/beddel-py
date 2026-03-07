@@ -256,7 +256,13 @@ class WorkflowExecutor:
         events: list[BeddelEvent] = []
 
         class _Collector(ILifecycleHook):
-            """Internal hook that buffers events for the generator."""
+            """Internal hook that buffers events for the generator.
+
+            Note: ``on_decision`` is intentionally not overridden — decision
+            events are not surfaced in the SSE stream.  When Gap #19
+            (decision capture, Epic 5) lands, add an ``on_decision``
+            override here to emit a ``DECISION`` BeddelEvent.
+            """
 
             async def on_workflow_start(self, workflow_id: str, inputs: dict[str, Any]) -> None:
                 events.append(

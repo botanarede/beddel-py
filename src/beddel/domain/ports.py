@@ -333,8 +333,15 @@ class IHookManager(ILifecycleHook):
     collection of hooks and fan-out lifecycle notifications to all
     registered hooks.
 
-    All methods have default no-op implementations — subclasses override
-    only the behaviour they need.
+    All methods have default no-op implementations (empty body returns
+    ``None``) — subclasses override only the behaviour they need.
+    ``IHookManager()`` is therefore a valid null-object instance used as
+    the executor fallback when no hook manager is injected.
+
+    Registration methods (``add_hook``/``remove_hook``) are ``async`` for
+    uniformity with the lifecycle callbacks and to allow future
+    concurrency-safe implementations (e.g. lock-protected registries).
+    Implementations MUST keep registration non-blocking.
 
     Example::
 
