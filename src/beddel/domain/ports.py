@@ -10,6 +10,7 @@ Ports defined here:
 - :class:`IPrimitive` — contract for all workflow primitives.
 - :class:`ILLMProvider` — contract for LLM provider adapters.
 - :class:`ILifecycleHook` — contract for workflow lifecycle hooks.
+- :class:`IHookManager` — contract for hook management (extends ILifecycleHook).
 - :class:`IContextReducer` — contract for pluggable context reduction strategies.
 - :class:`ITracer` — contract for observability tracing.
 - :class:`NoOpTracer` — no-op tracer for testing and explicit opt-out.
@@ -34,6 +35,7 @@ __all__ = [
     "ExecutionDependencies",
     "IContextReducer",
     "IExecutionStrategy",
+    "IHookManager",
     "ILifecycleHook",
     "ILLMProvider",
     "IPrimitive",
@@ -307,6 +309,58 @@ class ILifecycleHook:
             step_id: Identifier of the step being retried.
             attempt: The retry attempt number (1-based).
             error: The exception that triggered the retry.
+        """
+
+    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+        """Called when the executor records a decision.
+
+        Prepares the hook surface for Gap #19 (decision capture in Epic 5).
+        Implementations can log, audit, or replay decisions made during
+        workflow execution.
+
+        Args:
+            decision: The decision that was made.
+            alternatives: Alternative options that were considered.
+            rationale: Explanation for why this decision was chosen.
+        """
+
+
+class IHookManager(ILifecycleHook):
+    """Contract for hook management, extending lifecycle hook notifications.
+
+    Adds hook registration and removal on top of the lifecycle callbacks
+    defined by :class:`ILifecycleHook`.  Implementations manage a
+    collection of hooks and fan-out lifecycle notifications to all
+    registered hooks.
+
+    All methods have default no-op implementations — subclasses override
+    only the behaviour they need.
+
+    Example::
+
+        class CompositeHookManager(IHookManager):
+            def __init__(self) -> None:
+                self._hooks: list[ILifecycleHook] = []
+
+            async def add_hook(self, hook: ILifecycleHook) -> None:
+                self._hooks.append(hook)
+
+            async def remove_hook(self, hook: ILifecycleHook) -> None:
+                self._hooks.remove(hook)
+    """
+
+    async def add_hook(self, hook: ILifecycleHook) -> None:
+        """Register a lifecycle hook.
+
+        Args:
+            hook: The lifecycle hook to add.
+        """
+
+    async def remove_hook(self, hook: ILifecycleHook) -> None:
+        """Remove a previously registered lifecycle hook.
+
+        Args:
+            hook: The lifecycle hook to remove.
         """
 
 

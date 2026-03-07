@@ -25,6 +25,8 @@ from beddel.domain.models import (
 from beddel.domain.parser import WorkflowParser
 from beddel.domain.ports import (
     ExecutionDependencies,
+    IContextReducer,
+    IHookManager,
     ILifecycleHook,
     ILLMProvider,
     IPrimitive,
@@ -43,6 +45,8 @@ __all__ = [
     "ExecutionDependencies",
     "ExecutionError",
     "ExecutionStrategy",
+    "IContextReducer",
+    "IHookManager",
     "ILifecycleHook",
     "ILLMProvider",
     "IPrimitive",
