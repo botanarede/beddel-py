@@ -186,3 +186,24 @@ class LifecycleHookManager(ILifecycleHook):
                     type(hook).__name__,
                     exc_info=True,
                 )
+
+    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+        """Dispatch decision event to all registered hooks.
+
+        Args:
+            decision: The decision that was made.
+            alternatives: Alternative options that were considered.
+            rationale: Explanation for why this decision was chosen.
+        """
+        for hook in self._hooks:
+            try:
+                if asyncio.iscoroutinefunction(hook.on_decision):
+                    await hook.on_decision(decision, alternatives, rationale)
+                else:
+                    hook.on_decision(decision, alternatives, rationale)  # type: ignore[unused-coroutine]
+            except Exception:
+                logger.warning(
+                    "Lifecycle hook %s.on_decision raised (ignored)",
+                    type(hook).__name__,
+                    exc_info=True,
+                )

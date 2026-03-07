@@ -36,6 +36,9 @@ class _RecordingHook(ILifecycleHook):
     async def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:
         self.calls.append(("on_retry", (step_id, attempt, error)))
 
+    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+        self.calls.append(("on_decision", (decision, alternatives, rationale)))
+
 
 class _SyncRecordingHook(ILifecycleHook):
     """Sync hook (plain def, NOT async def) that records calls."""
@@ -61,6 +64,9 @@ class _SyncRecordingHook(ILifecycleHook):
     def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:  # type: ignore[override]
         self.calls.append(("on_retry", (step_id, attempt, error)))
 
+    def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:  # type: ignore[override]
+        self.calls.append(("on_decision", (decision, alternatives, rationale)))
+
 
 class _MisbehavingHook(ILifecycleHook):
     """Async hook that raises RuntimeError on every method."""
@@ -83,6 +89,9 @@ class _MisbehavingHook(ILifecycleHook):
     async def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:
         raise RuntimeError("boom")
 
+    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+        raise RuntimeError("boom")
+
 
 # ---------------------------------------------------------------------------
 # Tests: Interface compliance (AC 2)
@@ -98,6 +107,18 @@ class TestInterfaceCompliance:
     def test_instance_is_ilifecyclehook(self) -> None:
         manager = LifecycleHookManager()
         assert isinstance(manager, ILifecycleHook)
+
+    def test_is_subclass_of_ihookmanager(self) -> None:
+        """LifecycleHookManager structurally satisfies IHookManager."""
+        assert hasattr(LifecycleHookManager, "add_hook")
+        assert hasattr(LifecycleHookManager, "remove_hook")
+        assert hasattr(LifecycleHookManager, "on_decision")
+
+    def test_instance_is_ihookmanager(self) -> None:
+        manager = LifecycleHookManager()
+        assert hasattr(manager, "add_hook")
+        assert hasattr(manager, "remove_hook")
+        assert hasattr(manager, "on_decision")
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +152,10 @@ class TestNoHooks:
     async def test_on_retry_no_hooks(self) -> None:
         manager = LifecycleHookManager()
         await manager.on_retry("step-1", 1, RuntimeError("fail"))
+
+    async def test_on_decision_no_hooks(self) -> None:
+        manager = LifecycleHookManager()
+        await manager.on_decision("use-cache", ["skip-cache"], "faster")
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +242,14 @@ class TestMisbehavingHook:
         assert len(first.calls) == 1
         assert len(last.calls) == 1
 
+    async def test_on_decision_misbehaving_does_not_block(self) -> None:
+        bad = _MisbehavingHook()
+        good = _RecordingHook()
+        manager = LifecycleHookManager([bad, good])
+        await manager.on_decision("pick-a", ["pick-b"], "reason")
+        assert len(good.calls) == 1
+        assert good.calls[0] == ("on_decision", ("pick-a", ["pick-b"], "reason"))
+
 
 # ---------------------------------------------------------------------------
 # Tests: Sync handler support (subtask 4.6, AC 7)
@@ -242,7 +275,8 @@ class TestSyncHandlerSupport:
         await manager.on_step_end("s", "result")
         await manager.on_error("s", err)
         await manager.on_retry("s", 3, err)
-        assert len(hook.calls) == 6
+        await manager.on_decision("d", ["alt"], "why")
+        assert len(hook.calls) == 7
 
     async def test_sync_and_async_hooks_coexist(self) -> None:
         sync_hook = _SyncRecordingHook()
@@ -277,6 +311,7 @@ class TestAsyncHandlerSupport:
         await manager.on_step_end("s", "result")
         await manager.on_error("s", err)
         await manager.on_retry("s", 3, err)
+        await manager.on_decision("d", ["alt"], "reason")
         method_names = [name for name, _ in hook.calls]
         assert method_names == [
             "on_workflow_start",
@@ -285,6 +320,7 @@ class TestAsyncHandlerSupport:
             "on_step_end",
             "on_error",
             "on_retry",
+            "on_decision",
         ]
 
 
@@ -333,3 +369,11 @@ class TestAllEventMethods:
         err = TimeoutError("timed out")
         await manager.on_retry("step-7", 2, err)
         assert hook.calls == [("on_retry", ("step-7", 2, err))]
+
+    async def test_on_decision_dispatches_args(self) -> None:
+        hook = _RecordingHook()
+        manager = LifecycleHookManager([hook])
+        await manager.on_decision("use-gpt4", ["use-claude", "use-llama"], "best quality")
+        assert hook.calls == [
+            ("on_decision", ("use-gpt4", ["use-claude", "use-llama"], "best quality"))
+        ]
