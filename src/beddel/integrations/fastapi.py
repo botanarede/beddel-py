@@ -105,7 +105,7 @@ def create_beddel_handler(
 
     router = APIRouter()
 
-    @router.post("/")
+    @router.post("/", response_model=None)
     async def _handle_workflow(request: Request) -> EventSourceResponse | JSONResponse:
         """Execute the workflow and stream results as SSE events.
 
