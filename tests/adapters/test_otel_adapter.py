@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import MagicMock
 
+import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from beddel.adapters.otel_adapter import OpenTelemetryAdapter
+from beddel.domain.errors import TracingError
 from beddel.domain.ports import ITracer
+from beddel.error_codes import TRACING_FAILURE
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -275,3 +279,49 @@ class TestErrorResilience:
         span = adapter.start_span("")
         adapter.end_span(span)
         assert exporter.get_finished_spans()[0].name == ""
+
+
+# ---------------------------------------------------------------------------
+# Tests: TracingError emission (Story 3.6, Task 3 — AC-6)
+# ---------------------------------------------------------------------------
+
+
+class TestTracingErrorEmission:
+    """OTel adapter raises TracingError with fail_silent=True on failures."""
+
+    def test_start_span_raises_tracing_error_on_tracer_failure(self) -> None:
+        """start_span raises TracingError(fail_silent=True) when tracer fails."""
+        adapter, _ = _make_adapter()
+        adapter._tracer = MagicMock()
+        adapter._tracer.start_span.side_effect = RuntimeError("tracer boom")
+
+        with pytest.raises(TracingError) as exc_info:
+            adapter.start_span("beddel.workflow")
+
+        assert exc_info.value.fail_silent is True
+        assert exc_info.value.code == TRACING_FAILURE
+        assert exc_info.value.__cause__ is not None
+
+    def test_end_span_raises_tracing_error_on_span_end_failure(self) -> None:
+        """end_span raises TracingError(fail_silent=True) when span.end() fails."""
+        adapter, _ = _make_adapter()
+        mock_span = MagicMock()
+        mock_span.end.side_effect = RuntimeError("span end boom")
+
+        with pytest.raises(TracingError) as exc_info:
+            adapter.end_span(mock_span)
+
+        assert exc_info.value.fail_silent is True
+        assert exc_info.value.code == TRACING_FAILURE
+        assert exc_info.value.__cause__ is not None
+
+    def test_tracing_error_has_correct_error_code(self) -> None:
+        """Raised TracingError carries BEDDEL-ADAPT-010 error code."""
+        adapter, _ = _make_adapter()
+        adapter._tracer = MagicMock()
+        adapter._tracer.start_span.side_effect = RuntimeError("boom")
+
+        with pytest.raises(TracingError) as exc_info:
+            adapter.start_span("test-span")
+
+        assert exc_info.value.code == "BEDDEL-ADAPT-010"

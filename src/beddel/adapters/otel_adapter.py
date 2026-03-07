@@ -2,8 +2,8 @@
 
 This adapter bridges the Beddel domain core to `OpenTelemetry`_, creating
 real trace spans with proper attributes for workflow, step, and primitive
-execution.  Tracing failures are silently ignored to ensure they never
-break workflow execution.
+execution.  Tracing failures raise :class:`~beddel.domain.errors.TracingError`
+with ``fail_silent=True`` so callers can decide whether to swallow or propagate.
 
 .. _OpenTelemetry: https://opentelemetry.io/
 """
@@ -17,8 +17,10 @@ from opentelemetry import trace
 from opentelemetry.trace import Span as OTelSpan
 
 from beddel import __version__
+from beddel.domain.errors import TracingError
 from beddel.domain.ports import ITracer
 from beddel.domain.tracing_utils import extract_token_usage
+from beddel.error_codes import TRACING_FAILURE
 
 __all__ = ["OpenTelemetryAdapter"]
 
@@ -60,22 +62,24 @@ class OpenTelemetryAdapter(ITracer[OTelSpan]):
             attributes: Optional key-value attributes to attach to the span.
 
         Returns:
-            An opaque span handle passed back to :meth:`end_span`, or
-            ``None`` if span creation fails.
+            An opaque span handle passed back to :meth:`end_span`.
+
+        Raises:
+            TracingError: If span creation fails (``fail_silent=True``).
         """
-        # Silent-fail by design: tracing must never break workflow execution.
-        # Consistent with executor._dispatch_hook pattern for lifecycle hooks.
-        # A fail_silent flag was considered (architect rec 4) but deferred —
-        # the project convention is that all observability is best-effort.
         try:
             span = self._tracer.start_span(name)
             if attributes:
                 for key, value in attributes.items():
                     span.set_attribute(key, value)
             return span  # noqa: TRY300
-        except Exception:
+        except Exception as exc:
             _logger.warning("Failed to start span %r", name, exc_info=True)
-            return None
+            raise TracingError(
+                code=TRACING_FAILURE,
+                message=f"Failed to start span {name!r}",
+                fail_silent=True,
+            ) from exc
 
     def end_span(self, span: OTelSpan | None, attributes: dict[str, Any] | None = None) -> None:
         """End a trace span with optional final attributes.
@@ -84,6 +88,9 @@ class OpenTelemetryAdapter(ITracer[OTelSpan]):
             span: The opaque span handle returned by :meth:`start_span`.
             attributes: Optional key-value attributes to attach before closing
                 (e.g. token usage).
+
+        Raises:
+            TracingError: If ending the span fails (``fail_silent=True``).
         """
         if span is None:
             return
@@ -92,8 +99,13 @@ class OpenTelemetryAdapter(ITracer[OTelSpan]):
                 for key, value in attributes.items():
                     span.set_attribute(key, value)
             span.end()
-        except Exception:
+        except Exception as exc:
             _logger.warning("Failed to end span", exc_info=True)
+            raise TracingError(
+                code=TRACING_FAILURE,
+                message="Failed to end span",
+                fail_silent=True,
+            ) from exc
 
     @staticmethod
     def _extract_token_attributes(result: dict[str, Any]) -> dict[str, Any]:
