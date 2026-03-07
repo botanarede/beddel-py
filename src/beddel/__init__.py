@@ -13,6 +13,7 @@ from beddel.domain.errors import (
     ParseError,
     PrimitiveError,
     ResolveError,
+    TracingError,
 )
 from beddel.domain.executor import SequentialStrategy
 from beddel.domain.models import DefaultDependencies, InterruptibleContext
@@ -80,5 +81,6 @@ __all__ = [
     "SequentialStrategy",
     "SpanT",
     "StepRunner",
+    "TracingError",
     "create_beddel_handler",
 ]

@@ -11,6 +11,7 @@ from beddel.domain.errors import (
     ParseError,
     PrimitiveError,
     ResolveError,
+    TracingError,
 )
 
 # All concrete subclasses paired with their expected code prefix.
@@ -20,6 +21,7 @@ _SUBCLASSES: list[tuple[type[BeddelError], str]] = [
     (ExecutionError, "BEDDEL-EXEC-001"),
     (PrimitiveError, "BEDDEL-PRIM-001"),
     (AdapterError, "BEDDEL-ADAPT-001"),
+    (TracingError, "BEDDEL-ADAPT-010"),
 ]
 
 
@@ -112,5 +114,47 @@ class TestAllExports:
             "ExecutionError",
             "PrimitiveError",
             "AdapterError",
+            "TracingError",
         }
         assert set(errors.__all__) == expected
+
+
+class TestTracingError:
+    """Tests for TracingError with fail_silent flag."""
+
+    def test_inherits_from_beddel_error(self) -> None:
+        err = TracingError("BEDDEL-ADAPT-010", "tracing failed")
+
+        assert isinstance(err, BeddelError)
+
+    def test_fail_silent_defaults_to_true(self) -> None:
+        err = TracingError("BEDDEL-ADAPT-010", "tracing failed")
+
+        assert err.fail_silent is True
+
+    def test_fail_silent_false_is_settable(self) -> None:
+        err = TracingError("BEDDEL-ADAPT-010", "tracing failed", fail_silent=False)
+
+        assert err.fail_silent is False
+
+    def test_preserves_code_and_message(self) -> None:
+        err = TracingError("BEDDEL-ADAPT-010", "span export failed")
+
+        assert err.code == "BEDDEL-ADAPT-010"
+        assert err.message == "span export failed"
+
+    def test_details_defaults_to_empty_dict(self) -> None:
+        err = TracingError("BEDDEL-ADAPT-010", "tracing failed")
+
+        assert err.details == {}
+
+    def test_details_preserved(self) -> None:
+        details = {"span": "root", "exporter": "otlp"}
+        err = TracingError("BEDDEL-ADAPT-010", "export failed", details)
+
+        assert err.details == {"span": "root", "exporter": "otlp"}
+
+    def test_str_representation(self) -> None:
+        err = TracingError("BEDDEL-ADAPT-010", "tracing failed")
+
+        assert str(err) == "BEDDEL-ADAPT-010: tracing failed"

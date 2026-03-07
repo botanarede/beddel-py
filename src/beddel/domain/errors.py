@@ -28,6 +28,7 @@ __all__ = [
     "ExecutionError",
     "PrimitiveError",
     "AdapterError",
+    "TracingError",
 ]
 
 
@@ -118,3 +119,33 @@ class AdapterError(BeddelError):
     Example codes:
         - ``BEDDEL-ADAPT-001``: Provider authentication failure
     """
+
+
+class TracingError(BeddelError):
+    """Tracing operation errors.
+
+    Error code prefix: ``BEDDEL-ADAPT-``
+
+    Raised when an OpenTelemetry or other tracing adapter encounters a
+    failure.  The ``fail_silent`` flag controls whether the caller should
+    swallow the error (default) or re-raise it.
+
+    Attributes:
+        fail_silent: When ``True`` (default), callers should log a warning
+            and continue execution.  When ``False``, callers should
+            re-raise the error.
+
+    Example codes:
+        - ``BEDDEL-ADAPT-010``: Tracing failure
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+        *,
+        fail_silent: bool = True,
+    ) -> None:
+        super().__init__(code, message, details)
+        self.fail_silent = fail_silent

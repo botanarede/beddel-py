@@ -137,6 +137,9 @@ ADAPT_PROVIDER_ERROR: str = "BEDDEL-ADAPT-002"
 ADAPT_TIMEOUT: str = "BEDDEL-ADAPT-003"
 """Timeout/connection error."""
 
+TRACING_FAILURE: str = "BEDDEL-ADAPT-010"
+"""Tracing operation failed."""
+
 # ---------------------------------------------------------------------------
 # Execution codes  (EXEC prefix, 500 range)
 # ---------------------------------------------------------------------------
@@ -202,6 +205,7 @@ ALL_CODES: dict[str, str] = {
     "ADAPT_AUTH_FAILURE": ADAPT_AUTH_FAILURE,
     "ADAPT_PROVIDER_ERROR": ADAPT_PROVIDER_ERROR,
     "ADAPT_TIMEOUT": ADAPT_TIMEOUT,
+    "TRACING_FAILURE": TRACING_FAILURE,
     # Execution
     "EXEC_STEP_FAILED": EXEC_STEP_FAILED,
     "EXEC_RETRIES_EXHAUSTED": EXEC_RETRIES_EXHAUSTED,
