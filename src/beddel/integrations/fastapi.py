@@ -29,7 +29,7 @@ from sse_starlette.sse import EventSourceResponse
 from beddel.domain.errors import BeddelError, ParseError, ResolveError
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import Workflow
-from beddel.domain.ports import IHookManager, ILLMProvider
+from beddel.domain.ports import IHookManager, ILLMProvider, ITracer
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.integrations.sse import BeddelSSEAdapter
 from beddel.primitives import register_builtins
@@ -48,6 +48,7 @@ def create_beddel_handler(
     provider: ILLMProvider | None = None,
     registry: PrimitiveRegistry | None = None,
     hooks: IHookManager | None = None,
+    tracer: ITracer | None = None,
 ) -> APIRouter:
     """Create a FastAPI router that exposes a workflow as an SSE endpoint.
 
@@ -71,6 +72,8 @@ def create_beddel_handler(
             with all built-in primitives registered.
         hooks: Optional :class:`IHookManager` instance forwarded to the
             executor.
+        tracer: Optional :class:`ITracer` instance for distributed tracing.
+            Forwarded to the executor.  Defaults to ``None`` (no tracing).
 
     Returns:
         A :class:`~fastapi.APIRouter` with a ``POST /`` endpoint that
@@ -113,7 +116,7 @@ def create_beddel_handler(
         effective_registry,
         provider=effective_provider,
         hooks=effective_hook_manager,
-        tracer=None,
+        tracer=tracer,
     )
 
     router = APIRouter()

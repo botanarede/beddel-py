@@ -162,6 +162,50 @@ class TestFactoryDefaults:
         data = json.loads(step_end_events[0]["data"])
         assert data["data"]["result"]["status"] == "ok"
 
+    def test_tracer_forwarded_to_executor(self) -> None:
+        """Factory forwards the ``tracer`` parameter to WorkflowExecutor.
+
+        Verifies AC5: create_beddel_handler accepts an optional tracer and
+        passes it through to the executor constructor.
+        """
+        from unittest.mock import MagicMock, patch
+
+        mock_tracer = MagicMock()
+
+        with patch(
+            "beddel.integrations.fastapi.WorkflowExecutor",
+        ) as mock_executor_cls:
+            create_beddel_handler(
+                _make_workflow(),
+                provider=_MockProvider(),
+                registry=_build_mock_registry(),
+                tracer=mock_tracer,
+            )
+
+        mock_executor_cls.assert_called_once()
+        call_kwargs = mock_executor_cls.call_args
+        assert call_kwargs.kwargs["tracer"] is mock_tracer
+
+    def test_tracer_defaults_to_none(self) -> None:
+        """Factory passes ``tracer=None`` when no tracer is provided.
+
+        Verifies AC5: the default is None (no tracing).
+        """
+        from unittest.mock import patch
+
+        with patch(
+            "beddel.integrations.fastapi.WorkflowExecutor",
+        ) as mock_executor_cls:
+            create_beddel_handler(
+                _make_workflow(),
+                provider=_MockProvider(),
+                registry=_build_mock_registry(),
+            )
+
+        mock_executor_cls.assert_called_once()
+        call_kwargs = mock_executor_cls.call_args
+        assert call_kwargs.kwargs["tracer"] is None
+
 
 # ---------------------------------------------------------------------------
 # SSE endpoint (subtasks 5.4, 5.5, 5.7)
