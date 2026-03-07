@@ -126,12 +126,7 @@ class CallAgentPrimitive(IPrimitive):
             hooks=hook_manager,
         )
         strategy = SequentialStrategy()
-        # NOTE: Accessing _execute_step directly is a known coupling point.
-        # The alternative (calling executor.execute()) would create its own
-        # ExecutionContext, losing our depth-tracking metadata. This trade-off
-        # is documented in Story 2.3 Dev Notes. If _execute_step is ever
-        # refactored, this call site must be updated.
-        await strategy.execute(workflow, child_context, child_executor._execute_step)
+        await strategy.execute(workflow, child_context, child_executor.execute_step_with_context)
 
         return dict(child_context.step_results)
 

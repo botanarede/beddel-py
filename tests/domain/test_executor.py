@@ -1569,3 +1569,60 @@ class TestExecutorZeroAdapterImports:
             f"executor.py must not import from beddel.adapters (hexagonal architecture). "
             f"Found: {adapter_imports}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Story 3.5 / Task 3 — execute_step_with_context() public API
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteStepWithContext:
+    """Tests for the public execute_step_with_context() method on WorkflowExecutor."""
+
+    async def test_returns_step_result(self) -> None:
+        """execute_step_with_context() returns the primitive result and stores it."""
+        registry, _ = _registry_with_stub(return_value={"answer": 42})
+        step = _make_step("s1")
+        executor = WorkflowExecutor(registry)
+
+        context = ExecutionContext(workflow_id="wf-1", inputs={})
+        context.deps = DefaultDependencies()
+
+        result = await executor.execute_step_with_context(step, context)
+
+        assert result == {"answer": 42}
+        assert context.step_results["s1"] == {"answer": 42}
+
+    async def test_identical_to_execute_results(self) -> None:
+        """execute_step_with_context() produces identical results to execute()."""
+        registry_a, _ = _registry_with_stub(return_value="hello")
+        registry_b, _ = _registry_with_stub(return_value="hello")
+
+        step = _make_step("s1")
+        wf = _make_workflow([step])
+
+        # Path A: via execute()
+        executor_a = WorkflowExecutor(registry_a)
+        result_a = await executor_a.execute(wf)
+
+        # Path B: via execute_step_with_context() directly
+        executor_b = WorkflowExecutor(registry_b)
+        context_b = ExecutionContext(workflow_id="wf-1", inputs={})
+        context_b.deps = DefaultDependencies()
+        await executor_b.execute_step_with_context(step, context_b)
+
+        assert result_a["step_results"]["s1"] == context_b.step_results["s1"]
+
+    async def test_private_execute_step_delegates_to_public(self) -> None:
+        """_execute_step delegates to execute_step_with_context (same result)."""
+        registry, _ = _registry_with_stub(return_value="delegated")
+        step = _make_step("s1")
+        executor = WorkflowExecutor(registry)
+
+        context = ExecutionContext(workflow_id="wf-1", inputs={})
+        context.deps = DefaultDependencies()
+
+        result = await executor._execute_step(step, context)
+
+        assert result == "delegated"
+        assert context.step_results["s1"] == "delegated"

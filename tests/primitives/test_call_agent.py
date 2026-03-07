@@ -571,3 +571,32 @@ class TestVariableResolution:
 
         _, child_ctx = recorder.calls[0]
         assert child_ctx.inputs == {}
+
+
+# ---------------------------------------------------------------------------
+# Story 3.5 / Task 3 — Public API usage (no _execute_step access)
+# ---------------------------------------------------------------------------
+
+
+class TestPublicAPIUsage:
+    """AST-based check that call_agent.py uses the public API."""
+
+    def test_call_agent_does_not_access_private_execute_step(self) -> None:
+        """call_agent.py source must not contain any _execute_step references."""
+        import ast
+        from pathlib import Path
+
+        call_agent_path = (
+            Path(__file__).resolve().parents[2] / "src" / "beddel" / "primitives" / "call_agent.py"
+        )
+        source = call_agent_path.read_text()
+        tree = ast.parse(source)
+
+        private_refs: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "_execute_step":
+                private_refs.append(f"line {node.lineno}: .{node.attr}")
+
+        assert private_refs == [], (
+            "call_agent.py still accesses private _execute_step:\n" + "\n".join(private_refs)
+        )

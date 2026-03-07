@@ -103,6 +103,15 @@ class WorkflowExecutor:
     ``context.deps.execution_strategy``, falling back to
     :class:`SequentialStrategy` when ``None``.
 
+    Public methods:
+
+    - :meth:`execute` — run a workflow end-to-end, returning collected results.
+    - :meth:`execute_stream` — stream workflow execution as events.
+    - :meth:`execute_step_with_context` — execute a single step against an
+      existing :class:`ExecutionContext`.  Useful for primitives (e.g.
+      ``call-agent``) that need to drive step execution without creating a
+      new context.
+
     Args:
         registry: Primitive registry used to look up step primitives.
         provider: Optional LLM provider available via
@@ -397,8 +406,15 @@ class WorkflowExecutor:
         finally:
             await self._hook_manager.remove_hook(collector)
 
-    async def _execute_step(self, step: Step, context: ExecutionContext) -> Any:
-        """Execute a single workflow step, with optional conditional branching.
+    async def execute_step_with_context(self, step: Step, context: ExecutionContext) -> Any:
+        """Execute a single workflow step against an existing context.
+
+        This is the public entry point for running one step with full
+        lifecycle handling (condition evaluation, timeout, error strategies,
+        tracing, hooks).  It is intended for callers — such as the
+        ``call-agent`` primitive — that already own an
+        :class:`ExecutionContext` and need to drive step execution without
+        creating a new one.
 
         If the step has an ``if_condition``, it is evaluated first.  When
         truthy the step's primitive runs and any ``then_steps`` are executed
@@ -485,6 +501,23 @@ class WorkflowExecutor:
                     tracer.end_span(step_span, end_attrs or None)
                 except Exception:
                     logger.warning("Tracing end_span failed (ignored)", exc_info=True)
+
+    async def _execute_step(self, step: Step, context: ExecutionContext) -> Any:
+        """Execute a single step (private delegate).
+
+        Retained for backward compatibility with internal callers
+        (``_execute_steps``, strategy callbacks).  Delegates entirely to
+        :meth:`execute_step_with_context`.
+
+        Args:
+            step: The step definition to execute.
+            context: Mutable execution context for the current workflow run.
+
+        Returns:
+            The primitive's return value, or ``None`` when the step is
+            skipped due to a falsy condition.
+        """
+        return await self.execute_step_with_context(step, context)
 
     async def _dispatch_hook(self, method_name: str, *args: Any) -> None:
         """Dispatch a lifecycle event via the hook manager.
