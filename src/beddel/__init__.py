@@ -27,13 +27,22 @@ from beddel.domain.ports import (
 
 if TYPE_CHECKING:
     from beddel.adapters.hooks import LifecycleHookManager as LifecycleHookManager
+    from beddel.integrations.fastapi import (
+        create_beddel_handler as create_beddel_handler,
+    )
+    from beddel.integrations.sse import BeddelSSEAdapter as BeddelSSEAdapter
 
 __version__ = "0.1.0"
 
 # Lazy imports to avoid circular dependency:
 # beddel → beddel.adapters → otel_adapter → beddel.__version__
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
     "LifecycleHookManager": ("beddel.adapters.hooks", "LifecycleHookManager"),
+    "create_beddel_handler": (
+        "beddel.integrations.fastapi",
+        "create_beddel_handler",
+    ),
 }
 
 
@@ -53,6 +62,7 @@ __all__ = [
     "__version__",
     "AdapterError",
     "BeddelError",
+    "BeddelSSEAdapter",
     "DefaultDependencies",
     "ExecutionDependencies",
     "ExecutionError",
@@ -68,4 +78,5 @@ __all__ = [
     "SequentialStrategy",
     "SpanT",
     "StepRunner",
+    "create_beddel_handler",
 ]
