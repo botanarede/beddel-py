@@ -26,7 +26,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
-from beddel.adapters.litellm_adapter import LiteLLMAdapter
 from beddel.domain.errors import BeddelError, ParseError, ResolveError
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import Workflow
@@ -87,7 +86,12 @@ def create_beddel_handler(
         router = create_beddel_handler(workflow)
         app.include_router(router, prefix="/demo")
     """
-    effective_provider = provider if provider is not None else LiteLLMAdapter()
+    if provider is not None:
+        effective_provider = provider
+    else:
+        from beddel.adapters.litellm_adapter import LiteLLMAdapter
+
+        effective_provider = LiteLLMAdapter()
 
     effective_registry: PrimitiveRegistry
     if registry is not None:
@@ -130,14 +134,14 @@ def create_beddel_handler(
                     "details": exc.details,
                 },
             )
-        except Exception as exc:
+        except Exception:
             logger.exception("Unexpected error in workflow handler")
             return JSONResponse(
                 status_code=500,
                 content={
                     "code": "BEDDEL-INTERNAL-001",
                     "message": "Internal server error",
-                    "details": {"error": str(exc)},
+                    "details": {},
                 },
             )
 

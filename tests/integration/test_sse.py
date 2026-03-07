@@ -180,6 +180,39 @@ class TestMultiLineData:
         assert parsed["data"]["result"] == "success"
         assert parsed["data"]["tokens"] == 150
 
+    async def test_actual_multiline_json_splitting(self) -> None:
+        """Verify the adapter correctly joins multi-line JSON with data: prefixes.
+
+        Since model_dump_json() produces compact JSON, we patch it to return
+        multi-line output to exercise the splitting code path.
+        """
+        from unittest.mock import patch
+
+        event = _make_event(
+            event_type=EventType.STEP_END,
+            step_id="s1",
+            data={"key": "value"},
+        )
+
+        multiline_json = (
+            '{\n  "event_type": "step_end",\n  "step_id": "s1",'
+            '\n  "data": {"key": "value"},\n  "timestamp": 1700000000.0\n}'
+        )
+
+        with patch.object(type(event), "model_dump_json", return_value=multiline_json):
+            results = await _collect(BeddelSSEAdapter.stream_events(_single_event_stream(event)))
+
+        assert len(results) == 1
+        sse = results[0]
+        assert sse["event"] == "step_end"
+        # The adapter should have joined lines with \ndata:
+        assert "\ndata: " in sse["data"]
+        # Verify round-trip: undo the join and parse
+        reconstructed = sse["data"].replace("\ndata: ", "\n")
+        parsed = json.loads(reconstructed)
+        assert parsed["event_type"] == "step_end"
+        assert parsed["data"]["key"] == "value"
+
 
 # ---------------------------------------------------------------------------
 # Stream behavior
