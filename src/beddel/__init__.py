@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING
 
+from beddel import error_codes as error_codes  # re-export module
 from beddel.domain.errors import (
     AdapterError,
     BeddelError,
@@ -61,6 +62,7 @@ def __getattr__(name: str) -> object:
 __all__ = [
     "__version__",
     "AdapterError",
+    "error_codes",
     "BeddelError",
     "BeddelSSEAdapter",
     "DefaultDependencies",
