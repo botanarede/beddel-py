@@ -29,7 +29,7 @@ from sse_starlette.sse import EventSourceResponse
 from beddel.domain.errors import BeddelError, ParseError, ResolveError
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import Workflow
-from beddel.domain.ports import ILifecycleHook, ILLMProvider
+from beddel.domain.ports import IHookManager, ILLMProvider
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.integrations.sse import BeddelSSEAdapter
 from beddel.primitives import register_builtins
@@ -47,7 +47,7 @@ def create_beddel_handler(
     *,
     provider: ILLMProvider | None = None,
     registry: PrimitiveRegistry | None = None,
-    hooks: list[ILifecycleHook] | None = None,
+    hooks: IHookManager | None = None,
 ) -> APIRouter:
     """Create a FastAPI router that exposes a workflow as an SSE endpoint.
 
@@ -69,7 +69,8 @@ def create_beddel_handler(
             :class:`~beddel.adapters.litellm_adapter.LiteLLMAdapter`.
         registry: Optional primitive registry.  Defaults to a new registry
             with all built-in primitives registered.
-        hooks: Optional lifecycle hooks forwarded to the executor.
+        hooks: Optional :class:`IHookManager` instance forwarded to the
+            executor.
 
     Returns:
         A :class:`~fastapi.APIRouter` with a ``POST /`` endpoint that
@@ -100,10 +101,18 @@ def create_beddel_handler(
         effective_registry = PrimitiveRegistry()
         register_builtins(effective_registry)
 
+    effective_hook_manager: IHookManager
+    if hooks is not None:
+        effective_hook_manager = hooks
+    else:
+        from beddel.adapters.hooks import LifecycleHookManager
+
+        effective_hook_manager = LifecycleHookManager()
+
     executor = WorkflowExecutor(
         effective_registry,
         provider=effective_provider,
-        hooks=hooks,
+        hooks=effective_hook_manager,
         tracer=None,
     )
 

@@ -14,6 +14,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from beddel.adapters.hooks import LifecycleHookManager
 from beddel.adapters.otel_adapter import OpenTelemetryAdapter
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
@@ -455,7 +456,7 @@ class TestStreamingTracing:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
         workflow = _simple_workflow()
 
         events = []
@@ -473,7 +474,7 @@ class TestStreamingTracing:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
         workflow = _simple_workflow()
 
         async for _ in executor.execute_stream(workflow, inputs={}):
@@ -491,7 +492,7 @@ class TestStreamingTracing:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
         workflow = _simple_workflow(workflow_id="stream-wf")
 
         async for _ in executor.execute_stream(workflow, inputs={}):
@@ -509,7 +510,7 @@ class TestStreamingTracing:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
         workflow = _simple_workflow()
 
         events = []
@@ -553,7 +554,7 @@ class TestTracerDI:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
         workflow = _simple_workflow()
 
         async for _ in executor.execute_stream(workflow, inputs={}):

@@ -117,7 +117,7 @@ class CallAgentPrimitive(IPrimitive):
         child_executor = WorkflowExecutor(
             registry=registry,
             provider=context.deps.llm_provider,
-            hooks=[hook_manager] if hook_manager is not None else None,
+            hooks=hook_manager,
         )
         strategy = SequentialStrategy()
         # NOTE: Accessing _execute_step directly is a known coupling point.

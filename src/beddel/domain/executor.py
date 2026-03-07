@@ -99,9 +99,9 @@ class WorkflowExecutor:
         registry: Primitive registry used to look up step primitives.
         provider: Optional LLM provider available via
             ``context.deps.llm_provider``.
-        hooks: Optional lifecycle hooks available via
-            ``context.deps.lifecycle_hooks`` and called during
-            execution.
+        hooks: Optional :class:`IHookManager` instance injected via DI,
+            available via ``context.deps.lifecycle_hooks`` and called
+            during execution.
         tracer: Optional tracer for OpenTelemetry span creation.
             When provided, passed to ``DefaultDependencies`` so that
             workflow, step, and primitive spans are emitted automatically.
@@ -116,7 +116,7 @@ class WorkflowExecutor:
         self,
         registry: PrimitiveRegistry,
         provider: ILLMProvider | None = None,
-        hooks: list[ILifecycleHook] | None = None,
+        hooks: IHookManager | None = None,
         tracer: ITracer | None = None,
     ) -> None:
         """Initialise the executor.
@@ -124,17 +124,15 @@ class WorkflowExecutor:
         Args:
             registry: Primitive registry for step primitive look-ups.
             provider: Optional LLM provider for ``context.deps``.
-            hooks: Optional lifecycle hooks called during execution.
-                Wrapped in a :class:`LifecycleHookManager` for unified
-                dispatch via the Composite pattern.
+            hooks: Optional :class:`IHookManager` instance injected via DI.
+                When ``None``, a no-op ``IHookManager()`` is used as
+                fallback (all methods are no-ops by default).
             tracer: Optional tracer injected into ``DefaultDependencies``
                 for automatic span creation.
         """
-        from beddel.adapters.hooks import LifecycleHookManager
-
         self._registry = registry
         self._provider = provider
-        self._hook_manager: IHookManager = LifecycleHookManager(hooks)
+        self._hook_manager: IHookManager = hooks if hooks is not None else IHookManager()
         self._tracer = tracer
         self._resolver = VariableResolver()
 
@@ -478,9 +476,8 @@ class WorkflowExecutor:
         """Dispatch a lifecycle event via the hook manager.
 
         Delegates to the corresponding method on ``self._hook_manager``
-        (a :class:`LifecycleHookManager` typed as
-        :class:`ILifecycleHook`).  The manager fans out to all registered
-        hooks and handles per-hook error isolation internally.
+        (an :class:`IHookManager` instance).  The manager fans out to all
+        registered hooks and handles per-hook error isolation internally.
 
         Args:
             method_name: Name of the :class:`ILifecycleHook` method to call.

@@ -144,7 +144,8 @@ def _build_executor(
     if failing_primitives:
         for name in failing_primitives:
             registry.register(name, _FailingPrimitive())
-    return WorkflowExecutor(registry, hooks=hooks)
+    hook_manager = LifecycleHookManager(hooks) if hooks is not None else None
+    return WorkflowExecutor(registry, hooks=hook_manager)
 
 
 def _simple_workflow(
@@ -298,7 +299,7 @@ class TestErrorHook:
         hook = _RecordingHook()
         registry = PrimitiveRegistry()
         registry.register("llm", _FailingPrimitive())
-        executor = WorkflowExecutor(registry, hooks=[hook])
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
         workflow = _simple_workflow(strategy_type=StrategyType.SKIP)
 
         await executor.execute(workflow, inputs={})
@@ -337,7 +338,7 @@ class TestRetryHook:
         prim = _FailNTimesPrimitive(fail_count=1, success_value="recovered")
         registry = PrimitiveRegistry()
         registry.register("llm", prim)
-        executor = WorkflowExecutor(registry, hooks=[hook])
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
         retry_cfg = RetryConfig(
             max_attempts=2,
             backoff_base=0.0,
@@ -482,7 +483,7 @@ class TestLifecycleHooksDI:
         registry = PrimitiveRegistry()
         registry.register("llm", capture_prim)
         hook = _RecordingHook()
-        executor = WorkflowExecutor(registry, hooks=[hook])
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})
@@ -496,7 +497,7 @@ class TestLifecycleHooksDI:
         registry = PrimitiveRegistry()
         registry.register("llm", capture_prim)
         hook = _RecordingHook()
-        executor = WorkflowExecutor(registry, hooks=[hook])
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})
