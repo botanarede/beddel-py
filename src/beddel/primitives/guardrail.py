@@ -84,7 +84,34 @@ class GuardrailPrimitive(IPrimitive):
     correct     JSON repair → re-validate → fall back        No
     delegate    LLM correction → re-validate → fall back     Yes
     =========== ============================================ ============
+
+    Attributes:
+        DELEGATE_PROMPT_TEMPLATE: Default prompt template for the delegate
+            strategy.  Uses ``{schema}``, ``{errors}``, and ``{data}``
+            placeholders.
     """
+
+    DELEGATE_PROMPT_TEMPLATE: str = (
+        "Fix this data to match the schema: {schema}. "
+        "Errors: {errors}. "
+        "Data: {data}\n"
+        "Respond with ONLY the corrected JSON, no explanation."
+    )
+
+    def __init__(self, *, delegate_prompt_template: str | None = None) -> None:
+        """Initialise the guardrail primitive.
+
+        Args:
+            delegate_prompt_template: Optional override for the delegate
+                strategy prompt template.  When provided, replaces the
+                class-level ``DELEGATE_PROMPT_TEMPLATE`` for this instance.
+                The template must contain ``{schema}``, ``{errors}``, and
+                ``{data}`` placeholders.
+        """
+        if delegate_prompt_template is not None:
+            self._delegate_prompt_template = delegate_prompt_template
+        else:
+            self._delegate_prompt_template = self.DELEGATE_PROMPT_TEMPLATE
 
     async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
         """Execute the guardrail primitive.
@@ -313,8 +340,8 @@ class GuardrailPrimitive(IPrimitive):
         """
         return get_provider(context, "guardrail")
 
-    @staticmethod
     async def _strategy_delegate(
+        self,
         data: Any,
         errors: list[str],
         config: dict[str, Any],
@@ -349,11 +376,11 @@ class GuardrailPrimitive(IPrimitive):
         last_data = data
 
         for _attempt in range(max_attempts):
-            prompt = (
-                f"Fix this data to match the schema: {json.dumps(schema)}. "
-                f"Errors: {json.dumps(last_errors)}. "
-                f"Data: {json.dumps(last_data) if not isinstance(last_data, str) else last_data}\n"
-                "Respond with ONLY the corrected JSON, no explanation."
+            data_str = json.dumps(last_data) if not isinstance(last_data, str) else last_data
+            prompt = self._delegate_prompt_template.format(
+                schema=json.dumps(schema),
+                errors=json.dumps(last_errors),
+                data=data_str,
             )
             messages = [{"role": "user", "content": prompt}]
             response = await provider.complete(model, messages)

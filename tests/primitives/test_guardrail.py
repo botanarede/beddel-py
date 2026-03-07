@@ -551,3 +551,64 @@ class TestRegisterBuiltins:
         register_builtins(registry)
 
         assert isinstance(registry.get("guardrail"), GuardrailPrimitive)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Delegate prompt template externalization (AC 6)
+# ---------------------------------------------------------------------------
+
+
+class TestDelegatePromptTemplate:
+    """Tests for externalized delegate strategy prompt template (AC 6)."""
+
+    async def test_default_template_is_used_when_no_override(self) -> None:
+        """Default DELEGATE_PROMPT_TEMPLATE is used when no constructor override."""
+        corrected = json.dumps({"name": "Alice", "age": 30})
+        provider = _make_provider(complete_return={"content": corrected})
+        ctx = _make_context(llm_provider=provider)
+        config = {
+            "data": {"age": 30},
+            "schema": SIMPLE_SCHEMA,
+            "strategy": "delegate",
+        }
+
+        result = await GuardrailPrimitive().execute(config, ctx)
+
+        assert result["valid"] is True
+        call_args = provider.complete.call_args
+        prompt_msg = call_args[0][1][0]["content"]
+        assert "Fix this data to match the schema:" in prompt_msg
+        assert "Respond with ONLY the corrected JSON, no explanation." in prompt_msg
+
+    async def test_custom_template_is_used_when_provided(self) -> None:
+        """Constructor-provided template overrides the class default."""
+        corrected = json.dumps({"name": "Bob", "age": 25})
+        provider = _make_provider(complete_return={"content": corrected})
+        ctx = _make_context(llm_provider=provider)
+        config = {
+            "data": {"age": 25},
+            "schema": SIMPLE_SCHEMA,
+            "strategy": "delegate",
+        }
+        custom_template = "CUSTOM: schema={schema} errors={errors} data={data}"
+
+        prim = GuardrailPrimitive(delegate_prompt_template=custom_template)
+        result = await prim.execute(config, ctx)
+
+        assert result["valid"] is True
+        call_args = provider.complete.call_args
+        prompt_msg = call_args[0][1][0]["content"]
+        assert prompt_msg.startswith("CUSTOM: schema=")
+        assert "Fix this data" not in prompt_msg
+
+    async def test_class_attribute_is_accessible(self) -> None:
+        """DELEGATE_PROMPT_TEMPLATE class attribute is publicly accessible."""
+        template = GuardrailPrimitive.DELEGATE_PROMPT_TEMPLATE
+        assert "{schema}" in template
+        assert "{errors}" in template
+        assert "{data}" in template
+
+    async def test_default_instance_uses_class_attribute(self) -> None:
+        """Instance without override uses the class-level template."""
+        prim = GuardrailPrimitive()
+        assert prim._delegate_prompt_template == GuardrailPrimitive.DELEGATE_PROMPT_TEMPLATE
