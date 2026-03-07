@@ -1051,3 +1051,42 @@ class TestRegisterBuiltins:
         register_builtins(registry)
 
         assert isinstance(registry.get("chat"), ChatPrimitive)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Message validation (Task 5 — AC 4)
+# ---------------------------------------------------------------------------
+
+
+class TestMessageValidation:
+    """Tests that ChatPrimitive rejects malformed input messages."""
+
+    async def test_chat_raises_on_message_missing_role(self) -> None:
+        """ChatPrimitive raises PrimitiveError when a message lacks 'role'."""
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+        config = {
+            "model": "gpt-4o",
+            "messages": [{"content": "hi"}],  # missing role
+        }
+
+        prim = ChatPrimitive()
+        with pytest.raises(PrimitiveError) as exc_info:
+            await prim.execute(config, ctx)
+
+        assert exc_info.value.code == "BEDDEL-PRIM-005"
+
+    async def test_chat_raises_on_message_missing_content(self) -> None:
+        """ChatPrimitive raises PrimitiveError when a message lacks 'content'."""
+        provider = _make_provider()
+        ctx = _make_context(llm_provider=provider)
+        config = {
+            "model": "gpt-4o",
+            "messages": [{"role": "user"}],  # missing content
+        }
+
+        prim = ChatPrimitive()
+        with pytest.raises(PrimitiveError) as exc_info:
+            await prim.execute(config, ctx)
+
+        assert exc_info.value.code == "BEDDEL-PRIM-005"

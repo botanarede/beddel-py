@@ -18,6 +18,7 @@ from typing import Any
 from beddel.domain.models import ExecutionContext
 from beddel.domain.ports import ILLMProvider, IPrimitive
 from beddel.primitives._llm_utils import build_kwargs, get_model, get_provider
+from beddel.primitives.utils import validate_message
 
 __all__ = [
     "ChatPrimitive",
@@ -156,13 +157,22 @@ class ChatPrimitive(IPrimitive):
         to the messages list.  The ``messages`` key provides the conversation
         history; defaults to an empty list if absent.
 
+        Each message is validated to ensure it contains the required ``role``
+        and ``content`` keys.
+
         Args:
             config: Primitive configuration dict.
 
         Returns:
             A list of message dicts suitable for the LLM provider.
+
+        Raises:
+            PrimitiveError: ``BEDDEL-PRIM-005`` if any message dict is
+                missing ``role`` or ``content``.
         """
         messages: list[dict[str, Any]] = list(config.get("messages", []))
+        for msg in messages:
+            validate_message(msg)
         if "system" in config:
             messages.insert(0, {"role": "system", "content": config["system"]})
         return messages
