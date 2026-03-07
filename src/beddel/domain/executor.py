@@ -39,6 +39,14 @@ from beddel.domain.ports import (
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.resolver import VariableResolver
 from beddel.domain.tracing_utils import extract_token_usage
+from beddel.error_codes import (
+    EXEC_DELEGATE_FAILED,
+    EXEC_DELEGATE_INVALID,
+    EXEC_NO_FALLBACK,
+    EXEC_RETRIES_EXHAUSTED,
+    EXEC_STEP_FAILED,
+    EXEC_TIMEOUT,
+)
 
 __all__ = [
     "SequentialStrategy",
@@ -570,7 +578,7 @@ class WorkflowExecutor:
                 )
             except TimeoutError:
                 raise ExecutionError(
-                    code="BEDDEL-EXEC-005",
+                    code=EXEC_TIMEOUT,
                     message=f"Step '{step.id}' timed out after {step.timeout}s",
                     details={
                         "step_id": step.id,
@@ -672,7 +680,7 @@ class WorkflowExecutor:
 
         # StrategyType.FAIL (default) and any unhandled strategy type
         raise ExecutionError(
-            code="BEDDEL-EXEC-002",
+            code=EXEC_STEP_FAILED,
             message=f"Step '{step.id}' failed: {error}",
             details={
                 "step_id": step.id,
@@ -720,7 +728,7 @@ class WorkflowExecutor:
                 last_error = exc
 
         raise ExecutionError(
-            code="BEDDEL-EXEC-003",
+            code=EXEC_RETRIES_EXHAUSTED,
             message=f"Step '{step.id}' failed after {config.max_attempts} retries: {last_error}",
             details={
                 "step_id": step.id,
@@ -753,7 +761,7 @@ class WorkflowExecutor:
         fallback = step.execution_strategy.fallback_step
         if fallback is None:
             raise ExecutionError(
-                code="BEDDEL-EXEC-004",
+                code=EXEC_NO_FALLBACK,
                 message=(
                     f"Step '{step.id}' failed with FALLBACK strategy but no fallback step defined"
                 ),
@@ -794,7 +802,7 @@ class WorkflowExecutor:
         provider = context.deps.llm_provider
         if provider is None:
             raise ExecutionError(
-                code="BEDDEL-EXEC-010",
+                code=EXEC_DELEGATE_FAILED,
                 message=(
                     f"Step '{step.id}' uses DELEGATE strategy but no LLM provider is configured"
                 ),
@@ -827,7 +835,7 @@ class WorkflowExecutor:
             )
         except Exception as llm_err:
             raise ExecutionError(
-                code="BEDDEL-EXEC-010",
+                code=EXEC_DELEGATE_FAILED,
                 message=(
                     f"LLM call failed during DELEGATE recovery for step '{step.id}': {llm_err}"
                 ),
@@ -849,7 +857,7 @@ class WorkflowExecutor:
             return await self._fallback_step(step, error, context)
 
         raise ExecutionError(
-            code="BEDDEL-EXEC-011",
+            code=EXEC_DELEGATE_INVALID,
             message=f"DELEGATE strategy for step '{step.id}' returned invalid action: '{action}'",
             details={"step_id": step.id, "raw_response": result.get("content", "")},
         ) from error

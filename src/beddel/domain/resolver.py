@@ -17,6 +17,7 @@ from typing import Any
 
 from beddel.domain.errors import ResolveError
 from beddel.domain.models import ExecutionContext
+from beddel.error_codes import RESOLVE_CIRCULAR, RESOLVE_MAX_DEPTH, RESOLVE_UNRESOLVABLE
 
 __all__ = [
     "VariableResolver",
@@ -173,7 +174,7 @@ class VariableResolver:
         # Depth guard.
         if depth > self._max_depth:
             raise ResolveError(
-                code="BEDDEL-RESOLVE-003",
+                code=RESOLVE_MAX_DEPTH,
                 message=(
                     f"Max recursion depth ({self._max_depth}) exceeded "
                     f"while resolving variable '{value}'"
@@ -190,7 +191,7 @@ class VariableResolver:
             # Circular reference detection.
             if raw_ref in seen:
                 raise ResolveError(
-                    code="BEDDEL-RESOLVE-002",
+                    code=RESOLVE_CIRCULAR,
                     message=(f"Circular variable reference detected for '{raw_ref}'"),
                     details={
                         "variable": raw_ref,
@@ -248,7 +249,7 @@ class VariableResolver:
         handler = self._handlers.get(namespace)
         if handler is None:
             raise ResolveError(
-                code="BEDDEL-RESOLVE-001",
+                code=RESOLVE_UNRESOLVABLE,
                 message=f"Unknown namespace '{namespace}' in variable '{raw_ref}'",
                 details={
                     "variable": raw_ref,
@@ -317,7 +318,7 @@ class VariableResolver:
         value = os.environ.get(path)
         if value is None:
             raise ResolveError(
-                code="BEDDEL-RESOLVE-001",
+                code=RESOLVE_UNRESOLVABLE,
                 message=f"Environment variable '{path}' is not set",
                 details={
                     "variable": f"$env.{path}",
@@ -355,7 +356,7 @@ def _traverse(data: dict[str, Any], path: str, namespace: str, raw_ref: str) -> 
             current = current[segment]
         else:
             raise ResolveError(
-                code="BEDDEL-RESOLVE-001",
+                code=RESOLVE_UNRESOLVABLE,
                 message=f"Unresolvable variable '{raw_ref}': key '{segment}' not found",
                 details={
                     "variable": raw_ref,

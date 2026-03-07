@@ -16,6 +16,7 @@ from typing import Any
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import ExecutionContext
 from beddel.domain.ports import ILLMProvider
+from beddel.error_codes import PRIM_MISSING_MODEL, PRIM_MISSING_PROVIDER
 
 __all__ = ["get_provider", "get_model", "build_kwargs"]
 
@@ -38,7 +39,7 @@ def get_provider(context: ExecutionContext, primitive_type: str) -> ILLMProvider
     provider = context.deps.llm_provider
     if provider is None:
         raise PrimitiveError(
-            "BEDDEL-PRIM-003",
+            PRIM_MISSING_PROVIDER,
             "Missing 'llm_provider' in execution context deps",
             {
                 "step_id": context.current_step_id,
@@ -47,7 +48,7 @@ def get_provider(context: ExecutionContext, primitive_type: str) -> ILLMProvider
         )
     if not isinstance(provider, ILLMProvider):
         raise PrimitiveError(
-            "BEDDEL-PRIM-003",
+            PRIM_MISSING_PROVIDER,
             "llm_provider in context.deps does not implement ILLMProvider",
             {
                 "step_id": context.current_step_id,
@@ -76,7 +77,7 @@ def get_model(config: dict[str, Any], context: ExecutionContext, primitive_type:
     model = config.get("model")
     if model is None:
         raise PrimitiveError(
-            "BEDDEL-PRIM-004",
+            PRIM_MISSING_MODEL,
             "Missing required config key: 'model'",
             {
                 "step_id": context.current_step_id,

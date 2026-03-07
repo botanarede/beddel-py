@@ -15,6 +15,7 @@ from typing import Any
 
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.ports import IPrimitive
+from beddel.error_codes import PRIM_INVALID_TYPE, PRIM_NOT_FOUND
 
 __all__ = [
     "PrimitiveRegistry",
@@ -50,7 +51,7 @@ class PrimitiveRegistry:
         """
         if not isinstance(primitive, IPrimitive):
             raise PrimitiveError(
-                "BEDDEL-PRIM-002",
+                PRIM_INVALID_TYPE,
                 f"Invalid primitive: {type(primitive).__name__} does not implement IPrimitive",
                 {"name": name, "type": type(primitive).__name__},
             )
@@ -73,7 +74,7 @@ class PrimitiveRegistry:
             return self._primitives[name]
         except KeyError:
             raise PrimitiveError(
-                "BEDDEL-PRIM-001",
+                PRIM_NOT_FOUND,
                 f"Primitive not found: {name!r}",
                 {"name": name},
             ) from None
@@ -130,7 +131,7 @@ def primitive(name: str) -> Any:
     def _decorator(cls: type) -> type:
         if not (isinstance(cls, type) and issubclass(cls, IPrimitive)):
             raise PrimitiveError(
-                "BEDDEL-PRIM-002",
+                PRIM_INVALID_TYPE,
                 f"Invalid primitive: {cls.__name__} does not implement IPrimitive",
                 {"name": name, "type": cls.__name__},
             )

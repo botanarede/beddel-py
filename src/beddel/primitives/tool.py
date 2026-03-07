@@ -16,6 +16,12 @@ from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import ExecutionContext
 from beddel.domain.ports import IPrimitive
 from beddel.domain.resolver import VariableResolver
+from beddel.error_codes import (
+    PRIM_MISSING_TOOL_REGISTRY,
+    PRIM_TOOL_EXEC_FAILED,
+    PRIM_TOOL_MISSING_CONFIG,
+    PRIM_TOOL_NOT_FOUND,
+)
 
 __all__ = [
     "ToolPrimitive",
@@ -90,7 +96,7 @@ class ToolPrimitive(IPrimitive):
         """
         if "tool" not in config:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-302",
+                code=PRIM_TOOL_MISSING_CONFIG,
                 message="Missing required config key 'tool' for tool primitive",
                 details={
                     "primitive": "tool",
@@ -115,7 +121,7 @@ class ToolPrimitive(IPrimitive):
         """
         if context.deps.tool_registry is None:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-005",
+                code=PRIM_MISSING_TOOL_REGISTRY,
                 message="Missing required dependency 'tool_registry' for tool primitive",
                 details={
                     "primitive": "tool",
@@ -145,7 +151,7 @@ class ToolPrimitive(IPrimitive):
         """
         if name not in registry:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-300",
+                code=PRIM_TOOL_NOT_FOUND,
                 message=f"Tool '{name}' not found in tool_registry",
                 details={
                     "primitive": "tool",
@@ -184,7 +190,7 @@ class ToolPrimitive(IPrimitive):
             raise
         except Exception as exc:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-301",
+                code=PRIM_TOOL_EXEC_FAILED,
                 message=f"Tool execution failed: {exc}",
                 details={
                     "primitive": "tool",

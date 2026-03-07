@@ -116,22 +116,22 @@ class TestValidDataPassesThrough:
 
 
 class TestRaiseStrategy:
-    """Tests that 'raise' strategy raises PrimitiveError("BEDDEL-PRIM-006")."""
+    """Tests that 'raise' strategy raises PrimitiveError("BEDDEL-GUARD-201")."""
 
     async def test_raises_on_invalid_data(self) -> None:
         ctx = _make_context()
         config = {"data": {"age": 30}, "schema": SIMPLE_SCHEMA, "strategy": "raise"}
 
-        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-006") as exc_info:
+        with pytest.raises(PrimitiveError, match="BEDDEL-GUARD-201") as exc_info:
             await GuardrailPrimitive().execute(config, ctx)
 
-        assert exc_info.value.code == "BEDDEL-PRIM-006"
+        assert exc_info.value.code == "BEDDEL-GUARD-201"
 
     async def test_raise_is_default_strategy(self) -> None:
         ctx = _make_context()
         config = {"data": {"age": 30}, "schema": SIMPLE_SCHEMA}
 
-        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-006"):
+        with pytest.raises(PrimitiveError, match="BEDDEL-GUARD-201"):
             await GuardrailPrimitive().execute(config, ctx)
 
     async def test_error_details_contain_errors_list(self) -> None:
@@ -489,7 +489,7 @@ class TestDelegateStrategyMaxAttempts:
 
 
 class TestInvalidStrategy:
-    """Tests that an invalid strategy name raises BEDDEL-PRIM-007."""
+    """Tests that an invalid strategy name raises BEDDEL-GUARD-202."""
 
     async def test_raises_prim_007_for_unknown_strategy(self) -> None:
         ctx = _make_context()
@@ -499,10 +499,10 @@ class TestInvalidStrategy:
             "strategy": "explode",
         }
 
-        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-007") as exc_info:
+        with pytest.raises(PrimitiveError, match="BEDDEL-GUARD-202") as exc_info:
             await GuardrailPrimitive().execute(config, ctx)
 
-        assert exc_info.value.code == "BEDDEL-PRIM-007"
+        assert exc_info.value.code == "BEDDEL-GUARD-202"
 
     async def test_error_message_mentions_strategy_name(self) -> None:
         ctx = _make_context()

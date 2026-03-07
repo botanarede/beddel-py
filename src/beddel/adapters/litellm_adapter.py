@@ -28,6 +28,7 @@ from litellm.exceptions import (
 
 from beddel.domain.errors import AdapterError
 from beddel.domain.ports import ILLMProvider
+from beddel.error_codes import ADAPT_AUTH_FAILURE, ADAPT_PROVIDER_ERROR, ADAPT_TIMEOUT
 
 __all__ = ["LiteLLMAdapter"]
 
@@ -149,19 +150,19 @@ class LiteLLMAdapter(ILLMProvider):
             )
         except AuthenticationError as exc:
             raise AdapterError(
-                code="BEDDEL-ADAPT-001",
+                code=ADAPT_AUTH_FAILURE,
                 message=f"Provider authentication failure for model '{model}': {exc}",
                 details={"model": model, "provider_error": str(exc)},
             ) from exc
         except (Timeout, APIConnectionError) as exc:
             raise AdapterError(
-                code="BEDDEL-ADAPT-003",
+                code=ADAPT_TIMEOUT,
                 message=f"Timeout or connection error for model '{model}': {exc}",
                 details={"model": model, "provider_error": str(exc)},
             ) from exc
         except (APIError, RateLimitError, BadRequestError) as exc:
             raise AdapterError(
-                code="BEDDEL-ADAPT-002",
+                code=ADAPT_PROVIDER_ERROR,
                 message=f"Provider error for model '{model}': {exc}",
                 details={"model": model, "provider_error": str(exc)},
             ) from exc
@@ -212,19 +213,19 @@ class LiteLLMAdapter(ILLMProvider):
             )
         except AuthenticationError as exc:
             raise AdapterError(
-                code="BEDDEL-ADAPT-001",
+                code=ADAPT_AUTH_FAILURE,
                 message=f"Provider authentication failure for model '{model}': {exc}",
                 details={"model": model, "provider_error": str(exc)},
             ) from exc
         except (Timeout, APIConnectionError) as exc:
             raise AdapterError(
-                code="BEDDEL-ADAPT-003",
+                code=ADAPT_TIMEOUT,
                 message=f"Timeout or connection error for model '{model}': {exc}",
                 details={"model": model, "provider_error": str(exc)},
             ) from exc
         except (APIError, RateLimitError, BadRequestError) as exc:
             raise AdapterError(
-                code="BEDDEL-ADAPT-002",
+                code=ADAPT_PROVIDER_ERROR,
                 message=f"Provider error for model '{model}': {exc}",
                 details={"model": model, "provider_error": str(exc)},
             ) from exc
@@ -236,19 +237,19 @@ class LiteLLMAdapter(ILLMProvider):
                     yield delta.content
         except AuthenticationError as exc:
             raise AdapterError(
-                code="BEDDEL-ADAPT-001",
+                code=ADAPT_AUTH_FAILURE,
                 message=f"Provider authentication failure for model '{model}': {exc}",
                 details={"model": model, "provider_error": str(exc)},
             ) from exc
         except (Timeout, APIConnectionError) as exc:
             raise AdapterError(
-                code="BEDDEL-ADAPT-003",
+                code=ADAPT_TIMEOUT,
                 message=f"Timeout or connection error for model '{model}': {exc}",
                 details={"model": model, "provider_error": str(exc)},
             ) from exc
         except (APIError, RateLimitError, BadRequestError) as exc:
             raise AdapterError(
-                code="BEDDEL-ADAPT-002",
+                code=ADAPT_PROVIDER_ERROR,
                 message=f"Provider error for model '{model}': {exc}",
                 details={"model": model, "provider_error": str(exc)},
             ) from exc

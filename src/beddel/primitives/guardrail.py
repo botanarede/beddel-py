@@ -21,6 +21,11 @@ from pydantic import ValidationError, create_model
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import ExecutionContext
 from beddel.domain.ports import ILLMProvider, IPrimitive
+from beddel.error_codes import (
+    GUARD_INVALID_STRATEGY,
+    GUARD_MISSING_CONFIG,
+    GUARD_VALIDATION_FAILED,
+)
 from beddel.primitives._llm_utils import get_provider
 
 __all__ = [
@@ -74,7 +79,7 @@ class GuardrailPrimitive(IPrimitive):
     =========== ============================================ ============
     Strategy    On Validation Failure                        LLM Required
     =========== ============================================ ============
-    raise       Raises ``PrimitiveError("BEDDEL-PRIM-006")`` No
+    raise       Raises ``PrimitiveError("BEDDEL-GUARD-201")`` No
     return_errors Returns error dict with ``valid: False``   No
     correct     JSON repair → re-validate → fall back        No
     delegate    LLM correction → re-validate → fall back     Yes
@@ -98,11 +103,11 @@ class GuardrailPrimitive(IPrimitive):
             ``"errors"`` when validation fails (for non-raise strategies).
 
         Raises:
-            PrimitiveError: ``BEDDEL-PRIM-008`` when required config keys
+            PrimitiveError: ``BEDDEL-GUARD-203`` when required config keys
                 (``data``, ``schema``) are missing.
-            PrimitiveError: ``BEDDEL-PRIM-006`` when strategy is ``"raise"``
+            PrimitiveError: ``BEDDEL-GUARD-201`` when strategy is ``"raise"``
                 and validation fails.
-            PrimitiveError: ``BEDDEL-PRIM-007`` when an invalid strategy
+            PrimitiveError: ``BEDDEL-GUARD-202`` when an invalid strategy
                 is specified.
             PrimitiveError: ``BEDDEL-PRIM-003`` when ``"delegate"`` strategy
                 is used without an ``llm_provider`` in context deps.
@@ -135,13 +140,13 @@ class GuardrailPrimitive(IPrimitive):
             context: Execution context for error details.
 
         Raises:
-            PrimitiveError: ``BEDDEL-PRIM-008`` if required keys are missing.
-            PrimitiveError: ``BEDDEL-PRIM-007`` if strategy is invalid.
+            PrimitiveError: ``BEDDEL-GUARD-203`` if required keys are missing.
+            PrimitiveError: ``BEDDEL-GUARD-202`` if strategy is invalid.
         """
         for key in ("data", "schema"):
             if key not in config:
                 raise PrimitiveError(
-                    code="BEDDEL-PRIM-008",
+                    code=GUARD_MISSING_CONFIG,
                     message=f"Missing required config key '{key}' for guardrail",
                     details={
                         "primitive": "guardrail",
@@ -153,7 +158,7 @@ class GuardrailPrimitive(IPrimitive):
         strategy = config.get("strategy", "raise")
         if strategy not in _VALID_STRATEGIES:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-007",
+                code=GUARD_INVALID_STRATEGY,
                 message=(
                     f"Invalid guardrail strategy '{strategy}'. "
                     f"Supported: {', '.join(sorted(_VALID_STRATEGIES))}"
@@ -221,10 +226,10 @@ class GuardrailPrimitive(IPrimitive):
             context: Execution context for error details.
 
         Raises:
-            PrimitiveError: ``BEDDEL-PRIM-006`` always.
+            PrimitiveError: ``BEDDEL-GUARD-201`` always.
         """
         raise PrimitiveError(
-            code="BEDDEL-PRIM-006",
+            code=GUARD_VALIDATION_FAILED,
             message="Guardrail validation failed",
             details={
                 "primitive": "guardrail",

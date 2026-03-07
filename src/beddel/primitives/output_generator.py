@@ -17,6 +17,11 @@ from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import ExecutionContext
 from beddel.domain.ports import IPrimitive
 from beddel.domain.resolver import VariableResolver
+from beddel.error_codes import (
+    PRIM_OUTPUT_FORMAT_FAILED,
+    PRIM_OUTPUT_MISSING_TEMPLATE,
+    PRIM_OUTPUT_UNSUPPORTED_FORMAT,
+)
 
 __all__ = [
     "OutputGeneratorPrimitive",
@@ -93,7 +98,7 @@ class OutputGeneratorPrimitive(IPrimitive):
         """
         if "template" not in config:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-100",
+                code=PRIM_OUTPUT_MISSING_TEMPLATE,
                 message="Missing required config key 'template' for output-generator",
                 details={
                     "primitive": "output-generator",
@@ -104,7 +109,7 @@ class OutputGeneratorPrimitive(IPrimitive):
         format_type = config.get("format", "text")
         if format_type not in _SUPPORTED_FORMATS:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-101",
+                code=PRIM_OUTPUT_UNSUPPORTED_FORMAT,
                 message=(
                     f"Unsupported format '{format_type}' for output-generator. "
                     f"Supported: {', '.join(sorted(_SUPPORTED_FORMATS))}"
@@ -161,7 +166,7 @@ class OutputGeneratorPrimitive(IPrimitive):
                 return json.dumps(resolved, indent=indent, ensure_ascii=False)
             except (TypeError, ValueError, OverflowError) as exc:
                 raise PrimitiveError(
-                    code="BEDDEL-PRIM-102",
+                    code=PRIM_OUTPUT_FORMAT_FAILED,
                     message=f"Failed to serialize output as JSON: {exc}",
                     details={
                         "primitive": "output-generator",

@@ -31,6 +31,7 @@ from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import Workflow
 from beddel.domain.ports import IHookManager, ILLMProvider, ITracer
 from beddel.domain.registry import PrimitiveRegistry
+from beddel.error_codes import INTERNAL_SERVER_ERROR
 from beddel.integrations.sse import BeddelSSEAdapter
 from beddel.primitives import register_builtins
 
@@ -151,7 +152,7 @@ def create_beddel_handler(
             return JSONResponse(
                 status_code=500,
                 content={
-                    "code": "BEDDEL-INTERNAL-001",
+                    "code": INTERNAL_SERVER_ERROR,
                     "message": "Internal server error",
                     "details": {},
                 },

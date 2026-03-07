@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from beddel.domain.errors import ParseError
 from beddel.domain.models import Workflow
+from beddel.error_codes import PARSE_INVALID_YAML, PARSE_MALFORMED_VARS, PARSE_SCHEMA_VALIDATION
 
 __all__ = [
     "WorkflowParser",
@@ -74,14 +75,14 @@ class WorkflowParser:
             data = yaml.safe_load(yaml_str)
         except yaml.YAMLError as exc:
             raise ParseError(
-                code="BEDDEL-PARSE-001",
+                code=PARSE_INVALID_YAML,
                 message=f"Invalid YAML syntax: {exc}",
                 details={"source": str(exc)},
             ) from exc
 
         if not isinstance(data, dict):
             raise ParseError(
-                code="BEDDEL-PARSE-001",
+                code=PARSE_INVALID_YAML,
                 message=f"YAML document must be a mapping, got {type(data).__name__}",
                 details={"type": type(data).__name__},
             )
@@ -113,7 +114,7 @@ class WorkflowParser:
                 for err in exc.errors()
             ]
             raise ParseError(
-                code="BEDDEL-PARSE-002",
+                code=PARSE_SCHEMA_VALIDATION,
                 message=f"Workflow schema validation failed with {len(field_errors)} error(s)",
                 details={"errors": field_errors},
             ) from exc
@@ -139,7 +140,7 @@ class WorkflowParser:
 
         if invalid_refs:
             raise ParseError(
-                code="BEDDEL-PARSE-003",
+                code=PARSE_MALFORMED_VARS,
                 message=f"Invalid variable reference(s): {len(invalid_refs)} found",
                 details={"invalid_references": invalid_refs},
             )

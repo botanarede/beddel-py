@@ -20,6 +20,12 @@ from beddel.domain.models import DefaultDependencies, ExecutionContext, Workflow
 from beddel.domain.ports import IPrimitive
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.resolver import VariableResolver
+from beddel.error_codes import (
+    PRIM_INVALID_TYPE,
+    PRIM_MAX_DEPTH,
+    PRIM_MISSING_WORKFLOW,
+    PRIM_NOT_FOUND,
+)
 
 __all__ = [
     "CallAgentPrimitive",
@@ -80,7 +86,7 @@ class CallAgentPrimitive(IPrimitive):
         current_depth = context.metadata.get("_call_depth", 0)
         if current_depth >= max_depth:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-200",
+                code=PRIM_MAX_DEPTH,
                 message=(
                     f"Maximum call-agent nesting depth exceeded: "
                     f"current depth {current_depth} >= max depth {max_depth}"
@@ -142,7 +148,7 @@ class CallAgentPrimitive(IPrimitive):
         """
         if "workflow" not in config:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-201",
+                code=PRIM_MISSING_WORKFLOW,
                 message="Missing required config key 'workflow' for call-agent",
                 details={
                     "primitive": "call-agent",
@@ -165,7 +171,7 @@ class CallAgentPrimitive(IPrimitive):
         """
         if context.deps.workflow_loader is None:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-001",
+                code=PRIM_NOT_FOUND,
                 message=("Missing required dependency 'workflow_loader' for call-agent"),
                 details={
                     "primitive": "call-agent",
@@ -189,7 +195,7 @@ class CallAgentPrimitive(IPrimitive):
         """
         if context.deps.registry is None:
             raise PrimitiveError(
-                code="BEDDEL-PRIM-002",
+                code=PRIM_INVALID_TYPE,
                 message=("Missing required dependency 'registry' for call-agent"),
                 details={
                     "primitive": "call-agent",
