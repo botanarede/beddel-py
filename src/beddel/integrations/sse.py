@@ -89,7 +89,7 @@ class BeddelSSEAdapter:
         except BeddelError as exc:
             yield {
                 "event": "error",
-                "data": json.dumps({"code": exc.code, "message": str(exc)}),
+                "data": json.dumps({"code": exc.code, "message": exc.message}),
             }
             yield {"event": "done", "data": ""}
         except Exception as exc:

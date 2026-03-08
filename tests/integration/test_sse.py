@@ -362,3 +362,18 @@ class TestSSEErrorProtocol:
         assert "error" not in event_types
         assert "done" not in event_types
         assert len(results) == 3
+
+    async def test_beddel_error_message_excludes_code_prefix(self) -> None:
+        """BeddelError message field contains only the message, not the code prefix.
+
+        Regression guard for AC 2: ``exc.message`` is used instead of
+        ``str(exc)`` so the ``message`` field does not duplicate the code
+        that already appears in the ``code`` field.
+        """
+        results = await _collect(BeddelSSEAdapter.stream_events(_error_stream_beddel()))
+        error_events = [r for r in results if r["event"] == "error"]
+        assert len(error_events) == 1
+        payload = json.loads(error_events[0]["data"])
+        # Must be the raw message without the "BEDDEL-TEST-001: " prefix
+        assert payload["message"] == "test error"
+        assert payload["code"] not in payload["message"]
