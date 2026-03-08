@@ -16,7 +16,7 @@ import random
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from beddel.domain.errors import ExecutionError
+from beddel.domain.errors import ExecutionError, TracingError
 from beddel.domain.models import (
     BeddelEvent,
     DefaultDependencies,
@@ -209,8 +209,11 @@ class WorkflowExecutor:
                     "beddel.workflow",
                     {"beddel.workflow_id": workflow.id},
                 )
-            except Exception:
-                logger.warning("Tracing start_span failed (ignored)", exc_info=True)
+            except TracingError as exc:
+                if exc.fail_silent:
+                    logger.warning("Tracing start_span failed (ignored)", exc_info=True)
+                else:
+                    raise
 
         try:
             await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
@@ -229,8 +232,11 @@ class WorkflowExecutor:
             if tracer is not None and workflow_span is not None:
                 try:
                     tracer.end_span(workflow_span)
-                except Exception:
-                    logger.warning("Tracing end_span failed (ignored)", exc_info=True)
+                except TracingError as exc:
+                    if exc.fail_silent:
+                        logger.warning("Tracing end_span failed (ignored)", exc_info=True)
+                    else:
+                        raise
 
     async def execute_stream(
         self,
@@ -360,8 +366,11 @@ class WorkflowExecutor:
                         "beddel.workflow",
                         {"beddel.workflow_id": workflow.id},
                     )
-                except Exception:
-                    logger.warning("Tracing start_span failed (ignored)", exc_info=True)
+                except TracingError as exc:
+                    if exc.fail_silent:
+                        logger.warning("Tracing start_span failed (ignored)", exc_info=True)
+                    else:
+                        raise
 
             try:
                 await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
@@ -401,8 +410,11 @@ class WorkflowExecutor:
                 if tracer is not None and workflow_span is not None:
                     try:
                         tracer.end_span(workflow_span)
-                    except Exception:
-                        logger.warning("Tracing end_span failed (ignored)", exc_info=True)
+                    except TracingError as exc:
+                        if exc.fail_silent:
+                            logger.warning("Tracing end_span failed (ignored)", exc_info=True)
+                        else:
+                            raise
         finally:
             await self._hook_manager.remove_hook(collector)
 
@@ -455,8 +467,11 @@ class WorkflowExecutor:
                         "beddel.execution_strategy": step.execution_strategy.type.value,
                     },
                 )
-            except Exception:
-                logger.warning("Tracing start_span failed (ignored)", exc_info=True)
+            except TracingError as exc:
+                if exc.fail_silent:
+                    logger.warning("Tracing start_span failed (ignored)", exc_info=True)
+                else:
+                    raise
 
         try:
             if step.if_condition is not None:
@@ -482,8 +497,11 @@ class WorkflowExecutor:
                         step_span,
                         {"error": True, "error.message": str(exc)},
                     )
-                except Exception:
-                    logger.warning("Tracing error span failed (ignored)", exc_info=True)
+                except TracingError as tracing_exc:
+                    if tracing_exc.fail_silent:
+                        logger.warning("Tracing error span failed (ignored)", exc_info=True)
+                    else:
+                        raise
                 step_span = None  # Prevent double-end in finally
 
             await self._dispatch_hook("on_error", step.id, exc)
@@ -499,8 +517,11 @@ class WorkflowExecutor:
                         extract_token_usage(step_result) if isinstance(step_result, dict) else {}
                     )
                     tracer.end_span(step_span, end_attrs or None)
-                except Exception:
-                    logger.warning("Tracing end_span failed (ignored)", exc_info=True)
+                except TracingError as exc:
+                    if exc.fail_silent:
+                        logger.warning("Tracing end_span failed (ignored)", exc_info=True)
+                    else:
+                        raise
 
     async def _execute_step(self, step: Step, context: ExecutionContext) -> Any:
         """Execute a single step (private delegate).
@@ -567,8 +588,11 @@ class WorkflowExecutor:
                     if "/" in model:
                         attrs["beddel.provider"] = model.split("/", 1)[0]
                 prim_span = tracer.start_span(f"beddel.primitive.{step.primitive}", attrs)
-            except Exception:
-                logger.warning("Tracing start_span failed (ignored)", exc_info=True)
+            except TracingError as exc:
+                if exc.fail_silent:
+                    logger.warning("Tracing start_span failed (ignored)", exc_info=True)
+                else:
+                    raise
 
         try:
             resolved_config = self._resolver.resolve(step.config, context)
@@ -580,8 +604,11 @@ class WorkflowExecutor:
             if tracer is not None and prim_span is not None:
                 try:
                     tracer.end_span(prim_span)
-                except Exception:
-                    logger.warning("Tracing end_span failed (ignored)", exc_info=True)
+                except TracingError as exc:
+                    if exc.fail_silent:
+                        logger.warning("Tracing end_span failed (ignored)", exc_info=True)
+                    else:
+                        raise
 
     async def _run_with_timeout(self, step: Step, context: ExecutionContext) -> Any:
         """Run a primitive with optional timeout enforcement.

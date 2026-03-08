@@ -1626,3 +1626,98 @@ class TestExecuteStepWithContext:
 
         assert result == "delegated"
         assert context.step_results["s1"] == "delegated"
+
+
+# ---------------------------------------------------------------------------
+# Story 3.6 / Task 4 — TracingError handling in executor
+# ---------------------------------------------------------------------------
+
+
+class TestTracingErrorHandling:
+    """Executor respects TracingError.fail_silent flag from tracer."""
+
+    async def test_continues_when_fail_silent_true(self) -> None:
+        """Executor continues when tracer raises TracingError(fail_silent=True)."""
+        from beddel.domain.errors import TracingError
+        from beddel.error_codes import TRACING_FAILURE
+
+        class _FailSilentTracer:
+            def start_span(self, name: str, attributes: dict[str, Any] | None = None) -> None:
+                raise TracingError(
+                    code=TRACING_FAILURE,
+                    message="tracing failed",
+                    fail_silent=True,
+                )
+
+            def end_span(self, span: Any, attributes: dict[str, Any] | None = None) -> None:
+                raise TracingError(
+                    code=TRACING_FAILURE,
+                    message="tracing end failed",
+                    fail_silent=True,
+                )
+
+        registry, _ = _registry_with_stub(return_value="ok")
+        step = _make_step("s1")
+        wf = _make_workflow([step])
+
+        executor = WorkflowExecutor(registry, tracer=_FailSilentTracer())  # type: ignore[arg-type]
+        result = await executor.execute(wf)
+
+        assert result["step_results"]["s1"] == "ok"
+
+    async def test_reraises_when_fail_silent_false(self) -> None:
+        """Executor re-raises when tracer raises TracingError(fail_silent=False)."""
+        from beddel.domain.errors import TracingError
+        from beddel.error_codes import TRACING_FAILURE
+
+        class _FatalTracer:
+            def start_span(self, name: str, attributes: dict[str, Any] | None = None) -> None:
+                raise TracingError(
+                    code=TRACING_FAILURE,
+                    message="fatal tracing error",
+                    fail_silent=False,
+                )
+
+            def end_span(self, span: Any, attributes: dict[str, Any] | None = None) -> None:
+                pass
+
+        registry, _ = _registry_with_stub(return_value="ok")
+        step = _make_step("s1")
+        wf = _make_workflow([step])
+
+        executor = WorkflowExecutor(registry, tracer=_FatalTracer())  # type: ignore[arg-type]
+
+        with pytest.raises(TracingError, match="fatal tracing error"):
+            await executor.execute(wf)
+
+    async def test_result_correct_despite_tracing_failure(self) -> None:
+        """Workflow result is correct despite both start_span and end_span failing silently."""
+        from beddel.domain.errors import TracingError
+        from beddel.error_codes import TRACING_FAILURE
+
+        class _AllFailSilentTracer:
+            def start_span(self, name: str, attributes: dict[str, Any] | None = None) -> None:
+                raise TracingError(
+                    code=TRACING_FAILURE,
+                    message="start boom",
+                    fail_silent=True,
+                )
+
+            def end_span(self, span: Any, attributes: dict[str, Any] | None = None) -> None:
+                raise TracingError(
+                    code=TRACING_FAILURE,
+                    message="end boom",
+                    fail_silent=True,
+                )
+
+        registry, _ = _registry_with_stub(return_value={"answer": 42})
+        s1 = _make_step("s1")
+        s2 = _make_step("s2", primitive="test-prim")
+        wf = _make_workflow([s1, s2])
+
+        executor = WorkflowExecutor(registry, tracer=_AllFailSilentTracer())  # type: ignore[arg-type]
+        result = await executor.execute(wf)
+
+        assert result["step_results"]["s1"] == {"answer": 42}
+        assert result["step_results"]["s2"] == {"answer": 42}
+        assert "metadata" in result
