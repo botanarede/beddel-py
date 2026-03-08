@@ -69,9 +69,6 @@ RESOLVE_MAX_DEPTH: str = "BEDDEL-RESOLVE-003"
 # Guardrail codes  (GUARD prefix, 200 range)
 # ---------------------------------------------------------------------------
 
-GUARD_MISSING_PROVIDER: str = "BEDDEL-GUARD-200"
-"""Missing llm_provider for delegate."""
-
 GUARD_VALIDATION_FAILED: str = "BEDDEL-GUARD-201"
 """Validation failed, raise strategy."""
 
@@ -183,7 +180,6 @@ ALL_CODES: dict[str, str] = {
     "RESOLVE_CIRCULAR": RESOLVE_CIRCULAR,
     "RESOLVE_MAX_DEPTH": RESOLVE_MAX_DEPTH,
     # Guardrail
-    "GUARD_MISSING_PROVIDER": GUARD_MISSING_PROVIDER,
     "GUARD_VALIDATION_FAILED": GUARD_VALIDATION_FAILED,
     "GUARD_INVALID_STRATEGY": GUARD_INVALID_STRATEGY,
     "GUARD_MISSING_CONFIG": GUARD_MISSING_CONFIG,

@@ -465,7 +465,7 @@ class TestDelegateStrategyMaxAttempts:
 class TestInvalidStrategy:
     """Tests that an invalid strategy name raises BEDDEL-GUARD-202."""
 
-    async def test_raises_prim_007_for_unknown_strategy(self) -> None:
+    async def test_raises_guard_202_for_unknown_strategy(self) -> None:
         ctx = make_context()
         config = {
             "data": {"name": "Alice"},

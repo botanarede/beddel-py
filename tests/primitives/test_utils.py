@@ -52,7 +52,7 @@ class TestValidateMessage:
 
 
 class TestErrorCodeRegistry:
-    """Verify error code registry integrity (Story 3.6, Task 7)."""
+    """Verify error code registry integrity (Story 3.5)."""
 
     def test_no_duplicate_error_codes(self) -> None:
         """ALL_CODES values must be unique — no two names share a code string."""
