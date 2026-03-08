@@ -10,11 +10,11 @@ Ranges
 Range       Prefix    Domain
 ==========  ========  ===========
 100 – 199   PARSE     YAML parsing & validation
-100 – 199   RESOLVE   Variable resolution (conceptually in PARSE range)
 200 – 299   GUARD     Guardrail validation
 300 – 399   PRIM      Primitive execution
 400 – 499   ADAPT     Adapter errors
 500 – 599   EXEC      Workflow execution
+600 – 699   RESOLVE   Variable resolution
 ==========  ========  ===========
 """
 
@@ -39,6 +39,9 @@ ADAPT_RANGE: tuple[int, int] = (400, 499)
 EXEC_RANGE: tuple[int, int] = (500, 599)
 """Workflow execution."""
 
+RESOLVE_RANGE: tuple[int, int] = (600, 699)
+"""Variable resolution."""
+
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
 # ---------------------------------------------------------------------------
@@ -53,7 +56,7 @@ PARSE_MALFORMED_VARS: str = "BEDDEL-PARSE-003"
 """Malformed variable references."""
 
 # ---------------------------------------------------------------------------
-# Resolver codes  (RESOLVE prefix, conceptually in PARSE range)
+# Resolver codes  (RESOLVE prefix, 600 range)
 # ---------------------------------------------------------------------------
 
 RESOLVE_UNRESOLVABLE: str = "BEDDEL-RESOLVE-001"
@@ -95,7 +98,10 @@ PRIM_MISSING_MODEL: str = "BEDDEL-PRIM-004"
 """Missing model config key."""
 
 PRIM_MISSING_TOOL_REGISTRY: str = "BEDDEL-PRIM-005"
-"""Missing tool_registry / message validation."""
+"""Missing tool_registry."""
+
+PRIM_INVALID_MESSAGE: str = "BEDDEL-PRIM-006"
+"""Invalid message dict (missing required keys)."""
 
 PRIM_OUTPUT_MISSING_TEMPLATE: str = "BEDDEL-PRIM-100"
 """Missing template for output-generator."""
@@ -189,6 +195,7 @@ ALL_CODES: dict[str, str] = {
     "PRIM_MISSING_PROVIDER": PRIM_MISSING_PROVIDER,
     "PRIM_MISSING_MODEL": PRIM_MISSING_MODEL,
     "PRIM_MISSING_TOOL_REGISTRY": PRIM_MISSING_TOOL_REGISTRY,
+    "PRIM_INVALID_MESSAGE": PRIM_INVALID_MESSAGE,
     "PRIM_OUTPUT_MISSING_TEMPLATE": PRIM_OUTPUT_MISSING_TEMPLATE,
     "PRIM_OUTPUT_UNSUPPORTED_FORMAT": PRIM_OUTPUT_UNSUPPORTED_FORMAT,
     "PRIM_OUTPUT_FORMAT_FAILED": PRIM_OUTPUT_FORMAT_FAILED,

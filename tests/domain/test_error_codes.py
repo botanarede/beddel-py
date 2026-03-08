@@ -12,6 +12,7 @@ from beddel.error_codes import (
     GUARD_RANGE,
     PARSE_RANGE,
     PRIM_RANGE,
+    RESOLVE_RANGE,
 )
 
 # Valid code pattern: BEDDEL-{PREFIX}-{NNN}
@@ -46,6 +47,7 @@ class TestRanges:
             "PRIM_RANGE": PRIM_RANGE,
             "ADAPT_RANGE": ADAPT_RANGE,
             "EXEC_RANGE": EXEC_RANGE,
+            "RESOLVE_RANGE": RESOLVE_RANGE,
         }
         for name, (lo, hi) in ranges.items():
             assert lo < hi, f"{name} lower bound >= upper bound"
@@ -57,6 +59,7 @@ class TestRanges:
             ("PRIM_RANGE", PRIM_RANGE),
             ("ADAPT_RANGE", ADAPT_RANGE),
             ("EXEC_RANGE", EXEC_RANGE),
+            ("RESOLVE_RANGE", RESOLVE_RANGE),
         ]
         for i, (name_a, (lo_a, hi_a)) in enumerate(ranges):
             for name_b, (lo_b, hi_b) in ranges[i + 1 :]:
@@ -70,6 +73,7 @@ class TestRanges:
         assert PRIM_RANGE == (300, 399)
         assert ADAPT_RANGE == (400, 499)
         assert EXEC_RANGE == (500, 599)
+        assert RESOLVE_RANGE == (600, 699)
 
 
 class TestAllCodesCompleteness:
