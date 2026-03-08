@@ -49,3 +49,28 @@ class TestValidateMessage:
 
         assert "missing_keys" in exc_info.value.details
         assert sorted(exc_info.value.details["missing_keys"]) == ["content", "role"]
+
+
+class TestErrorCodeRegistry:
+    """Verify error code registry integrity (Story 3.6, Task 7)."""
+
+    def test_no_duplicate_error_codes(self) -> None:
+        """ALL_CODES values must be unique — no two names share a code string."""
+        from beddel.error_codes import ALL_CODES
+
+        values = list(ALL_CODES.values())
+        assert len(values) == len(set(values)), (
+            f"Duplicate codes found: {[v for v in values if values.count(v) > 1]}"
+        )
+
+    def test_tracing_failure_in_all_codes(self) -> None:
+        """TRACING_FAILURE must be registered in ALL_CODES."""
+        from beddel.error_codes import ALL_CODES
+
+        assert "TRACING_FAILURE" in ALL_CODES
+
+    def test_tracing_failure_code_value(self) -> None:
+        """TRACING_FAILURE maps to BEDDEL-ADAPT-010."""
+        from beddel.error_codes import ALL_CODES
+
+        assert ALL_CODES["TRACING_FAILURE"] == "BEDDEL-ADAPT-010"

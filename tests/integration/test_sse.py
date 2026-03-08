@@ -324,6 +324,32 @@ class TestSSEErrorProtocol:
         assert isinstance(payload["code"], str)
         assert isinstance(payload["message"], str)
 
+    async def test_execution_error_emits_error_event_with_exec_code(self) -> None:
+        """ExecutionError during streaming emits error event with its code.
+
+        Simulates an executor-level failure mid-stream: a few events yield
+        successfully, then an ExecutionError is raised.  The SSE adapter
+        must emit an error event carrying the ExecutionError's code followed
+        by a done event for clean termination.
+        """
+        from beddel.domain.errors import ExecutionError as _ExecutionError
+        from beddel.error_codes import EXEC_STEP_FAILED
+
+        async def _error_stream_execution() -> AsyncGenerator[BeddelEvent, None]:
+            yield _make_event(event_type=EventType.STEP_START)
+            yield _make_event(event_type=EventType.TEXT_CHUNK, data={"text": "partial"})
+            raise _ExecutionError(EXEC_STEP_FAILED, "step blew up")
+
+        results = await _collect(BeddelSSEAdapter.stream_events(_error_stream_execution()))
+        error_events = [r for r in results if r["event"] == "error"]
+        assert len(error_events) == 1
+        payload = json.loads(error_events[0]["data"])
+        assert payload["code"] == EXEC_STEP_FAILED
+        assert "step blew up" in payload["message"]
+        # Clean termination: done follows error
+        assert results[-2]["event"] == "error"
+        assert results[-1]["event"] == "done"
+
     async def test_normal_stream_no_error_events(self) -> None:
         """A stream without errors produces no error or done events (regression)."""
         events = [
