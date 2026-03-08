@@ -1035,7 +1035,7 @@ class TestMessageValidation:
         with pytest.raises(PrimitiveError) as exc_info:
             await prim.execute(config, ctx)
 
-        assert exc_info.value.code == "BEDDEL-PRIM-005"
+        assert exc_info.value.code == "BEDDEL-PRIM-006"
 
     async def test_chat_raises_on_message_missing_content(self) -> None:
         """ChatPrimitive raises PrimitiveError when a message lacks 'content'."""
@@ -1050,4 +1050,4 @@ class TestMessageValidation:
         with pytest.raises(PrimitiveError) as exc_info:
             await prim.execute(config, ctx)
 
-        assert exc_info.value.code == "BEDDEL-PRIM-005"
+        assert exc_info.value.code == "BEDDEL-PRIM-006"
