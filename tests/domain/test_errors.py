@@ -127,6 +127,11 @@ class TestTracingError:
 
         assert isinstance(err, BeddelError)
 
+    def test_inherits_from_adapter_error(self) -> None:
+        err = TracingError("BEDDEL-ADAPT-010", "tracing failed")
+
+        assert isinstance(err, AdapterError)
+
     def test_fail_silent_defaults_to_true(self) -> None:
         err = TracingError("BEDDEL-ADAPT-010", "tracing failed")
 

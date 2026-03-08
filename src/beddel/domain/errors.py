@@ -121,7 +121,7 @@ class AdapterError(BeddelError):
     """
 
 
-class TracingError(BeddelError):
+class TracingError(AdapterError):
     """Tracing operation errors.
 
     Error code prefix: ``BEDDEL-ADAPT-``
