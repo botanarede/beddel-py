@@ -108,3 +108,27 @@ class TestModuleExport:
         from beddel import error_codes as ec
 
         assert hasattr(ec, "ALL_CODES")
+
+
+class TestTracingFailureCode:
+    """TRACING_FAILURE code is registered correctly."""
+
+    def test_tracing_failure_in_all_codes(self) -> None:
+        """TRACING_FAILURE must be registered in ALL_CODES."""
+        assert "TRACING_FAILURE" in ALL_CODES
+
+    def test_tracing_failure_code_value(self) -> None:
+        """TRACING_FAILURE maps to BEDDEL-ADAPT-010."""
+        assert ALL_CODES["TRACING_FAILURE"] == "BEDDEL-ADAPT-010"
+
+
+class TestPrimInvalidMessageCode:
+    """PRIM_INVALID_MESSAGE code is registered correctly."""
+
+    def test_prim_invalid_message_in_all_codes(self) -> None:
+        """PRIM_INVALID_MESSAGE must be registered in ALL_CODES."""
+        assert "PRIM_INVALID_MESSAGE" in ALL_CODES
+
+    def test_prim_invalid_message_code_value(self) -> None:
+        """PRIM_INVALID_MESSAGE maps to BEDDEL-PRIM-006."""
+        assert ALL_CODES["PRIM_INVALID_MESSAGE"] == "BEDDEL-PRIM-006"
