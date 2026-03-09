@@ -25,7 +25,7 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 PARSE_RANGE: tuple[int, int] = (100, 199)
-"""YAML parsing & variable resolution."""
+"""YAML parsing & validation."""
 
 GUARD_RANGE: tuple[int, int] = (200, 299)
 """Guardrail validation."""
