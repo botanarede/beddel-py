@@ -15,6 +15,7 @@ Range       Prefix    Domain
 400 – 499   ADAPT     Adapter errors
 500 – 599   EXEC      Workflow execution
 600 – 699   RESOLVE   Variable resolution
+700 – 799   AGENT     Agent adapter errors
 ==========  ========  ===========
 """
 
@@ -41,6 +42,9 @@ EXEC_RANGE: tuple[int, int] = (500, 599)
 
 RESOLVE_RANGE: tuple[int, int] = (600, 699)
 """Variable resolution."""
+
+AGENT_RANGE: tuple[int, int] = (700, 799)
+"""Agent adapter errors."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -166,6 +170,22 @@ EXEC_DELEGATE_INVALID: str = "BEDDEL-EXEC-011"
 """Delegate invalid action."""
 
 # ---------------------------------------------------------------------------
+# Agent codes  (AGENT prefix, 700 range)
+# ---------------------------------------------------------------------------
+
+AGENT_NOT_CONFIGURED: str = "BEDDEL-AGENT-700"
+"""Agent adapter not configured."""
+
+AGENT_EXECUTION_FAILED: str = "BEDDEL-AGENT-701"
+"""Agent execution failed."""
+
+AGENT_TIMEOUT: str = "BEDDEL-AGENT-702"
+"""Agent execution timeout."""
+
+AGENT_STREAM_INTERRUPTED: str = "BEDDEL-AGENT-703"
+"""Agent stream interrupted."""
+
+# ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
 
@@ -209,6 +229,11 @@ ALL_CODES: dict[str, str] = {
     "ADAPT_PROVIDER_ERROR": ADAPT_PROVIDER_ERROR,
     "ADAPT_TIMEOUT": ADAPT_TIMEOUT,
     "TRACING_FAILURE": TRACING_FAILURE,
+    # Agent
+    "AGENT_NOT_CONFIGURED": AGENT_NOT_CONFIGURED,
+    "AGENT_EXECUTION_FAILED": AGENT_EXECUTION_FAILED,
+    "AGENT_TIMEOUT": AGENT_TIMEOUT,
+    "AGENT_STREAM_INTERRUPTED": AGENT_STREAM_INTERRUPTED,
     # Execution
     "EXEC_STEP_FAILED": EXEC_STEP_FAILED,
     "EXEC_RETRIES_EXHAUSTED": EXEC_RETRIES_EXHAUSTED,
