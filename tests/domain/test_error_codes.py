@@ -7,7 +7,10 @@ import re
 from beddel import error_codes
 from beddel.error_codes import (
     ADAPT_RANGE,
+    AGENT_ADAPTER_NOT_FOUND,
     AGENT_EXECUTION_FAILED,
+    AGENT_MISSING_ADAPTER,
+    AGENT_MISSING_PROMPT,
     AGENT_NOT_CONFIGURED,
     AGENT_RANGE,
     AGENT_STREAM_INTERRUPTED,
@@ -103,22 +106,36 @@ class TestAgentCodes:
         """AGENT_STREAM_INTERRUPTED maps to BEDDEL-AGENT-703."""
         assert AGENT_STREAM_INTERRUPTED == "BEDDEL-AGENT-703"
 
+    def test_agent_missing_adapter_value(self) -> None:
+        """AGENT_MISSING_ADAPTER maps to BEDDEL-AGENT-704."""
+        assert AGENT_MISSING_ADAPTER == "BEDDEL-AGENT-704"
+
+    def test_agent_missing_prompt_value(self) -> None:
+        """AGENT_MISSING_PROMPT maps to BEDDEL-AGENT-705."""
+        assert AGENT_MISSING_PROMPT == "BEDDEL-AGENT-705"
+
+    def test_agent_adapter_not_found_value(self) -> None:
+        """AGENT_ADAPTER_NOT_FOUND maps to BEDDEL-AGENT-706."""
+        assert AGENT_ADAPTER_NOT_FOUND == "BEDDEL-AGENT-706"
+
     def test_all_agent_codes_in_all_codes(self) -> None:
-        """All 4 AGENT codes are registered in ALL_CODES."""
+        """All 7 AGENT codes are registered in ALL_CODES."""
         agent_keys = [
             "AGENT_NOT_CONFIGURED",
             "AGENT_EXECUTION_FAILED",
             "AGENT_TIMEOUT",
             "AGENT_STREAM_INTERRUPTED",
+            "AGENT_MISSING_ADAPTER",
+            "AGENT_MISSING_PROMPT",
+            "AGENT_ADAPTER_NOT_FOUND",
         ]
         for key in agent_keys:
             assert key in ALL_CODES, f"{key} missing from ALL_CODES"
 
     def test_agent_codes_count(self) -> None:
-        """Exactly 4 AGENT codes exist in ALL_CODES."""
+        """Exactly 7 AGENT codes exist in ALL_CODES."""
         agent_codes = {k: v for k, v in ALL_CODES.items() if k.startswith("AGENT_")}
-
-        assert len(agent_codes) == 4
+        assert len(agent_codes) == 7
 
 
 class TestAllCodesCompleteness:

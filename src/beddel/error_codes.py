@@ -185,6 +185,15 @@ AGENT_TIMEOUT: str = "BEDDEL-AGENT-702"
 AGENT_STREAM_INTERRUPTED: str = "BEDDEL-AGENT-703"
 """Agent stream interrupted."""
 
+AGENT_MISSING_ADAPTER: str = "BEDDEL-AGENT-704"
+"""Missing adapter name in agent-exec config."""
+
+AGENT_MISSING_PROMPT: str = "BEDDEL-AGENT-705"
+"""Missing prompt in agent-exec config."""
+
+AGENT_ADAPTER_NOT_FOUND: str = "BEDDEL-AGENT-706"
+"""Adapter not found in agent_registry."""
+
 # ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
@@ -234,6 +243,9 @@ ALL_CODES: dict[str, str] = {
     "AGENT_EXECUTION_FAILED": AGENT_EXECUTION_FAILED,
     "AGENT_TIMEOUT": AGENT_TIMEOUT,
     "AGENT_STREAM_INTERRUPTED": AGENT_STREAM_INTERRUPTED,
+    "AGENT_MISSING_ADAPTER": AGENT_MISSING_ADAPTER,
+    "AGENT_MISSING_PROMPT": AGENT_MISSING_PROMPT,
+    "AGENT_ADAPTER_NOT_FOUND": AGENT_ADAPTER_NOT_FOUND,
     # Execution
     "EXEC_STEP_FAILED": EXEC_STEP_FAILED,
     "EXEC_RETRIES_EXHAUSTED": EXEC_RETRIES_EXHAUSTED,
