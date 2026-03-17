@@ -18,7 +18,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from beddel.domain.ports import IExecutionStrategy, IHookManager, ILLMProvider, ITracer
+    from beddel.domain.ports import (
+        IAgentAdapter,
+        IExecutionStrategy,
+        IHookManager,
+        ILLMProvider,
+        ITracer,
+    )
     from beddel.domain.registry import PrimitiveRegistry
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -177,6 +183,10 @@ class DefaultDependencies:
             or ``None`` if not provided.
         tracer: The observability tracer, or ``None`` if not configured.
             Defaults to ``None``.
+        agent_adapter: The default agent adapter, or ``None`` if not
+            configured.  Defaults to ``None``.
+        agent_registry: Registry of named agent adapters keyed by name,
+            or ``None`` if not provided.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -188,6 +198,8 @@ class DefaultDependencies:
         "_registry",
         "_tool_registry",
         "_tracer",
+        "_agent_adapter",
+        "_agent_registry",
     )
 
     def __init__(
@@ -200,6 +212,8 @@ class DefaultDependencies:
         registry: PrimitiveRegistry | None = None,
         tool_registry: dict[str, Callable[..., Any]] | None = None,
         tracer: ITracer[Any] | None = None,
+        agent_adapter: IAgentAdapter | None = None,
+        agent_registry: dict[str, IAgentAdapter] | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -209,6 +223,8 @@ class DefaultDependencies:
         self._registry = registry
         self._tool_registry = tool_registry
         self._tracer = tracer
+        self._agent_adapter = agent_adapter
+        self._agent_registry = agent_registry
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -249,6 +265,16 @@ class DefaultDependencies:
     def tracer(self) -> ITracer[Any] | None:
         """The observability tracer, or ``None`` if not configured."""
         return self._tracer
+
+    @property
+    def agent_adapter(self) -> IAgentAdapter | None:
+        """The default agent adapter, or ``None`` if not configured."""
+        return self._agent_adapter
+
+    @property
+    def agent_registry(self) -> dict[str, IAgentAdapter] | None:
+        """Registry of named agent adapters, or ``None`` if not provided."""
+        return self._agent_registry
 
 
 _log = logging.getLogger(__name__)

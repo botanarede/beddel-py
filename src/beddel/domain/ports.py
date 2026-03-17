@@ -102,6 +102,16 @@ class ExecutionDependencies(Protocol):
         """The observability tracer, or ``None`` if not configured."""
         ...
 
+    @property
+    def agent_adapter(self) -> IAgentAdapter | None:
+        """The default agent adapter, or ``None`` if not configured."""
+        ...
+
+    @property
+    def agent_registry(self) -> dict[str, IAgentAdapter] | None:
+        """Registry of named agent adapters, or ``None`` if not provided."""
+        ...
+
 
 class IExecutionStrategy(Protocol):
     """Contract for workflow execution strategies.

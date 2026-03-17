@@ -422,6 +422,118 @@ class TestDefaultDependencies:
 
         assert deps.lifecycle_hooks is None
 
+    # -- agent_adapter tests --
+
+    def test_agent_adapter_defaults_to_none(self) -> None:
+        """DefaultDependencies without agent_adapter returns None."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+
+        assert deps.agent_adapter is None
+
+    def test_agent_adapter_stores_and_returns_instance(self) -> None:
+        """DefaultDependencies(agent_adapter=mock) stores and returns it."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_adapter = AsyncMock()
+        deps = DefaultDependencies(agent_adapter=mock_adapter)
+
+        assert deps.agent_adapter is mock_adapter
+
+    def test_agent_adapter_explicit_none(self) -> None:
+        """Passing agent_adapter=None explicitly behaves identically to omitting it."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps_default = DefaultDependencies()
+        deps_explicit = DefaultDependencies(agent_adapter=None)
+
+        assert deps_default.agent_adapter is None
+        assert deps_explicit.agent_adapter is None
+
+    # -- agent_registry tests --
+
+    def test_agent_registry_defaults_to_none(self) -> None:
+        """DefaultDependencies without agent_registry returns None."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+
+        assert deps.agent_registry is None
+
+    def test_agent_registry_stores_and_returns_dict(self) -> None:
+        """DefaultDependencies(agent_registry={...}) stores and returns the dict."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_codex = AsyncMock()
+        mock_claude = AsyncMock()
+        registry = {"codex": mock_codex, "claude": mock_claude}
+        deps = DefaultDependencies(agent_registry=registry)
+
+        assert deps.agent_registry is registry
+        assert deps.agent_registry["codex"] is mock_codex
+        assert deps.agent_registry["claude"] is mock_claude
+
+    def test_agent_registry_explicit_none(self) -> None:
+        """Passing agent_registry=None explicitly behaves identically to omitting it."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps_default = DefaultDependencies()
+        deps_explicit = DefaultDependencies(agent_registry=None)
+
+        assert deps_default.agent_registry is None
+        assert deps_explicit.agent_registry is None
+
+    # -- backward compatibility --
+
+    def test_agent_params_backward_compatible(self) -> None:
+        """Existing DefaultDependencies() calls without agent params still work."""
+        from beddel.domain.models import DefaultDependencies
+        from beddel.domain.ports import NoOpTracer
+
+        deps = DefaultDependencies(
+            delegate_model="gpt-4o",
+            tracer=NoOpTracer(),
+        )
+
+        assert deps.delegate_model == "gpt-4o"
+        assert deps.tracer is not None
+        assert deps.agent_adapter is None
+        assert deps.agent_registry is None
+
+    def test_agent_adapter_does_not_affect_other_properties(self) -> None:
+        """Setting agent_adapter leaves all other dependency defaults unchanged."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies(agent_adapter=AsyncMock())
+
+        assert deps.llm_provider is None
+        assert deps.lifecycle_hooks is None
+        assert deps.execution_strategy is None
+        assert deps.delegate_model == "gpt-4o-mini"
+        assert deps.workflow_loader is None
+        assert deps.registry is None
+        assert deps.tool_registry is None
+        assert deps.tracer is None
+        assert deps.agent_registry is None
+
+    # -- Protocol property existence --
+
+    def test_execution_dependencies_protocol_has_agent_properties(self) -> None:
+        """ExecutionDependencies Protocol defines agent_adapter and agent_registry."""
+        from beddel.domain.ports import ExecutionDependencies
+
+        # Protocol members are accessible via __protocol_attrs__ or annotations
+        hints = ExecutionDependencies.__protocol_attrs__
+        assert "agent_adapter" in hints
+        assert "agent_registry" in hints
+
 
 # ---------------------------------------------------------------------------
 # BeddelEvent
