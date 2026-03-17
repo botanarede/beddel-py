@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from beddel import error_codes as error_codes  # re-export module
 from beddel.domain.errors import (
     AdapterError,
+    AgentError,
     BeddelError,
     ExecutionError,
     ParseError,
@@ -16,9 +17,10 @@ from beddel.domain.errors import (
     TracingError,
 )
 from beddel.domain.executor import SequentialStrategy
-from beddel.domain.models import DefaultDependencies, InterruptibleContext
+from beddel.domain.models import AgentResult, DefaultDependencies, InterruptibleContext
 from beddel.domain.ports import (
     ExecutionDependencies,
+    IAgentAdapter,
     IExecutionStrategy,
     ILifecycleHook,
     ITracer,
@@ -63,12 +65,14 @@ def __getattr__(name: str) -> object:
 __all__ = [
     "__version__",
     "AdapterError",
-    "error_codes",
+    "AgentError",
+    "AgentResult",
     "BeddelError",
     "BeddelSSEAdapter",
     "DefaultDependencies",
     "ExecutionDependencies",
     "ExecutionError",
+    "IAgentAdapter",
     "IExecutionStrategy",
     "ILifecycleHook",
     "ITracer",
@@ -83,4 +87,5 @@ __all__ = [
     "StepRunner",
     "TracingError",
     "create_beddel_handler",
+    "error_codes",
 ]
