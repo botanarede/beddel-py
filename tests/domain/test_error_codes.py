@@ -7,6 +7,11 @@ import re
 from beddel import error_codes
 from beddel.error_codes import (
     ADAPT_RANGE,
+    AGENT_EXECUTION_FAILED,
+    AGENT_NOT_CONFIGURED,
+    AGENT_RANGE,
+    AGENT_STREAM_INTERRUPTED,
+    AGENT_TIMEOUT,
     ALL_CODES,
     EXEC_RANGE,
     GUARD_RANGE,
@@ -48,6 +53,7 @@ class TestRanges:
             "ADAPT_RANGE": ADAPT_RANGE,
             "EXEC_RANGE": EXEC_RANGE,
             "RESOLVE_RANGE": RESOLVE_RANGE,
+            "AGENT_RANGE": AGENT_RANGE,
         }
         for name, (lo, hi) in ranges.items():
             assert lo < hi, f"{name} lower bound >= upper bound"
@@ -60,6 +66,7 @@ class TestRanges:
             ("ADAPT_RANGE", ADAPT_RANGE),
             ("EXEC_RANGE", EXEC_RANGE),
             ("RESOLVE_RANGE", RESOLVE_RANGE),
+            ("AGENT_RANGE", AGENT_RANGE),
         ]
         for i, (name_a, (lo_a, hi_a)) in enumerate(ranges):
             for name_b, (lo_b, hi_b) in ranges[i + 1 :]:
@@ -74,6 +81,44 @@ class TestRanges:
         assert ADAPT_RANGE == (400, 499)
         assert EXEC_RANGE == (500, 599)
         assert RESOLVE_RANGE == (600, 699)
+        assert AGENT_RANGE == (700, 799)
+
+
+class TestAgentCodes:
+    """Tests for AGENT error code constants."""
+
+    def test_agent_not_configured_value(self) -> None:
+        """AGENT_NOT_CONFIGURED maps to BEDDEL-AGENT-700."""
+        assert AGENT_NOT_CONFIGURED == "BEDDEL-AGENT-700"
+
+    def test_agent_execution_failed_value(self) -> None:
+        """AGENT_EXECUTION_FAILED maps to BEDDEL-AGENT-701."""
+        assert AGENT_EXECUTION_FAILED == "BEDDEL-AGENT-701"
+
+    def test_agent_timeout_value(self) -> None:
+        """AGENT_TIMEOUT maps to BEDDEL-AGENT-702."""
+        assert AGENT_TIMEOUT == "BEDDEL-AGENT-702"
+
+    def test_agent_stream_interrupted_value(self) -> None:
+        """AGENT_STREAM_INTERRUPTED maps to BEDDEL-AGENT-703."""
+        assert AGENT_STREAM_INTERRUPTED == "BEDDEL-AGENT-703"
+
+    def test_all_agent_codes_in_all_codes(self) -> None:
+        """All 4 AGENT codes are registered in ALL_CODES."""
+        agent_keys = [
+            "AGENT_NOT_CONFIGURED",
+            "AGENT_EXECUTION_FAILED",
+            "AGENT_TIMEOUT",
+            "AGENT_STREAM_INTERRUPTED",
+        ]
+        for key in agent_keys:
+            assert key in ALL_CODES, f"{key} missing from ALL_CODES"
+
+    def test_agent_codes_count(self) -> None:
+        """Exactly 4 AGENT codes exist in ALL_CODES."""
+        agent_codes = {k: v for k, v in ALL_CODES.items() if k.startswith("AGENT_")}
+
+        assert len(agent_codes) == 4
 
 
 class TestAllCodesCompleteness:
