@@ -6,6 +6,7 @@ library — only stdlib, ``abc``, typing, and domain models are allowed.
 
 Ports defined here:
 
+- :class:`IAgentAdapter` — contract for external agent backend adapters.
 - :class:`IExecutionStrategy` — contract for workflow execution strategies.
 - :class:`IPrimitive` — contract for all workflow primitives.
 - :class:`ILLMProvider` — contract for LLM provider adapters.
@@ -20,9 +21,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, runtime_checkable
 
-from beddel.domain.models import ExecutionContext, Step, Workflow
+from beddel.domain.models import AgentResult, ExecutionContext, Step, Workflow
 
 SpanT = TypeVar("SpanT")
 """Type variable for the opaque span handle used by :class:`ITracer` implementations."""
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
 __all__ = [
     "SpanT",
     "ExecutionDependencies",
+    "IAgentAdapter",
     "IContextReducer",
     "IExecutionStrategy",
     "IHookManager",
@@ -369,6 +371,92 @@ class IHookManager(ILifecycleHook):
         Args:
             hook: The lifecycle hook to remove.
         """
+
+
+@runtime_checkable
+class IAgentAdapter(Protocol):
+    """Generic port for external agent backend adapters.
+
+    Defines the structural contract for integrating external agent backends
+    such as Codex, Claude Agent SDK, OpenClaw, and A2A into the Beddel
+    workflow engine.  Uses structural subtyping (``Protocol``) so any object
+    exposing the required methods satisfies the contract without explicit
+    inheritance.
+
+    This port fills the gap between :class:`ILLMProvider` (stateless text
+    completion) and :class:`IExecutionStrategy` (full workflow delegation),
+    providing a mid-level abstraction for agent-style interactions that may
+    involve tool use, sandboxed execution, and structured output.
+
+    [Source: docs/architecture/6-port-interfaces.md — agent adapter port]
+    """
+
+    async def execute(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        sandbox: str = "read-only",
+        tools: list[str] | None = None,
+        output_schema: dict[str, Any] | None = None,
+    ) -> AgentResult:
+        """Execute a prompt against the agent backend.
+
+        Sends a prompt to the external agent and waits for a complete
+        result.  The agent may use tools, modify files in a sandbox,
+        and return structured output.
+
+        Args:
+            prompt: The instruction or task to send to the agent.
+            model: Optional model override for the agent backend.
+                Defaults to the adapter's configured model when ``None``.
+            sandbox: Sandbox access level for the agent execution.
+                One of ``"read-only"``, ``"workspace-write"``, or
+                ``"danger-full-access"``.
+            tools: Optional list of tool names the agent is allowed to use.
+                Defaults to the adapter's configured tool set when ``None``.
+            output_schema: Optional JSON Schema dict for structured output.
+                When provided, the agent should return output conforming
+                to this schema.
+
+        Returns:
+            An :class:`~beddel.domain.models.AgentResult` containing the
+            agent's exit code, output text, events, changed files, usage
+            metrics, and agent identifier.
+        """
+        ...
+
+    async def stream(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        sandbox: str = "read-only",
+        tools: list[str] | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Stream events from the agent backend.
+
+        Sends a prompt to the external agent and yields structured event
+        dicts as they arrive.  Useful for real-time progress monitoring
+        and incremental output display.
+
+        Args:
+            prompt: The instruction or task to send to the agent.
+            model: Optional model override for the agent backend.
+                Defaults to the adapter's configured model when ``None``.
+            sandbox: Sandbox access level for the agent execution.
+                One of ``"read-only"``, ``"workspace-write"``, or
+                ``"danger-full-access"``.
+            tools: Optional list of tool names the agent is allowed to use.
+                Defaults to the adapter's configured tool set when ``None``.
+
+        Yields:
+            Structured event dicts from the agent execution stream.
+        """
+        ...  # pragma: no cover
+        # yield is required for the type checker to recognise this as an
+        # async generator; the ellipsis body is the Protocol convention.
+        yield {}  # type: ignore[misc]  # pragma: no cover
 
 
 class IContextReducer(Protocol):
