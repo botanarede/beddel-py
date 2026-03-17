@@ -14,6 +14,7 @@ Prefix             Domain
 ``BEDDEL-EXEC-``   Workflow execution
 ``BEDDEL-PRIM-``   Primitive execution
 ``BEDDEL-ADAPT-``  Adapter errors
+``BEDDEL-AGENT-``  Agent adapter errors
 =================  ============================
 """
 
@@ -28,6 +29,7 @@ __all__ = [
     "ExecutionError",
     "PrimitiveError",
     "AdapterError",
+    "AgentError",
     "TracingError",
 ]
 
@@ -149,3 +151,19 @@ class TracingError(AdapterError):
     ) -> None:
         super().__init__(code, message, details)
         self.fail_silent = fail_silent
+
+
+class AgentError(BeddelError):
+    """Agent adapter errors.
+
+    Error code prefix: ``BEDDEL-AGENT-``
+
+    Raised when an agent adapter encounters a failure such as missing
+    configuration, execution errors, timeouts, or stream interruptions.
+
+    Example codes:
+        - ``BEDDEL-AGENT-700``: Agent adapter not configured
+        - ``BEDDEL-AGENT-701``: Agent execution failed
+        - ``BEDDEL-AGENT-702``: Agent execution timeout
+        - ``BEDDEL-AGENT-703``: Agent stream interrupted
+    """

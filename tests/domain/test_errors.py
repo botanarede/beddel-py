@@ -6,6 +6,7 @@ import pytest
 
 from beddel.domain.errors import (
     AdapterError,
+    AgentError,
     BeddelError,
     ExecutionError,
     ParseError,
@@ -22,6 +23,7 @@ _SUBCLASSES: list[tuple[type[BeddelError], str]] = [
     (PrimitiveError, "BEDDEL-PRIM-001"),
     (AdapterError, "BEDDEL-ADAPT-001"),
     (TracingError, "BEDDEL-ADAPT-010"),
+    (AgentError, "BEDDEL-AGENT-700"),
 ]
 
 
@@ -115,6 +117,7 @@ class TestAllExports:
             "PrimitiveError",
             "AdapterError",
             "TracingError",
+            "AgentError",
         }
         assert set(errors.__all__) == expected
 
@@ -163,3 +166,34 @@ class TestTracingError:
         err = TracingError("BEDDEL-ADAPT-010", "tracing failed")
 
         assert str(err) == "BEDDEL-ADAPT-010: tracing failed"
+
+
+class TestAgentError:
+    """Tests for AgentError subclass."""
+
+    def test_inherits_from_beddel_error(self) -> None:
+        err = AgentError("BEDDEL-AGENT-700", "agent not configured")
+
+        assert isinstance(err, BeddelError)
+
+    def test_constructor_with_code_and_message(self) -> None:
+        err = AgentError("BEDDEL-AGENT-701", "agent execution failed")
+
+        assert err.code == "BEDDEL-AGENT-701"
+        assert err.message == "agent execution failed"
+
+    def test_details_defaults_to_empty_dict(self) -> None:
+        err = AgentError("BEDDEL-AGENT-700", "agent not configured")
+
+        assert err.details == {}
+
+    def test_details_preserved(self) -> None:
+        details = {"adapter": "litellm", "timeout": 30}
+        err = AgentError("BEDDEL-AGENT-702", "agent execution timeout", details)
+
+        assert err.details == {"adapter": "litellm", "timeout": 30}
+
+    def test_str_representation(self) -> None:
+        err = AgentError("BEDDEL-AGENT-703", "agent stream interrupted")
+
+        assert str(err) == "BEDDEL-AGENT-703: agent stream interrupted"
