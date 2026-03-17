@@ -398,7 +398,7 @@ class IAgentAdapter(Protocol):
     providing a mid-level abstraction for agent-style interactions that may
     involve tool use, sandboxed execution, and structured output.
 
-    [Source: docs/architecture/6-port-interfaces.md — agent adapter port]
+    [Source: docs/architecture/23-unified-agent-adapter.md §23.2]
     """
 
     async def execute(
