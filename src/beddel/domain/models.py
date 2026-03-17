@@ -13,6 +13,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
+    "AgentResult",
     "BeddelEvent",
     "DefaultDependencies",
     "EventType",
@@ -34,6 +36,31 @@ __all__ = [
     "StrategyType",
     "Workflow",
 ]
+
+
+@dataclass
+class AgentResult:
+    """Result of an agent adapter execution.
+
+    Returned by :class:`~beddel.domain.ports.IAgentAdapter` implementations
+    after executing a prompt against an external agent backend (e.g. Codex,
+    Claude Agent SDK, OpenClaw, A2A).
+
+    Attributes:
+        exit_code: Process exit code from the agent execution (0 = success).
+        output: The agent's text output or response.
+        events: List of structured events emitted during execution.
+        files_changed: Paths of files created or modified by the agent.
+        usage: Token usage and cost information from the agent backend.
+        agent_id: Identifier of the agent that produced this result.
+    """
+
+    exit_code: int
+    output: str
+    events: list[dict[str, Any]]
+    files_changed: list[str]
+    usage: dict[str, Any]
+    agent_id: str
 
 
 class StrategyType(StrEnum):

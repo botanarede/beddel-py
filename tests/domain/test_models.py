@@ -565,6 +565,7 @@ class TestAllExports:
         from beddel.domain import models
 
         expected = {
+            "AgentResult",
             "BeddelEvent",
             "DefaultDependencies",
             "EventType",
