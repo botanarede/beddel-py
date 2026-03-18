@@ -175,7 +175,12 @@ class TestBuildPrompt:
             Step(id="step-a", primitive="llm", config={"model": "gpt-4o"}),
             Step(id="step-b", primitive="tool", config={"name": "bash"}),
         ]
-        workflow = _make_workflow(name="my-workflow", steps=steps)
+        workflow = _make_workflow(
+            name="my-workflow",
+            steps=steps,
+            metadata={},
+        )
+        workflow.input_schema = {"repo": {"type": "string"}, "branch": {"type": "string"}}
         context = _make_context(inputs={"repo": "beddel", "branch": "main"})
         strategy = AgentDelegationStrategy()
 
@@ -193,6 +198,9 @@ class TestBuildPrompt:
         # Assert — input variables
         assert "repo: beddel" in prompt
         assert "branch: main" in prompt
+        # Assert — input schema included
+        assert "Input schema:" in prompt
+        assert "repo:" in prompt
 
 
 class TestHappyPath:
@@ -362,6 +370,88 @@ class TestErrorScenarios:
         with pytest.raises(AgentError) as exc_info:
             await strategy.execute(_make_workflow(), context, _noop_step_runner)
         assert exc_info.value.code == AGENT_APPROVAL_NOT_IMPLEMENTED
+
+    async def test_missing_adapter_key_raises_706(self) -> None:
+        """AgentError BEDDEL-AGENT-706 when adapter key is absent from config."""
+        # Arrange
+        context = _make_context(agent_registry={"codex": _MockAdapter()})
+        strategy = AgentDelegationStrategy(config={})
+
+        # Act / Assert
+        with pytest.raises(AgentError) as exc_info:
+            await strategy.execute(_make_workflow(), context, _noop_step_runner)
+        assert exc_info.value.code == AGENT_ADAPTER_NOT_FOUND
+
+
+class TestHookIsolation:
+    """Verify lifecycle hook failures are isolated and do not affect delegation."""
+
+    async def test_on_step_start_failure_does_not_block_delegation(self) -> None:
+        """Delegation proceeds even when on_step_start raises."""
+
+        # Arrange
+        class _FailingStartHook(_RecordingHookManager):
+            async def on_step_start(self, step_id: str, primitive: str) -> None:
+                raise RuntimeError("hook boom")
+
+        adapter = _MockAdapter()
+        hooks = _FailingStartHook()
+        context = _make_context(
+            agent_registry={"codex": adapter},
+            lifecycle_hooks=hooks,
+        )
+        strategy = AgentDelegationStrategy(config={"adapter": "codex"})
+
+        # Act
+        await strategy.execute(_make_workflow(), context, _noop_step_runner)
+
+        # Assert — delegation succeeded despite hook failure
+        assert len(adapter.calls) == 1
+        assert "agent-delegation" in context.step_results
+
+    async def test_on_step_end_failure_does_not_lose_result(self) -> None:
+        """Step results are populated even when on_step_end raises."""
+
+        # Arrange
+        class _FailingEndHook(_RecordingHookManager):
+            async def on_step_end(self, step_id: str, result: Any) -> None:
+                raise RuntimeError("end hook boom")
+
+        adapter = _MockAdapter()
+        hooks = _FailingEndHook()
+        context = _make_context(
+            agent_registry={"codex": adapter},
+            lifecycle_hooks=hooks,
+        )
+        strategy = AgentDelegationStrategy(config={"adapter": "codex"})
+
+        # Act
+        await strategy.execute(_make_workflow(), context, _noop_step_runner)
+
+        # Assert — result is still in step_results
+        assert context.step_results["agent-delegation"]["output"] == "agent output"
+
+    async def test_on_error_failure_preserves_original_exception(self) -> None:
+        """Original adapter error propagates even when on_error hook raises."""
+
+        # Arrange
+        class _FailingErrorHook(_RecordingHookManager):
+            async def on_error(self, step_id: str, error: Exception) -> None:
+                raise RuntimeError("error hook boom")
+
+        adapter = _MockAdapter(error=ValueError("adapter crash"))
+        hooks = _FailingErrorHook()
+        context = _make_context(
+            agent_registry={"codex": adapter},
+            lifecycle_hooks=hooks,
+        )
+        strategy = AgentDelegationStrategy(config={"adapter": "codex"})
+
+        # Act / Assert
+        with pytest.raises(AgentError) as exc_info:
+            await strategy.execute(_make_workflow(), context, _noop_step_runner)
+        assert exc_info.value.code == AGENT_DELEGATION_FAILED
+        assert "adapter crash" in exc_info.value.message
 
 
 class TestConfigMerging:

@@ -145,39 +145,32 @@ class AgentDelegationStrategy:
 
         hooks = context.deps.lifecycle_hooks
 
-        try:
-            # 7. Fire on_step_start
-            if hooks is not None:
+        # 7. Fire on_step_start (non-critical side effect)
+        if hooks is not None:
+            try:
                 await hooks.on_step_start(_STEP_ID, _STEP_ID)
+            except Exception:
+                _log.warning("on_step_start hook failed", exc_info=True)
 
-            # 8. Build prompt
-            prompt = self._build_prompt(workflow, context)
+        # 8. Build prompt
+        prompt = self._build_prompt(workflow, context)
 
-            # 9. Delegate to adapter
+        # 9. Delegate to adapter
+        try:
             result = await adapter.execute(
                 prompt,
                 model=config.get("model"),
                 sandbox=config.get("sandbox", "read-only"),
             )
-
-            # 10. Populate step_results
-            step_result: dict[str, Any] = {
-                "output": result.output,
-                "files_changed": result.files_changed,
-                "usage": result.usage,
-            }
-            context.step_results[_STEP_ID] = step_result
-
-            # 11. Fire on_step_end
-            if hooks is not None:
-                await hooks.on_step_end(_STEP_ID, step_result)
-
         except AgentError:
             raise
         except Exception as exc:
-            # 12. Fire on_error, then wrap in AgentError
+            # Fire on_error (non-critical), then wrap in AgentError
             if hooks is not None:
-                await hooks.on_error(_STEP_ID, exc)
+                try:
+                    await hooks.on_error(_STEP_ID, exc)
+                except Exception:
+                    _log.warning("on_error hook failed", exc_info=True)
             raise AgentError(
                 AGENT_DELEGATION_FAILED,
                 f"Agent delegation failed: {exc}",
@@ -187,6 +180,21 @@ class AgentDelegationStrategy:
                     "original_error": str(exc),
                 },
             ) from exc
+
+        # 10. Populate step_results
+        step_result: dict[str, Any] = {
+            "output": result.output,
+            "files_changed": result.files_changed,
+            "usage": result.usage,
+        }
+        context.step_results[_STEP_ID] = step_result
+
+        # 11. Fire on_step_end (non-critical side effect)
+        if hooks is not None:
+            try:
+                await hooks.on_step_end(_STEP_ID, step_result)
+            except Exception:
+                _log.warning("on_step_end hook failed", exc_info=True)
 
     def _build_prompt(self, workflow: Workflow, context: ExecutionContext) -> str:
         """Build a contextualized prompt from the workflow and inputs.
@@ -207,9 +215,16 @@ class AgentDelegationStrategy:
             "",
             f"Workflow: {workflow.name}",
             f"Description: {workflow.description}",
-            "",
-            "Steps:",
         ]
+
+        if workflow.input_schema:
+            lines.append("")
+            lines.append("Input schema:")
+            for key, spec in workflow.input_schema.items():
+                lines.append(f"  {key}: {spec}")
+
+        lines.append("")
+        lines.append("Steps:")
 
         for idx, step in enumerate(workflow.steps, start=1):
             config_repr = ", ".join(f"{k}: {v}" for k, v in step.config.items())
@@ -221,6 +236,9 @@ class AgentDelegationStrategy:
             lines.append(f"  {key}: {value}")
 
         lines.append("")
-        lines.append("Execute each step in order. Report results as structured JSON.")
+        lines.append(
+            "Execute each step in order. Return output text, "
+            "a list of files changed, and token usage."
+        )
 
         return "\n".join(lines)
