@@ -1,0 +1,190 @@
+"""Beddel CLI commands."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+import click
+
+
+@click.group()
+@click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
+def cli(*, verbose: bool) -> None:
+    """Beddel — declarative YAML-based AI workflow engine."""
+    level = logging.DEBUG if verbose else logging.WARNING
+    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+
+
+@cli.command()
+def version() -> None:
+    """Print the Beddel version."""
+    from beddel import __version__
+
+    click.echo(f"beddel {__version__}")
+
+
+@cli.command()
+@click.argument("workflow_path", type=click.Path(exists=True, path_type=Path))
+def validate(workflow_path: Path) -> None:
+    """Validate a YAML workflow file."""
+    from beddel.domain.errors import ParseError
+    from beddel.domain.parser import WorkflowParser
+
+    yaml_str = workflow_path.read_text()
+    try:
+        workflow = WorkflowParser.parse(yaml_str)
+    except ParseError as exc:
+        click.echo(f"INVALID: {exc.message}", err=True)
+        raise SystemExit(1) from None
+
+    primitives = [s.primitive for s in workflow.steps]
+    click.echo(f"OK: {workflow.id}")
+    click.echo(f"  name: {workflow.name}")
+    click.echo(f"  steps: {len(workflow.steps)}")
+    click.echo(f"  primitives: {', '.join(primitives)}")
+
+
+@cli.command("list-primitives")
+def list_primitives() -> None:
+    """List all registered built-in primitives."""
+    from beddel.domain.registry import PrimitiveRegistry
+    from beddel.primitives import register_builtins
+
+    registry = PrimitiveRegistry()
+    register_builtins(registry)
+    for name in registry.list_primitives():
+        click.echo(name)
+
+
+@cli.command()
+@click.argument("workflow_path", type=click.Path(exists=True, path_type=Path))
+@click.option("--input", "-i", "inputs", multiple=True, help="Input as key=value.")
+@click.option("--json-output", "as_json", is_flag=True, help="Output raw JSON.")
+def run(workflow_path: Path, inputs: tuple[str, ...], *, as_json: bool) -> None:
+    """Execute a workflow and print results."""
+    from beddel.adapters.litellm_adapter import LiteLLMAdapter
+    from beddel.domain.errors import BeddelError
+    from beddel.domain.executor import WorkflowExecutor
+    from beddel.domain.parser import WorkflowParser
+    from beddel.domain.registry import PrimitiveRegistry
+    from beddel.primitives import register_builtins
+
+    # Parse inputs
+    input_dict: dict[str, Any] = {}
+    for item in inputs:
+        if "=" not in item:
+            click.echo(f"Invalid input format: {item!r} (expected key=value)", err=True)
+            raise SystemExit(1)
+        key, value = item.split("=", 1)
+        input_dict[key] = value
+
+    # Load workflow
+    yaml_str = workflow_path.read_text()
+    try:
+        workflow = WorkflowParser.parse(yaml_str)
+    except BeddelError as exc:
+        click.echo(f"Error: {exc.message}", err=True)
+        raise SystemExit(1) from None
+
+    # Build executor
+    registry = PrimitiveRegistry()
+    register_builtins(registry)
+    adapter = LiteLLMAdapter()
+    executor = WorkflowExecutor(registry, provider=adapter)
+
+    # Execute
+    try:
+        result = asyncio.run(executor.execute(workflow, input_dict))
+    except BeddelError as exc:
+        click.echo(f"Execution error [{exc.code}]: {exc.message}", err=True)
+        raise SystemExit(1) from None
+
+    # Output
+    if as_json:
+        output = {}
+        for step_id, step_result in result.get("step_results", {}).items():
+            try:
+                json.dumps(step_result)
+                output[step_id] = step_result
+            except (TypeError, ValueError):
+                output[step_id] = str(step_result)
+        click.echo(json.dumps(output, indent=2))
+    else:
+        for step_id, step_result in result.get("step_results", {}).items():
+            click.echo(f"[{step_id}]")
+            if isinstance(step_result, dict) and "content" in step_result:
+                click.echo(step_result["content"])
+            else:
+                click.echo(str(step_result))
+            click.echo()
+
+
+@cli.command()
+@click.option("--host", default="127.0.0.1", help="Bind host.")
+@click.option("--port", default=8000, type=int, help="Bind port.")
+@click.option(
+    "--workflow",
+    "-w",
+    "workflow_paths",
+    multiple=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Workflow YAML file to serve (repeatable).",
+)
+def serve(host: str, port: int, workflow_paths: tuple[Path, ...]) -> None:
+    """Start a FastAPI server exposing workflows as SSE endpoints."""
+    try:
+        import uvicorn  # type: ignore[import-not-found]
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
+    except ImportError:
+        click.echo(
+            "Missing dependencies. Install with: pip install beddel[cli]",
+            err=True,
+        )
+        raise SystemExit(1) from None
+
+    from beddel import __version__
+    from beddel.adapters.litellm_adapter import LiteLLMAdapter
+    from beddel.domain.parser import WorkflowParser
+    from beddel.domain.registry import PrimitiveRegistry
+    from beddel.integrations.fastapi import create_beddel_handler
+    from beddel.primitives import register_builtins
+
+    app = FastAPI(title="Beddel", version=__version__)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    registry = PrimitiveRegistry()
+    register_builtins(registry)
+    adapter = LiteLLMAdapter()
+
+    loaded = 0
+    for wf_path in workflow_paths:
+        yaml_str = wf_path.read_text()
+        workflow = WorkflowParser.parse(yaml_str)
+        router = create_beddel_handler(
+            workflow,
+            provider=adapter,
+            registry=registry,
+        )
+        app.include_router(router, prefix=f"/workflows/{workflow.id}")
+        click.echo(f"  Mounted: /workflows/{workflow.id} ({wf_path.name})")
+        loaded += 1
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok", "version": __version__}
+
+    click.echo(f"Beddel v{__version__} — {loaded} workflow(s)")
+    click.echo(f"Listening on http://{host}:{port}")
+    click.echo(f"Health: http://{host}:{port}/health")
+
+    uvicorn.run(app, host=host, port=port, log_level="info")

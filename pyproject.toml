@@ -22,14 +22,18 @@ authors = [
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Framework :: FastAPI",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Typing :: Typed",
 ]
+keywords = ["ai", "workflow", "yaml", "llm", "agent", "sdk", "cli"]
 
 dependencies = [
     "pydantic>=2.0",
@@ -42,6 +46,9 @@ Repository = "https://github.com/botanarede/beddel-py"
 Documentation = "https://beddel.com.br/docs"
 "Bug Tracker" = "https://github.com/botanarede/beddel-py/issues"
 
+[project.scripts]
+beddel = "beddel.cli:main"
+
 [project.optional-dependencies]
 adapters = [
     "litellm",
@@ -49,11 +56,17 @@ adapters = [
     "httpx>=0.27",
 ]
 lite = []  # Alias for core-only install (explicit marker)
+cli = [
+    "click>=8.0",
+    "beddel[fastapi]",
+]
 all = [
     "beddel[adapters]",
+    "beddel[cli]",
 ]
 dev = [
     "beddel[adapters]",
+    "beddel[cli]",
     "beddel[fastapi]",
     "httpx",
     "opentelemetry-sdk>=1.0",

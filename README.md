@@ -24,6 +24,9 @@ pip install beddel[all]
 
 # With FastAPI integration
 pip install beddel[fastapi]
+
+# With CLI (server + workflow runner)
+pip install beddel[cli]
 ```
 
 Requires Python 3.11+.
@@ -134,6 +137,52 @@ steps:
 ```
 
 In this example, `$input.topic` resolves to `"astronomy"` at execution time. Other namespaces are also available: `$stepResult.*` references outputs from previously executed steps, and `$env.*` reads environment variables.
+
+## CLI
+
+Beddel includes a command-line interface for validating, running, and serving workflows.
+
+```bash
+pip install beddel[cli]
+```
+
+### Validate a workflow
+
+```bash
+beddel validate workflow.yaml
+```
+
+### Run a workflow
+
+```bash
+beddel run workflow.yaml --input topic=astronomy
+```
+
+Use `--json-output` for machine-readable output:
+
+```bash
+beddel run workflow.yaml --input topic=astronomy --json-output
+```
+
+### Start the server
+
+Serve workflows as HTTP/SSE endpoints:
+
+```bash
+beddel serve -w workflow.yaml --port 8000
+```
+
+Endpoints are mounted at `/workflows/{workflow_id}` with SSE streaming. A health check is available at `/health`.
+
+### List primitives
+
+```bash
+beddel list-primitives
+```
+
+### OpenClaw Integration
+
+Beddel works as an [OpenClaw](https://openclaw.com) agent skill. After installing with `pip install beddel[cli]`, the `beddel` command is available for any OpenClaw agent to create, validate, and execute AI workflows. See `SKILL.md` for the skill manifest.
 
 ## Development Setup
 
