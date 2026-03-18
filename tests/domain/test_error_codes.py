@@ -8,6 +8,8 @@ from beddel import error_codes
 from beddel.error_codes import (
     ADAPT_RANGE,
     AGENT_ADAPTER_NOT_FOUND,
+    AGENT_APPROVAL_NOT_IMPLEMENTED,
+    AGENT_DELEGATION_FAILED,
     AGENT_EXECUTION_FAILED,
     AGENT_MISSING_ADAPTER,
     AGENT_MISSING_PROMPT,
@@ -118,8 +120,16 @@ class TestAgentCodes:
         """AGENT_ADAPTER_NOT_FOUND maps to BEDDEL-AGENT-706."""
         assert AGENT_ADAPTER_NOT_FOUND == "BEDDEL-AGENT-706"
 
+    def test_agent_delegation_failed_value(self) -> None:
+        """AGENT_DELEGATION_FAILED maps to BEDDEL-AGENT-707."""
+        assert AGENT_DELEGATION_FAILED == "BEDDEL-AGENT-707"
+
+    def test_agent_approval_not_implemented_value(self) -> None:
+        """AGENT_APPROVAL_NOT_IMPLEMENTED maps to BEDDEL-AGENT-708."""
+        assert AGENT_APPROVAL_NOT_IMPLEMENTED == "BEDDEL-AGENT-708"
+
     def test_all_agent_codes_in_all_codes(self) -> None:
-        """All 7 AGENT codes are registered in ALL_CODES."""
+        """All 9 AGENT codes are registered in ALL_CODES."""
         agent_keys = [
             "AGENT_NOT_CONFIGURED",
             "AGENT_EXECUTION_FAILED",
@@ -128,14 +138,16 @@ class TestAgentCodes:
             "AGENT_MISSING_ADAPTER",
             "AGENT_MISSING_PROMPT",
             "AGENT_ADAPTER_NOT_FOUND",
+            "AGENT_DELEGATION_FAILED",
+            "AGENT_APPROVAL_NOT_IMPLEMENTED",
         ]
         for key in agent_keys:
             assert key in ALL_CODES, f"{key} missing from ALL_CODES"
 
     def test_agent_codes_count(self) -> None:
-        """Exactly 7 AGENT codes exist in ALL_CODES."""
+        """Exactly 9 AGENT codes exist in ALL_CODES."""
         agent_codes = {k: v for k, v in ALL_CODES.items() if k.startswith("AGENT_")}
-        assert len(agent_codes) == 7
+        assert len(agent_codes) == 9
 
 
 class TestAllCodesCompleteness:

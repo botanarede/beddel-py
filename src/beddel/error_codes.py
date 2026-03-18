@@ -194,6 +194,12 @@ AGENT_MISSING_PROMPT: str = "BEDDEL-AGENT-705"
 AGENT_ADAPTER_NOT_FOUND: str = "BEDDEL-AGENT-706"
 """Adapter not found in agent_registry."""
 
+AGENT_DELEGATION_FAILED: str = "BEDDEL-AGENT-707"
+"""Agent delegation strategy execution failed."""
+
+AGENT_APPROVAL_NOT_IMPLEMENTED: str = "BEDDEL-AGENT-708"
+"""Approval policy not yet implemented (manual or supervised)."""
+
 # ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
@@ -246,6 +252,8 @@ ALL_CODES: dict[str, str] = {
     "AGENT_MISSING_ADAPTER": AGENT_MISSING_ADAPTER,
     "AGENT_MISSING_PROMPT": AGENT_MISSING_PROMPT,
     "AGENT_ADAPTER_NOT_FOUND": AGENT_ADAPTER_NOT_FOUND,
+    "AGENT_DELEGATION_FAILED": AGENT_DELEGATION_FAILED,
+    "AGENT_APPROVAL_NOT_IMPLEMENTED": AGENT_APPROVAL_NOT_IMPLEMENTED,
     # Execution
     "EXEC_STEP_FAILED": EXEC_STEP_FAILED,
     "EXEC_RETRIES_EXHAUSTED": EXEC_RETRIES_EXHAUSTED,
