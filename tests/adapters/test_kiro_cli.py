@@ -7,15 +7,18 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from _helpers import make_context
 
 from beddel.adapters.kiro_cli import _DEFAULT_CLI_PATH, KiroCLIAgentAdapter
 from beddel.domain.errors import AgentError
+from beddel.domain.models import DefaultDependencies
 from beddel.domain.ports import IAgentAdapter
 from beddel.error_codes import (
     AGENT_EXECUTION_FAILED,
     AGENT_STREAM_INTERRUPTED,
     AGENT_TIMEOUT,
 )
+from beddel.primitives.agent_exec import AgentExecPrimitive
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -294,3 +297,63 @@ class TestStream:
 
         assert exc_info.value.code == AGENT_STREAM_INTERRUPTED
         assert "BEDDEL-AGENT-703" in str(exc_info.value)
+
+
+# ===================================================================
+# Registry round-trip integration (AC 8)
+# ===================================================================
+
+
+class TestRegistryRoundTrip:
+    """Integration tests proving the full adapter registry round-trip.
+
+    Exercises the complete cycle: ``agent_registry`` resolution →
+    ``AgentExecPrimitive`` → ``KiroCLIAgentAdapter.execute()`` →
+    ``AgentResult`` → plain dict.
+    """
+
+    @pytest.mark.asyncio
+    async def test_adapter_registered_and_resolved_via_agent_exec(self) -> None:
+        """Register adapter as 'kiro-cli', execute via AgentExecPrimitive."""
+        # Arrange
+        adapter = KiroCLIAgentAdapter()
+        ctx = make_context(workflow_id="wf-registry-roundtrip")
+        ctx.deps = DefaultDependencies(agent_registry={"kiro-cli": adapter})
+
+        mock_proc = _make_mock_process(stdout=b"hello", returncode=0)
+
+        # Act
+        with patch(_PATCH_EXEC, return_value=mock_proc):
+            result = await AgentExecPrimitive().execute(
+                {"adapter": "kiro-cli", "prompt": "echo hello"},
+                ctx,
+            )
+
+        # Assert
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"output", "files_changed", "usage"}
+        assert result["output"] == "hello"
+        assert result["files_changed"] == []
+        assert isinstance(result["usage"], dict)
+        assert "model" in result["usage"]
+
+    @pytest.mark.asyncio
+    async def test_result_usage_contains_model_and_timeout(self) -> None:
+        """Verify usage metadata includes default model and timeout."""
+        # Arrange
+        adapter = KiroCLIAgentAdapter()
+        ctx = make_context(workflow_id="wf-registry-usage")
+        ctx.deps = DefaultDependencies(agent_registry={"kiro-cli": adapter})
+
+        mock_proc = _make_mock_process(stdout=b"hello", returncode=0)
+
+        # Act
+        with patch(_PATCH_EXEC, return_value=mock_proc):
+            result = await AgentExecPrimitive().execute(
+                {"adapter": "kiro-cli", "prompt": "echo hello"},
+                ctx,
+            )
+
+        # Assert
+        assert result["usage"]["model"] == "claude-sonnet-4.6"
+        assert result["usage"]["timeout"] == 600
