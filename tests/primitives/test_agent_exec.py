@@ -350,6 +350,37 @@ class TestExecutionFailure:
 
 
 # ---------------------------------------------------------------------------
+# Tests: Empty string edge cases (adapter and prompt)
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyAdapterName:
+    async def test_empty_adapter_name_raises_706_not_found(self) -> None:
+        """Empty string adapter passes key check but fails registry lookup."""
+        ctx = make_context(workflow_id="wf-agent-exec")
+        ctx.deps = DefaultDependencies(agent_registry={"codex": _FakeAgentAdapter("codex")})
+
+        with pytest.raises(AgentError, match="BEDDEL-AGENT-706") as exc_info:
+            await AgentExecPrimitive().execute({"adapter": "", "prompt": "do stuff"}, ctx)
+
+        assert exc_info.value.code == "BEDDEL-AGENT-706"
+        assert exc_info.value.details["adapter"] == ""
+
+
+class TestEmptyPrompt:
+    async def test_empty_prompt_passed_to_adapter(self) -> None:
+        """Empty string prompt passes key check and is sent to adapter."""
+        adapter = _FakeAgentAdapter("codex")
+        ctx = make_context(workflow_id="wf-agent-exec")
+        ctx.deps = DefaultDependencies(agent_registry={"codex": adapter})
+
+        result = await AgentExecPrimitive().execute({"adapter": "codex", "prompt": ""}, ctx)
+
+        assert adapter.last_call["prompt"] == ""
+        assert "output" in result
+
+
+# ---------------------------------------------------------------------------
 # Tests: register_builtins includes "agent-exec"
 # ---------------------------------------------------------------------------
 

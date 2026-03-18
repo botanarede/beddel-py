@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from beddel.domain.errors import AgentError
-from beddel.domain.models import ExecutionContext
+from beddel.domain.models import AgentResult, ExecutionContext
 from beddel.domain.ports import IAgentAdapter, IPrimitive
 from beddel.domain.resolver import VariableResolver
 from beddel.error_codes import (
@@ -201,7 +201,7 @@ class AgentExecPrimitive(IPrimitive):
         sandbox: str = "read-only",
         tools: list[str] | None = None,
         output_schema: dict[str, Any] | None = None,
-    ) -> Any:
+    ) -> AgentResult:
         """Invoke the agent adapter, wrapping non-AgentError exceptions.
 
         Args:
