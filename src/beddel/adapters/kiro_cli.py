@@ -172,6 +172,12 @@ class KiroCLIAgentAdapter:
         Raises:
             AgentError: ``BEDDEL-AGENT-703`` if the underlying execution
                 times out (re-raised from ``BEDDEL-AGENT-702``).
+
+        Note:
+            This adapter emits exactly one terminal event per call because
+            the CLI subprocess does not support incremental streaming.
+            Callers expecting token-level or chunk-level events should be
+            aware of this limitation.
         """
         try:
             result = await self.execute(prompt, model=model, sandbox=sandbox, tools=tools)
@@ -212,6 +218,11 @@ class KiroCLIAgentAdapter:
         Returns:
             A list of string arguments suitable for
             ``asyncio.create_subprocess_exec``.
+
+        Raises:
+            AgentError: ``BEDDEL-AGENT-701`` if ``sandbox`` is not a
+                recognized value, or if ``tools`` contains more than one
+                element (CLI supports at most one ``--agent`` flag).
         """
         cmd: list[str] = [str(self._cli_path), "chat", "--no-interactive"]
 
@@ -220,12 +231,31 @@ class KiroCLIAgentAdapter:
             cmd.append("--trust-tools=")
         elif sandbox in ("workspace-write", "danger-full-access"):
             cmd.append("-a")
+        else:
+            raise AgentError(
+                code=AGENT_EXECUTION_FAILED,
+                message=f"Unsupported sandbox value: {sandbox!r}",
+                details={
+                    "sandbox": sandbox,
+                    "supported": [
+                        "read-only",
+                        "workspace-write",
+                        "danger-full-access",
+                    ],
+                },
+            )
 
         # Model
         cmd.extend(["--model", model])
 
-        # Tools → --agent
-        if tools and len(tools) == 1:
+        # Tools → --agent (CLI supports at most one --agent flag)
+        if tools:
+            if len(tools) > 1:
+                raise AgentError(
+                    code=AGENT_EXECUTION_FAILED,
+                    message=f"Kiro CLI supports at most one agent, got {len(tools)}",
+                    details={"tools": tools},
+                )
             cmd.extend(["--agent", tools[0]])
 
         # Prompt as final positional argument

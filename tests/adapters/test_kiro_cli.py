@@ -173,6 +173,65 @@ class TestBuildCommand:
 
         assert "--agent" not in cmd
 
+    def test_tools_multiple_raises(self) -> None:
+        """Multi-element tools list raises AgentError (CLI supports one --agent)."""
+        adapter = KiroCLIAgentAdapter()
+
+        with pytest.raises(AgentError) as exc_info:
+            adapter._build_command(
+                _PROMPT,
+                model="claude-sonnet-4.6",
+                sandbox="read-only",
+                tools=["agent-a", "agent-b"],
+            )
+
+        assert exc_info.value.code == AGENT_EXECUTION_FAILED
+        assert "at most one" in exc_info.value.message.lower()
+        assert exc_info.value.details["tools"] == ["agent-a", "agent-b"]
+
+    def test_tools_empty_list_ignored(self) -> None:
+        """Empty tools list produces no --agent flag."""
+        adapter = KiroCLIAgentAdapter()
+
+        cmd = adapter._build_command(
+            _PROMPT,
+            model="claude-sonnet-4.6",
+            sandbox="read-only",
+            tools=[],
+        )
+
+        assert "--agent" not in cmd
+
+    def test_sandbox_unknown_raises(self) -> None:
+        """Unknown sandbox value raises AgentError."""
+        adapter = KiroCLIAgentAdapter()
+
+        with pytest.raises(AgentError) as exc_info:
+            adapter._build_command(
+                _PROMPT,
+                model="claude-sonnet-4.6",
+                sandbox="unknown-mode",
+                tools=None,
+            )
+
+        assert exc_info.value.code == AGENT_EXECUTION_FAILED
+        assert "sandbox" in exc_info.value.message.lower()
+        assert exc_info.value.details["sandbox"] == "unknown-mode"
+
+    def test_sandbox_empty_string_raises(self) -> None:
+        """Empty string sandbox raises AgentError."""
+        adapter = KiroCLIAgentAdapter()
+
+        with pytest.raises(AgentError) as exc_info:
+            adapter._build_command(
+                _PROMPT,
+                model="claude-sonnet-4.6",
+                sandbox="",
+                tools=None,
+            )
+
+        assert exc_info.value.code == AGENT_EXECUTION_FAILED
+
     @pytest.mark.asyncio
     async def test_output_schema_not_in_command(self) -> None:
         adapter = KiroCLIAgentAdapter()
