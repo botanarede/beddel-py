@@ -16,6 +16,7 @@ Range       Prefix    Domain
 500 – 599   EXEC      Workflow execution
 600 – 699   RESOLVE   Variable resolution
 700 – 799   AGENT     Agent adapter errors
+800 – 899   CODEX     Codex integration errors (planned)
 ==========  ========  ===========
 """
 
@@ -45,6 +46,9 @@ RESOLVE_RANGE: tuple[int, int] = (600, 699)
 
 AGENT_RANGE: tuple[int, int] = (700, 799)
 """Agent adapter errors."""
+
+CODEX_RANGE: tuple[int, int] = (800, 899)
+"""Codex integration errors (planned — Epic 4.1A)."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -201,6 +205,25 @@ AGENT_APPROVAL_NOT_IMPLEMENTED: str = "BEDDEL-AGENT-708"
 """Approval policy not yet implemented (manual or supervised)."""
 
 # ---------------------------------------------------------------------------
+# Codex codes  (CODEX prefix, 800 range — planned for Epic 4.1A)
+# ---------------------------------------------------------------------------
+
+CODEX_EXEC_FAILED: str = "BEDDEL-CODEX-801"
+"""Non-zero exit code from codex exec subprocess."""
+
+CODEX_TIMEOUT: str = "BEDDEL-CODEX-802"
+"""Codex execution exceeded configured timeout."""
+
+CODEX_DOCKER_UNAVAILABLE: str = "BEDDEL-CODEX-803"
+"""Docker daemon not running or codex-universal image not found."""
+
+CODEX_CONNECTION_REFUSED: str = "BEDDEL-CODEX-804"
+"""WebSocket connection to Codex App Server failed."""
+
+CODEX_INVALID_JSONL: str = "BEDDEL-CODEX-805"
+"""Malformed or unexpected event type in JSONL output."""
+
+# ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
 
@@ -254,6 +277,12 @@ ALL_CODES: dict[str, str] = {
     "AGENT_ADAPTER_NOT_FOUND": AGENT_ADAPTER_NOT_FOUND,
     "AGENT_DELEGATION_FAILED": AGENT_DELEGATION_FAILED,
     "AGENT_APPROVAL_NOT_IMPLEMENTED": AGENT_APPROVAL_NOT_IMPLEMENTED,
+    # Codex (planned)
+    "CODEX_EXEC_FAILED": CODEX_EXEC_FAILED,
+    "CODEX_TIMEOUT": CODEX_TIMEOUT,
+    "CODEX_DOCKER_UNAVAILABLE": CODEX_DOCKER_UNAVAILABLE,
+    "CODEX_CONNECTION_REFUSED": CODEX_CONNECTION_REFUSED,
+    "CODEX_INVALID_JSONL": CODEX_INVALID_JSONL,
     # Execution
     "EXEC_STEP_FAILED": EXEC_STEP_FAILED,
     "EXEC_RETRIES_EXHAUSTED": EXEC_RETRIES_EXHAUSTED,
