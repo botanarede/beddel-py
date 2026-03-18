@@ -28,6 +28,7 @@ from beddel.domain.ports import (
     SpanT,
     StepRunner,
 )
+from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
     from beddel.adapters.hooks import LifecycleHookManager as LifecycleHookManager
@@ -65,6 +66,7 @@ def __getattr__(name: str) -> object:
 __all__ = [
     "__version__",
     "AdapterError",
+    "AgentExecPrimitive",
     "AgentError",
     "AgentResult",
     "BeddelError",
