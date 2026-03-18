@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from beddel.domain.errors import AgentError
+from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
     AgentResult,
     DefaultDependencies,
@@ -22,6 +23,7 @@ from beddel.domain.models import (
     Workflow,
 )
 from beddel.domain.ports import IHookManager
+from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.strategies.agent_delegation import AgentDelegationStrategy
 from beddel.error_codes import (
     AGENT_ADAPTER_NOT_FOUND,
@@ -404,3 +406,31 @@ class TestConfigMerging:
         call = adapter.calls[0]
         assert call["model"] == "claude-3"
         assert call["sandbox"] == "danger-full-access"
+
+
+class TestWorkflowExecutorIntegration:
+    """Verify AgentDelegationStrategy integrates with WorkflowExecutor."""
+
+    async def test_strategy_injected_and_invoked_via_executor(self) -> None:
+        """WorkflowExecutor.execute() delegates to AgentDelegationStrategy.
+
+        The executor creates DefaultDependencies without agent_registry,
+        so the strategy raises BEDDEL-AGENT-700.  This proves:
+        1. AgentDelegationStrategy is accepted as execution_strategy (Protocol conformance)
+        2. The executor actually calls strategy.execute() (the error propagates)
+        """
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry=registry)
+        strategy = AgentDelegationStrategy(config={"adapter": "codex"})
+        workflow = _make_workflow(
+            metadata={"execution_strategy": {"adapter": "codex"}},
+        )
+
+        with pytest.raises(AgentError) as exc_info:
+            await executor.execute(
+                workflow,
+                inputs={"repo": "beddel"},
+                execution_strategy=strategy,
+            )
+
+        assert exc_info.value.code == AGENT_NOT_CONFIGURED
