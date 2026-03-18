@@ -34,9 +34,11 @@ from beddel.domain.ports import (
 )
 from beddel.domain.registry import PrimitiveRegistry, primitive
 from beddel.domain.resolver import VariableResolver
+from beddel.domain.strategies import AgentDelegationStrategy
 
 __all__ = [
     "AdapterError",
+    "AgentDelegationStrategy",
     "BeddelError",
     "BeddelEvent",
     "DefaultDependencies",
