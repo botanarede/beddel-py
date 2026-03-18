@@ -23,6 +23,7 @@ def register_builtins(registry: PrimitiveRegistry) -> None:
     Args:
         registry: The :class:`PrimitiveRegistry` to populate.
     """
+    from beddel.primitives.agent_exec import AgentExecPrimitive
     from beddel.primitives.call_agent import CallAgentPrimitive
     from beddel.primitives.chat import ChatPrimitive
     from beddel.primitives.guardrail import GuardrailPrimitive
@@ -36,3 +37,4 @@ def register_builtins(registry: PrimitiveRegistry) -> None:
     registry.register("guardrail", GuardrailPrimitive())
     registry.register("call-agent", CallAgentPrimitive())
     registry.register("tool", ToolPrimitive())
+    registry.register("agent-exec", AgentExecPrimitive())
