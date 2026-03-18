@@ -33,6 +33,7 @@ from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
     from beddel.adapters.hooks import LifecycleHookManager as LifecycleHookManager
+    from beddel.adapters.kiro_cli import KiroCLIAgentAdapter as KiroCLIAgentAdapter
     from beddel.integrations.fastapi import (
         create_beddel_handler as create_beddel_handler,
     )
@@ -44,6 +45,7 @@ __version__ = "0.1.0"
 # beddel → beddel.adapters → otel_adapter → beddel.__version__
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
+    "KiroCLIAgentAdapter": ("beddel.adapters.kiro_cli", "KiroCLIAgentAdapter"),
     "LifecycleHookManager": ("beddel.adapters.hooks", "LifecycleHookManager"),
     "create_beddel_handler": (
         "beddel.integrations.fastapi",
@@ -81,6 +83,7 @@ __all__ = [
     "ILifecycleHook",
     "ITracer",
     "InterruptibleContext",
+    "KiroCLIAgentAdapter",
     "LifecycleHookManager",
     "NoOpTracer",
     "ParseError",
