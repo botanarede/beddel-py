@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -352,3 +353,162 @@ class TestRegisterBuiltins:
         register_builtins(registry)
 
         assert isinstance(registry.get("tool"), ToolPrimitive)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Per-tool timeout (Task 3 — AC1)
+# ---------------------------------------------------------------------------
+
+
+async def _slow_tool() -> str:
+    await asyncio.sleep(10)
+    return "done"
+
+
+class TestToolTimeout:
+    """Tests for per-tool timeout via asyncio.wait_for (AC1)."""
+
+    async def test_timeout_raises_prim_303(self) -> None:
+        """Tool exceeding timeout raises PRIM_TOOL_TIMEOUT."""
+        registry = {"slow": _slow_tool}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry, step_id="t-step")
+
+        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-303") as exc_info:
+            await ToolPrimitive().execute({"tool": "slow", "timeout": 0.1}, ctx)
+
+        assert exc_info.value.code == "BEDDEL-PRIM-303"
+
+    async def test_timeout_error_details(self) -> None:
+        """Timeout error includes tool name, timeout value, and step_id."""
+        registry = {"slow": _slow_tool}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry, step_id="timeout-step")
+
+        with pytest.raises(PrimitiveError) as exc_info:
+            await ToolPrimitive().execute({"tool": "slow", "timeout": 0.1}, ctx)
+
+        details = exc_info.value.details
+        assert details["tool"] == "slow"
+        assert details["timeout"] == 0.1
+        assert details["step_id"] == "timeout-step"
+
+    async def test_timeout_error_message_contains_tool_name(self) -> None:
+        """Timeout error message mentions the tool name and duration."""
+        registry = {"slow": _slow_tool}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
+
+        with pytest.raises(PrimitiveError) as exc_info:
+            await ToolPrimitive().execute({"tool": "slow", "timeout": 0.1}, ctx)
+
+        assert "slow" in exc_info.value.message
+        assert "0.1" in exc_info.value.message
+
+    async def test_default_timeout_is_60(self) -> None:
+        """When no timeout in config, default 60s is used (tool completes fast)."""
+        registry = {"greet": _sync_greet}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
+
+        # Fast tool should succeed with default 60s timeout
+        result = await ToolPrimitive().execute({"tool": "greet"}, ctx)
+        assert result == {"tool": "greet", "result": "hello"}
+
+    async def test_tool_completes_within_timeout(self) -> None:
+        """Tool that finishes before timeout returns normally."""
+
+        async def _fast_tool() -> str:
+            await asyncio.sleep(0.01)
+            return "fast"
+
+        registry = {"fast": _fast_tool}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
+
+        result = await ToolPrimitive().execute({"tool": "fast", "timeout": 5}, ctx)
+        assert result == {"tool": "fast", "result": "fast"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: Allowlist validation (Task 3 — AC2)
+# ---------------------------------------------------------------------------
+
+
+class TestToolAllowlist:
+    """Tests for workflow allowed_tools validation (AC2)."""
+
+    async def test_disallowed_tool_raises_prim_304(self) -> None:
+        """Tool not in allowlist raises PRIM_TOOL_NOT_ALLOWED."""
+        registry = {"forbidden": _sync_greet}
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry=registry,
+            metadata={"_workflow_allowed_tools": ["allowed-tool"]},
+        )
+
+        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-304") as exc_info:
+            await ToolPrimitive().execute({"tool": "forbidden"}, ctx)
+
+        assert exc_info.value.code == "BEDDEL-PRIM-304"
+
+    async def test_disallowed_tool_error_details(self) -> None:
+        """Allowlist error includes tool name, allowed list, and step_id."""
+        registry = {"blocked": _sync_greet}
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry=registry,
+            step_id="allow-step",
+            metadata={"_workflow_allowed_tools": ["web-search", "calculator"]},
+        )
+
+        with pytest.raises(PrimitiveError) as exc_info:
+            await ToolPrimitive().execute({"tool": "blocked"}, ctx)
+
+        details = exc_info.value.details
+        assert details["tool"] == "blocked"
+        assert details["allowed_tools"] == ["web-search", "calculator"]
+        assert details["step_id"] == "allow-step"
+
+    async def test_allowed_tool_passes_validation(self) -> None:
+        """Tool in allowlist executes normally."""
+        registry = {"web-search": _sync_greet}
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry=registry,
+            metadata={"_workflow_allowed_tools": ["web-search", "calculator"]},
+        )
+
+        result = await ToolPrimitive().execute({"tool": "web-search"}, ctx)
+        assert result == {"tool": "web-search", "result": "hello"}
+
+    async def test_none_allowlist_permits_all_tools(self) -> None:
+        """When allowed_tools is None, all tools are permitted (backward-compat)."""
+        registry = {"any-tool": _sync_greet}
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry=registry,
+            # No _workflow_allowed_tools in metadata → None
+        )
+
+        result = await ToolPrimitive().execute({"tool": "any-tool"}, ctx)
+        assert result == {"tool": "any-tool", "result": "hello"}
+
+    async def test_explicit_none_allowlist_permits_all(self) -> None:
+        """Explicit None in metadata permits all tools."""
+        registry = {"any-tool": _sync_greet}
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry=registry,
+            metadata={"_workflow_allowed_tools": None},
+        )
+
+        result = await ToolPrimitive().execute({"tool": "any-tool"}, ctx)
+        assert result == {"tool": "any-tool", "result": "hello"}
+
+    async def test_empty_allowlist_blocks_all_tools(self) -> None:
+        """Empty allowlist blocks all tools."""
+        registry = {"any-tool": _sync_greet}
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry=registry,
+            metadata={"_workflow_allowed_tools": []},
+        )
+
+        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-304"):
+            await ToolPrimitive().execute({"tool": "any-tool"}, ctx)

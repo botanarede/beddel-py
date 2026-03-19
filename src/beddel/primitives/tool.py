@@ -20,7 +20,9 @@ from beddel.error_codes import (
     PRIM_MISSING_TOOL_REGISTRY,
     PRIM_TOOL_EXEC_FAILED,
     PRIM_TOOL_MISSING_CONFIG,
+    PRIM_TOOL_NOT_ALLOWED,
     PRIM_TOOL_NOT_FOUND,
+    PRIM_TOOL_TIMEOUT,
 )
 
 __all__ = [
@@ -40,6 +42,8 @@ class ToolPrimitive(IPrimitive):
         tool (str): Required. Tool name to look up in the registry.
         arguments (dict): Optional. Keyword arguments for the tool function.
             Supports ``$input`` and ``$stepResult`` variable references.
+        timeout (int): Optional. Timeout in seconds for tool execution.
+            Defaults to 60.
 
     Example config::
 
@@ -53,12 +57,12 @@ class ToolPrimitive(IPrimitive):
         """Execute the tool primitive.
 
         Validates config, extracts the tool registry, resolves the tool
-        function, resolves arguments, invokes the tool, and returns a
-        structured result.
+        function, checks the workflow allowlist, resolves arguments,
+        invokes the tool with timeout, and returns a structured result.
 
         Args:
-            config: Primitive configuration containing ``tool`` (required)
-                and optional ``arguments`` dict.
+            config: Primitive configuration containing ``tool`` (required),
+                optional ``arguments`` dict, and optional ``timeout`` int.
             context: Execution context providing runtime data and dependencies.
 
         Returns:
@@ -68,6 +72,8 @@ class ToolPrimitive(IPrimitive):
             PrimitiveError: ``BEDDEL-PRIM-302`` if ``tool`` key is missing.
             PrimitiveError: ``BEDDEL-PRIM-005`` if tool_registry is missing.
             PrimitiveError: ``BEDDEL-PRIM-300`` if tool not found in registry.
+            PrimitiveError: ``BEDDEL-PRIM-304`` if tool not in allowlist.
+            PrimitiveError: ``BEDDEL-PRIM-303`` if tool execution times out.
             PrimitiveError: ``BEDDEL-PRIM-301`` if tool execution fails.
         """
         self._validate_config(config, context)
@@ -75,12 +81,31 @@ class ToolPrimitive(IPrimitive):
         tool_name: str = config["tool"]
         tool_fn = self._resolve_tool(tool_name, registry, context)
 
+        self._check_allowlist(
+            tool_name,
+            context.metadata.get("_workflow_allowed_tools"),
+            context,
+        )
+
         arguments: dict[str, Any] = {}
         if "arguments" in config:
             resolver = VariableResolver()
             arguments = resolver.resolve(config["arguments"], context)
 
-        result = await self._invoke_tool(tool_fn, arguments)
+        timeout: int | float = config.get("timeout", 60)
+        try:
+            result = await asyncio.wait_for(self._invoke_tool(tool_fn, arguments), timeout=timeout)
+        except TimeoutError:
+            raise PrimitiveError(
+                code=PRIM_TOOL_TIMEOUT,
+                message=f"Tool '{tool_name}' timed out after {timeout}s",
+                details={
+                    "tool": tool_name,
+                    "timeout": timeout,
+                    "step_id": context.current_step_id,
+                },
+            ) from None
+
         return {"tool": tool_name, "result": result}
 
     @staticmethod
@@ -129,6 +154,38 @@ class ToolPrimitive(IPrimitive):
                 },
             )
         return context.deps.tool_registry
+
+    @staticmethod
+    def _check_allowlist(
+        tool_name: str,
+        allowed_tools: list[str] | None,
+        context: ExecutionContext,
+    ) -> None:
+        """Validate that the tool is permitted by the workflow allowlist.
+
+        When ``allowed_tools`` is ``None``, all tools are permitted
+        (backward-compatible default).  When it is a list, the tool name
+        must appear in it.
+
+        Args:
+            tool_name: Name of the tool to validate.
+            allowed_tools: Allowlist from ``workflow.allowed_tools``, or
+                ``None`` if unrestricted.
+            context: Execution context for error details.
+
+        Raises:
+            PrimitiveError: ``BEDDEL-PRIM-304`` if tool not in allowlist.
+        """
+        if allowed_tools is not None and tool_name not in allowed_tools:
+            raise PrimitiveError(
+                code=PRIM_TOOL_NOT_ALLOWED,
+                message=f"Tool '{tool_name}' is not in the workflow allowed_tools list",
+                details={
+                    "tool": tool_name,
+                    "allowed_tools": allowed_tools,
+                    "step_id": context.current_step_id,
+                },
+            )
 
     @staticmethod
     def _resolve_tool(

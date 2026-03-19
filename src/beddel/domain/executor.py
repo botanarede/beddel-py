@@ -264,6 +264,7 @@ class WorkflowExecutor:
         )
 
         context.deps = self._build_deps(execution_strategy)
+        context.metadata["_workflow_allowed_tools"] = workflow.allowed_tools
 
         tracer = context.deps.tracer
         workflow_span: Any = None
@@ -422,6 +423,7 @@ class WorkflowExecutor:
                 inputs=effective_inputs,
             )
             context.deps = self._build_deps(execution_strategy)
+            context.metadata["_workflow_allowed_tools"] = workflow.allowed_tools
 
             tracer = context.deps.tracer
             workflow_span: Any = None
