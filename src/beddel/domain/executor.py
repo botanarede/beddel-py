@@ -122,6 +122,13 @@ class WorkflowExecutor:
         tracer: Optional tracer for OpenTelemetry span creation.
             When provided, passed to ``DefaultDependencies`` so that
             workflow, step, and primitive spans are emitted automatically.
+        deps: Optional pre-built :class:`DefaultDependencies` instance.
+            When provided, :meth:`execute` and :meth:`execute_stream` use
+            it as the base dependency bag, overlaying only
+            ``execution_strategy`` and ``lifecycle_hooks`` at runtime.
+            When ``None`` (default), dependencies are built from the
+            individual ``provider`` / ``hooks`` / ``tracer`` parameters
+            (backward-compatible behaviour).
 
     Example::
 
@@ -135,6 +142,7 @@ class WorkflowExecutor:
         provider: ILLMProvider | None = None,
         hooks: IHookManager | None = None,
         tracer: ITracer | None = None,
+        deps: DefaultDependencies | None = None,
     ) -> None:
         """Initialise the executor.
 
@@ -146,12 +154,61 @@ class WorkflowExecutor:
                 fallback (all methods are no-ops by default).
             tracer: Optional tracer injected into ``DefaultDependencies``
                 for automatic span creation.
+            deps: Optional pre-built :class:`DefaultDependencies`.  When
+                provided, used as the base for ``context.deps`` in
+                :meth:`execute` and :meth:`execute_stream`, with
+                ``execution_strategy`` and ``lifecycle_hooks`` overlaid
+                at runtime.  Individual ``provider`` / ``tracer`` params
+                are ignored when ``deps`` is set.
         """
         self._registry = registry
         self._provider = provider
         self._hook_manager: IHookManager = hooks if hooks is not None else IHookManager()
         self._tracer = tracer
+        self._deps = deps
         self._resolver = VariableResolver()
+
+    def _build_deps(
+        self,
+        execution_strategy: IExecutionStrategy | None = None,
+    ) -> DefaultDependencies:
+        """Build the :class:`DefaultDependencies` for a workflow run.
+
+        When ``self._deps`` was provided at construction time, it is used
+        as the base dependency bag with ``execution_strategy`` overlaid
+        (the method parameter wins when non-``None``, otherwise the value
+        from ``self._deps`` is preserved).  ``lifecycle_hooks`` always
+        comes from ``self._hook_manager`` so that runtime-added hooks
+        (e.g. the streaming ``_Collector``) are visible.
+
+        When ``self._deps`` is ``None``, dependencies are built from the
+        individual constructor parameters (backward-compatible path).
+
+        Args:
+            execution_strategy: Optional execution strategy override.
+
+        Returns:
+            A fully-populated :class:`DefaultDependencies` instance.
+        """
+        if self._deps is not None:
+            return DefaultDependencies(
+                llm_provider=self._deps.llm_provider,
+                lifecycle_hooks=self._hook_manager,
+                execution_strategy=execution_strategy or self._deps.execution_strategy,
+                delegate_model=self._deps.delegate_model,
+                tracer=self._deps.tracer,
+                workflow_loader=self._deps.workflow_loader,
+                registry=self._deps.registry,
+                tool_registry=self._deps.tool_registry,
+                agent_adapter=self._deps.agent_adapter,
+                agent_registry=self._deps.agent_registry,
+            )
+        return DefaultDependencies(
+            llm_provider=self._provider,
+            lifecycle_hooks=self._hook_manager,
+            execution_strategy=execution_strategy,
+            tracer=self._tracer,
+        )
 
     async def execute(
         self,
@@ -165,6 +222,14 @@ class WorkflowExecutor:
         Creates an :class:`ExecutionContext`, injects dependencies via
         ``context.deps``, iterates steps in order, and returns the
         accumulated step results and metadata.
+
+        When the executor was constructed with a ``deps`` argument, that
+        instance is used as the base dependency bag.  The
+        ``execution_strategy`` parameter is overlaid on top, and
+        ``lifecycle_hooks`` always comes from the executor's hook manager
+        (so that runtime-added hooks like the streaming collector are
+        visible).  When ``deps`` was not provided, dependencies are built
+        from the individual constructor parameters (backward-compatible).
 
         When ``context.deps.tracer`` is not ``None``, a
         ``beddel.workflow`` span wraps the entire execution with the
@@ -194,12 +259,7 @@ class WorkflowExecutor:
             inputs=effective_inputs,
         )
 
-        context.deps = DefaultDependencies(
-            llm_provider=self._provider,
-            lifecycle_hooks=self._hook_manager,
-            execution_strategy=execution_strategy,
-            tracer=self._tracer,
-        )
+        context.deps = self._build_deps(execution_strategy)
 
         tracer = context.deps.tracer
         workflow_span: Any = None
@@ -258,6 +318,12 @@ class WorkflowExecutor:
 
         For steps with ``stream=True``, the stored async-generator result
         is consumed and each chunk is yielded as a ``TEXT_CHUNK`` event.
+
+        Dependency resolution follows the same rules as :meth:`execute`:
+        when the executor was constructed with ``deps``, that instance is
+        used as the base with ``execution_strategy`` overlaid and
+        ``lifecycle_hooks`` always sourced from the executor's hook
+        manager (critical — the ``_Collector`` hook is added at runtime).
 
         When ``context.deps.tracer`` is not ``None``, a
         ``beddel.workflow`` span wraps the entire streaming execution
@@ -351,12 +417,7 @@ class WorkflowExecutor:
                 workflow_id=workflow.id,
                 inputs=effective_inputs,
             )
-            context.deps = DefaultDependencies(
-                llm_provider=self._provider,
-                lifecycle_hooks=self._hook_manager,
-                execution_strategy=execution_strategy,
-                tracer=self._tracer,
-            )
+            context.deps = self._build_deps(execution_strategy)
 
             tracer = context.deps.tracer
             workflow_span: Any = None
