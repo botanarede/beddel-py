@@ -9,6 +9,7 @@ and structured result wrapping.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -66,7 +67,9 @@ class ToolPrimitive(IPrimitive):
             context: Execution context providing runtime data and dependencies.
 
         Returns:
-            A dict with ``tool`` (name) and ``result`` (tool output).
+            A dict with ``tool`` (name), ``result`` (tool output),
+            ``arguments`` (resolved kwargs), and ``duration_ms``
+            (execution time in milliseconds).
 
         Raises:
             PrimitiveError: ``BEDDEL-PRIM-302`` if ``tool`` key is missing.
@@ -92,7 +95,13 @@ class ToolPrimitive(IPrimitive):
             resolver = VariableResolver()
             arguments = resolver.resolve(config["arguments"], context)
 
+        context.metadata["_tool_context"] = {
+            "tool_name": tool_name,
+            "arguments": arguments,
+        }
+
         timeout: int | float = config.get("timeout", 60)
+        start_time = time.monotonic()
         try:
             result = await asyncio.wait_for(self._invoke_tool(tool_fn, arguments), timeout=timeout)
         except TimeoutError:
@@ -106,7 +115,13 @@ class ToolPrimitive(IPrimitive):
                 },
             ) from None
 
-        return {"tool": tool_name, "result": result}
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        return {
+            "tool": tool_name,
+            "result": result,
+            "arguments": arguments,
+            "duration_ms": duration_ms,
+        }
 
     @staticmethod
     def _validate_config(config: dict[str, Any], context: ExecutionContext) -> None:

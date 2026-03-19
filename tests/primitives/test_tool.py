@@ -54,7 +54,11 @@ class TestSyncInvocation:
 
         result = await ToolPrimitive().execute({"tool": "add", "arguments": {"a": 1, "b": 2}}, ctx)
 
-        assert result == {"tool": "add", "result": 3}
+        assert result["tool"] == "add"
+        assert result["result"] == 3
+        assert result["arguments"] == {"a": 1, "b": 2}
+        assert isinstance(result["duration_ms"], int)
+        assert result["duration_ms"] >= 0
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +85,11 @@ class TestAsyncInvocation:
             {"tool": "multiply", "arguments": {"x": 2, "y": 3}}, ctx
         )
 
-        assert result == {"tool": "multiply", "result": 6}
+        assert result["tool"] == "multiply"
+        assert result["result"] == 6
+        assert result["arguments"] == {"x": 2, "y": 3}
+        assert isinstance(result["duration_ms"], int)
+        assert result["duration_ms"] >= 0
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +229,10 @@ class TestNoArguments:
 
         result = await ToolPrimitive().execute({"tool": "greet"}, ctx)
 
-        assert result == {"tool": "greet", "result": "hello"}
+        assert result["tool"] == "greet"
+        assert result["result"] == "hello"
+        assert result["arguments"] == {}
+        assert isinstance(result["duration_ms"], int)
 
     async def test_async_tool_called_with_no_arguments(self) -> None:
         registry = {"ping": _async_ping}
@@ -229,7 +240,10 @@ class TestNoArguments:
 
         result = await ToolPrimitive().execute({"tool": "ping"}, ctx)
 
-        assert result == {"tool": "ping", "result": "pong"}
+        assert result["tool"] == "ping"
+        assert result["result"] == "pong"
+        assert result["arguments"] == {}
+        assert isinstance(result["duration_ms"], int)
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +258,7 @@ class TestStructuredResult:
 
         result = await ToolPrimitive().execute({"tool": "greet"}, ctx)
 
-        assert set(result.keys()) == {"tool", "result"}
+        assert set(result.keys()) == {"tool", "result", "arguments", "duration_ms"}
 
     async def test_result_with_dict_output(self) -> None:
         def _dict_tool() -> dict[str, int]:
@@ -255,7 +269,10 @@ class TestStructuredResult:
 
         result = await ToolPrimitive().execute({"tool": "info"}, ctx)
 
-        assert result == {"tool": "info", "result": {"count": 42}}
+        assert result["tool"] == "info"
+        assert result["result"] == {"count": 42}
+        assert result["arguments"] == {}
+        assert isinstance(result["duration_ms"], int)
 
     async def test_result_with_list_output(self) -> None:
         def _list_tool() -> list[str]:
@@ -266,7 +283,10 @@ class TestStructuredResult:
 
         result = await ToolPrimitive().execute({"tool": "items"}, ctx)
 
-        assert result == {"tool": "items", "result": ["a", "b", "c"]}
+        assert result["tool"] == "items"
+        assert result["result"] == ["a", "b", "c"]
+        assert result["arguments"] == {}
+        assert isinstance(result["duration_ms"], int)
 
     async def test_result_with_none_output(self) -> None:
         def _void_tool() -> None:
@@ -277,7 +297,10 @@ class TestStructuredResult:
 
         result = await ToolPrimitive().execute({"tool": "noop"}, ctx)
 
-        assert result == {"tool": "noop", "result": None}
+        assert result["tool"] == "noop"
+        assert result["result"] is None
+        assert result["arguments"] == {}
+        assert isinstance(result["duration_ms"], int)
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +432,9 @@ class TestToolTimeout:
 
         # Fast tool should succeed with default 60s timeout
         result = await ToolPrimitive().execute({"tool": "greet"}, ctx)
-        assert result == {"tool": "greet", "result": "hello"}
+        assert result["tool"] == "greet"
+        assert result["result"] == "hello"
+        assert isinstance(result["duration_ms"], int)
 
     async def test_tool_completes_within_timeout(self) -> None:
         """Tool that finishes before timeout returns normally."""
@@ -422,7 +447,9 @@ class TestToolTimeout:
         ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
 
         result = await ToolPrimitive().execute({"tool": "fast", "timeout": 5}, ctx)
-        assert result == {"tool": "fast", "result": "fast"}
+        assert result["tool"] == "fast"
+        assert result["result"] == "fast"
+        assert isinstance(result["duration_ms"], int)
 
 
 # ---------------------------------------------------------------------------
@@ -475,7 +502,9 @@ class TestToolAllowlist:
         )
 
         result = await ToolPrimitive().execute({"tool": "web-search"}, ctx)
-        assert result == {"tool": "web-search", "result": "hello"}
+        assert result["tool"] == "web-search"
+        assert result["result"] == "hello"
+        assert isinstance(result["duration_ms"], int)
 
     async def test_none_allowlist_permits_all_tools(self) -> None:
         """When allowed_tools is None, all tools are permitted (backward-compat)."""
@@ -487,7 +516,9 @@ class TestToolAllowlist:
         )
 
         result = await ToolPrimitive().execute({"tool": "any-tool"}, ctx)
-        assert result == {"tool": "any-tool", "result": "hello"}
+        assert result["tool"] == "any-tool"
+        assert result["result"] == "hello"
+        assert isinstance(result["duration_ms"], int)
 
     async def test_explicit_none_allowlist_permits_all(self) -> None:
         """Explicit None in metadata permits all tools."""
@@ -499,7 +530,9 @@ class TestToolAllowlist:
         )
 
         result = await ToolPrimitive().execute({"tool": "any-tool"}, ctx)
-        assert result == {"tool": "any-tool", "result": "hello"}
+        assert result["tool"] == "any-tool"
+        assert result["result"] == "hello"
+        assert isinstance(result["duration_ms"], int)
 
     async def test_empty_allowlist_blocks_all_tools(self) -> None:
         """Empty allowlist blocks all tools."""
@@ -512,3 +545,67 @@ class TestToolAllowlist:
 
         with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-304"):
             await ToolPrimitive().execute({"tool": "any-tool"}, ctx)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Lifecycle hook enrichment (Task 4 — AC4)
+# ---------------------------------------------------------------------------
+
+
+class TestToolHookEnrichment:
+    """Tests for lifecycle hook enrichment with tool context (AC4)."""
+
+    async def test_result_contains_duration_ms(self) -> None:
+        """Result dict includes duration_ms as a non-negative integer."""
+        registry = {"greet": _sync_greet}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
+
+        result = await ToolPrimitive().execute({"tool": "greet"}, ctx)
+
+        assert "duration_ms" in result
+        assert isinstance(result["duration_ms"], int)
+        assert result["duration_ms"] >= 0
+
+    async def test_result_contains_arguments(self) -> None:
+        """Result dict includes the resolved arguments."""
+        registry = {"add": _sync_add}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
+
+        result = await ToolPrimitive().execute({"tool": "add", "arguments": {"a": 5, "b": 3}}, ctx)
+
+        assert result["arguments"] == {"a": 5, "b": 3}
+
+    async def test_result_arguments_empty_when_no_args(self) -> None:
+        """Result arguments is empty dict when no arguments provided."""
+        registry = {"greet": _sync_greet}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
+
+        result = await ToolPrimitive().execute({"tool": "greet"}, ctx)
+
+        assert result["arguments"] == {}
+
+    async def test_tool_context_set_in_metadata(self) -> None:
+        """context.metadata['_tool_context'] is set with tool_name and arguments."""
+        registry = {"add": _sync_add}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
+
+        await ToolPrimitive().execute({"tool": "add", "arguments": {"a": 1, "b": 2}}, ctx)
+
+        tool_ctx = ctx.metadata["_tool_context"]
+        assert tool_ctx["tool_name"] == "add"
+        assert tool_ctx["arguments"] == {"a": 1, "b": 2}
+
+    async def test_duration_ms_reflects_actual_time(self) -> None:
+        """duration_ms is at least as long as the tool's execution time."""
+
+        async def _delay_tool() -> str:
+            await asyncio.sleep(0.05)
+            return "delayed"
+
+        registry = {"delay": _delay_tool}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
+
+        result = await ToolPrimitive().execute({"tool": "delay", "timeout": 5}, ctx)
+
+        # Should be at least 50ms (the sleep duration)
+        assert result["duration_ms"] >= 40  # allow small timing variance
