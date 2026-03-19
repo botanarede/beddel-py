@@ -28,7 +28,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from beddel.domain.errors import BeddelError, ParseError, ResolveError
 from beddel.domain.executor import WorkflowExecutor
-from beddel.domain.models import Workflow
+from beddel.domain.models import DefaultDependencies, Workflow
 from beddel.domain.ports import IHookManager, ILLMProvider, ITracer
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.error_codes import INTERNAL_SERVER_ERROR
@@ -50,6 +50,7 @@ def create_beddel_handler(
     registry: PrimitiveRegistry | None = None,
     hooks: IHookManager | None = None,
     tracer: ITracer | None = None,
+    deps: DefaultDependencies | None = None,
 ) -> APIRouter:
     """Create a FastAPI router that exposes a workflow as an SSE endpoint.
 
@@ -58,23 +59,38 @@ def create_beddel_handler(
     endpoint accepts a JSON body as workflow inputs, executes the workflow
     via streaming, and returns an SSE response.
 
-    When ``provider`` is ``None``, a :class:`~beddel.adapters.litellm_adapter.LiteLLMAdapter`
-    is created as the default LLM provider.
+    When ``deps`` is provided, the executor is constructed directly with
+    the pre-built dependency container, bypassing individual ``provider``,
+    ``hooks``, and ``tracer`` wiring.  This is the preferred approach for
+    callers that already have a :class:`DefaultDependencies` instance.
 
-    When ``registry`` is ``None``, a fresh :class:`~beddel.domain.registry.PrimitiveRegistry`
-    is created and populated with all built-in primitives via
-    :func:`~beddel.primitives.register_builtins`.
+    When ``deps`` is ``None`` (the default), individual parameters are
+    used to construct the executor (backward-compatible behaviour):
+
+    - When ``provider`` is ``None``, a
+      :class:`~beddel.adapters.litellm_adapter.LiteLLMAdapter` is created
+      as the default LLM provider.
+    - When ``registry`` is ``None``, a fresh
+      :class:`~beddel.domain.registry.PrimitiveRegistry` is created and
+      populated with all built-in primitives via
+      :func:`~beddel.primitives.register_builtins`.
 
     Args:
         workflow: The workflow definition to expose as an endpoint.
         provider: Optional LLM provider.  Defaults to
             :class:`~beddel.adapters.litellm_adapter.LiteLLMAdapter`.
+            Ignored when ``deps`` is provided.
         registry: Optional primitive registry.  Defaults to a new registry
             with all built-in primitives registered.
         hooks: Optional :class:`IHookManager` instance forwarded to the
-            executor.
+            executor.  Ignored when ``deps`` is provided.
         tracer: Optional :class:`ITracer` instance for distributed tracing.
             Forwarded to the executor.  Defaults to ``None`` (no tracing).
+            Ignored when ``deps`` is provided.
+        deps: Optional pre-built :class:`DefaultDependencies` container.
+            When provided, takes precedence over ``provider``, ``hooks``,
+            and ``tracer`` — the executor is constructed with ``deps``
+            directly.
 
     Returns:
         A :class:`~fastapi.APIRouter` with a ``POST /`` endpoint that
@@ -91,13 +107,6 @@ def create_beddel_handler(
         router = create_beddel_handler(workflow)
         app.include_router(router, prefix="/demo")
     """
-    if provider is not None:
-        effective_provider = provider
-    else:
-        from beddel.adapters.litellm_adapter import LiteLLMAdapter
-
-        effective_provider = LiteLLMAdapter()
-
     effective_registry: PrimitiveRegistry
     if registry is not None:
         effective_registry = registry
@@ -105,20 +114,30 @@ def create_beddel_handler(
         effective_registry = PrimitiveRegistry()
         register_builtins(effective_registry)
 
-    effective_hook_manager: IHookManager
-    if hooks is not None:
-        effective_hook_manager = hooks
+    if deps is not None:
+        executor = WorkflowExecutor(effective_registry, deps=deps)
     else:
-        from beddel.adapters.hooks import LifecycleHookManager
+        if provider is not None:
+            effective_provider = provider
+        else:
+            from beddel.adapters.litellm_adapter import LiteLLMAdapter
 
-        effective_hook_manager = LifecycleHookManager()
+            effective_provider = LiteLLMAdapter()
 
-    executor = WorkflowExecutor(
-        effective_registry,
-        provider=effective_provider,
-        hooks=effective_hook_manager,
-        tracer=tracer,
-    )
+        effective_hook_manager: IHookManager
+        if hooks is not None:
+            effective_hook_manager = hooks
+        else:
+            from beddel.adapters.hooks import LifecycleHookManager
+
+            effective_hook_manager = LifecycleHookManager()
+
+        executor = WorkflowExecutor(
+            effective_registry,
+            provider=effective_provider,
+            hooks=effective_hook_manager,
+            tracer=tracer,
+        )
 
     router = APIRouter()
 

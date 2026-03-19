@@ -206,6 +206,65 @@ class TestFactoryDefaults:
         call_kwargs = mock_executor_cls.call_args
         assert call_kwargs.kwargs["tracer"] is None
 
+    def test_create_handler_with_deps(self) -> None:
+        """When ``deps`` is provided, executor is constructed with ``deps`` kwarg.
+
+        Verifies AC1: create_beddel_handler accepts an optional ``deps``
+        parameter and forwards it to WorkflowExecutor instead of individual
+        provider/hooks/tracer params.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_deps = MagicMock(spec=DefaultDependencies)
+
+        with patch(
+            "beddel.integrations.fastapi.WorkflowExecutor",
+        ) as mock_executor_cls:
+            create_beddel_handler(
+                _make_workflow(),
+                registry=_build_mock_registry(),
+                deps=mock_deps,
+            )
+
+        mock_executor_cls.assert_called_once()
+        call_kwargs = mock_executor_cls.call_args
+        assert call_kwargs.kwargs["deps"] is mock_deps
+        # Individual params should NOT be passed when deps is provided
+        assert "provider" not in call_kwargs.kwargs
+        assert "hooks" not in call_kwargs.kwargs
+        assert "tracer" not in call_kwargs.kwargs
+
+    def test_create_handler_without_deps_backward_compat(self) -> None:
+        """When ``deps`` is omitted, executor uses individual params (backward-compat).
+
+        Verifies AC6: existing callers without ``deps`` continue to work
+        unchanged — provider, hooks, and tracer are forwarded individually.
+        """
+        from unittest.mock import MagicMock, patch
+
+        mock_tracer = MagicMock()
+
+        with patch(
+            "beddel.integrations.fastapi.WorkflowExecutor",
+        ) as mock_executor_cls:
+            create_beddel_handler(
+                _make_workflow(),
+                provider=_MockProvider(),
+                registry=_build_mock_registry(),
+                tracer=mock_tracer,
+            )
+
+        mock_executor_cls.assert_called_once()
+        call_kwargs = mock_executor_cls.call_args
+        # Individual params should be present
+        assert "provider" in call_kwargs.kwargs
+        assert "hooks" in call_kwargs.kwargs
+        assert call_kwargs.kwargs["tracer"] is mock_tracer
+        # deps should NOT be passed
+        assert "deps" not in call_kwargs.kwargs
+
 
 # ---------------------------------------------------------------------------
 # SSE endpoint (subtasks 5.4, 5.5, 5.7)
