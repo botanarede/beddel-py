@@ -135,6 +135,12 @@ PRIM_TOOL_EXEC_FAILED: str = "BEDDEL-PRIM-301"
 PRIM_TOOL_MISSING_CONFIG: str = "BEDDEL-PRIM-302"
 """Missing tool config key."""
 
+PRIM_TOOL_TIMEOUT: str = "BEDDEL-PRIM-303"
+"""Tool execution timed out."""
+
+PRIM_TOOL_NOT_ALLOWED: str = "BEDDEL-PRIM-304"
+"""Tool not in workflow allowed_tools list."""
+
 # ---------------------------------------------------------------------------
 # Adapter codes  (ADAPT prefix, 400 range)
 # ---------------------------------------------------------------------------
@@ -262,6 +268,8 @@ ALL_CODES: dict[str, str] = {
     "PRIM_TOOL_NOT_FOUND": PRIM_TOOL_NOT_FOUND,
     "PRIM_TOOL_EXEC_FAILED": PRIM_TOOL_EXEC_FAILED,
     "PRIM_TOOL_MISSING_CONFIG": PRIM_TOOL_MISSING_CONFIG,
+    "PRIM_TOOL_TIMEOUT": PRIM_TOOL_TIMEOUT,
+    "PRIM_TOOL_NOT_ALLOWED": PRIM_TOOL_NOT_ALLOWED,
     # Adapter
     "ADAPT_AUTH_FAILURE": ADAPT_AUTH_FAILURE,
     "ADAPT_PROVIDER_ERROR": ADAPT_PROVIDER_ERROR,
