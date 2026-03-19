@@ -221,7 +221,14 @@ def run(
     type=click.Path(exists=True, path_type=Path),
     help="Workflow YAML file to serve (repeatable).",
 )
-def serve(host: str, port: int, workflow_paths: tuple[Path, ...]) -> None:
+@click.option(
+    "--tool",
+    "-t",
+    "tools",
+    multiple=True,
+    help="Register tool as name=module:function.",
+)
+def serve(host: str, port: int, workflow_paths: tuple[Path, ...], tools: tuple[str, ...]) -> None:
     """Start a FastAPI server exposing workflows as SSE endpoints."""
     try:
         import uvicorn  # type: ignore[import-not-found]
@@ -235,7 +242,10 @@ def serve(host: str, port: int, workflow_paths: tuple[Path, ...]) -> None:
         raise SystemExit(1) from None
 
     from beddel import __version__
+    from beddel.adapters.kiro_cli import KiroCLIAgentAdapter
     from beddel.adapters.litellm_adapter import LiteLLMAdapter
+    from beddel.domain.errors import BeddelError
+    from beddel.domain.models import DefaultDependencies, Workflow
     from beddel.domain.parser import WorkflowParser
     from beddel.domain.registry import PrimitiveRegistry
     from beddel.integrations.fastapi import create_beddel_handler
@@ -252,15 +262,44 @@ def serve(host: str, port: int, workflow_paths: tuple[Path, ...]) -> None:
     registry = PrimitiveRegistry()
     register_builtins(registry)
     adapter = LiteLLMAdapter()
+    parsed_tools = _parse_tool_flags(tools)
 
     loaded = 0
     for wf_path in workflow_paths:
         yaml_str = wf_path.read_text()
         workflow = WorkflowParser.parse(yaml_str)
+
+        wf_parent = wf_path.parent.resolve()
+
+        def _make_workflow_loader(root: Path) -> Callable[[str], Workflow]:
+            """Return a workflow loader scoped to *root*."""
+
+            def _loader(name: str) -> Workflow:
+                target = (root / name).resolve()
+                if not target.is_relative_to(root):
+                    raise BeddelError(
+                        code="BEDDEL-CLI-001",
+                        message=f"Workflow path escapes base directory: {name}",
+                    )
+                if not target.exists():
+                    raise BeddelError(
+                        code="BEDDEL-CLI-002",
+                        message=(f"Sub-workflow not found: {name} (resolved: {target})"),
+                    )
+                return WorkflowParser.parse(target.read_text())
+
+            return _loader
+
+        deps = DefaultDependencies(
+            llm_provider=adapter,
+            agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
+            tool_registry=parsed_tools,
+            workflow_loader=_make_workflow_loader(wf_parent),
+            registry=registry,
+        )
         router = create_beddel_handler(
             workflow,
-            provider=adapter,
-            registry=registry,
+            deps=deps,
         )
         app.include_router(router, prefix=f"/workflows/{workflow.id}")
         click.echo(f"  Mounted: /workflows/{workflow.id} ({wf_path.name})")
