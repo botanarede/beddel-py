@@ -1721,3 +1721,102 @@ class TestTracingErrorHandling:
         assert result["step_results"]["s1"] == {"answer": 42}
         assert result["step_results"]["s2"] == {"answer": 42}
         assert "metadata" in result
+
+
+# ---------------------------------------------------------------------------
+# Story 4.0a / Task 3 — deps parameter injection on WorkflowExecutor.__init__
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestDepsParameterInjection:
+    """Tests that WorkflowExecutor honours the ``deps`` constructor parameter."""
+
+    async def test_execute_uses_injected_deps(self) -> None:
+        """Construct executor with pre-built DefaultDependencies containing a mock
+        agent_registry; verify context.deps.agent_registry is the injected value
+        after execution."""
+        registry, captured = _capture_registry()
+        mock_agent_registry: dict[str, Any] = {"kiro-cli": MagicMock()}
+
+        injected_deps = DefaultDependencies(agent_registry=mock_agent_registry)
+        executor = WorkflowExecutor(registry, deps=injected_deps)
+
+        wf = _make_workflow([_make_step()])
+        await executor.execute(wf)
+
+        assert len(captured) == 1
+        ctx = captured[0]
+        assert ctx.deps.agent_registry is mock_agent_registry
+
+    async def test_execute_without_deps_uses_legacy_path(self) -> None:
+        """Construct executor without deps (existing pattern); verify behaviour
+        unchanged — context.deps is built from individual constructor params."""
+        registry, captured = _capture_registry()
+        provider = AsyncMock(spec=ILLMProvider)
+
+        executor = WorkflowExecutor(registry, provider=provider)
+
+        wf = _make_workflow([_make_step()])
+        await executor.execute(wf)
+
+        assert len(captured) == 1
+        ctx = captured[0]
+        assert ctx.deps.llm_provider is provider
+        assert ctx.deps.agent_registry is None
+
+    async def test_execute_deps_overlays_execution_strategy(self) -> None:
+        """Construct executor with deps, call execute(execution_strategy=custom);
+        verify the strategy parameter takes precedence over deps.execution_strategy."""
+        from beddel.domain.ports import IExecutionStrategy
+
+        registry, captured = _capture_registry()
+
+        # Strategy stored in deps (should be overridden)
+        deps_strategy = AsyncMock(spec=IExecutionStrategy)
+        injected_deps = DefaultDependencies(execution_strategy=deps_strategy)
+
+        # Strategy passed at call-site (should win)
+        custom_strategy = AsyncMock(spec=IExecutionStrategy)
+
+        async def _run(
+            workflow: Workflow,
+            context: ExecutionContext,
+            step_fn: Any,
+        ) -> None:
+            for step in workflow.steps:
+                await step_fn(step, context)
+
+        custom_strategy.execute = AsyncMock(side_effect=_run)
+
+        executor = WorkflowExecutor(registry, deps=injected_deps)
+        wf = _make_workflow([_make_step()])
+        await executor.execute(wf, execution_strategy=custom_strategy)
+
+        assert len(captured) == 1
+        ctx = captured[0]
+        # The call-site strategy must have won
+        assert ctx.deps.execution_strategy is custom_strategy
+        # deps_strategy.execute must NOT have been called
+        deps_strategy.execute.assert_not_called()
+
+    async def test_execute_stream_uses_injected_deps(self) -> None:
+        """Same as test_execute_uses_injected_deps but for execute_stream()."""
+        registry, captured = _capture_registry()
+        mock_agent_registry: dict[str, Any] = {"kiro-cli": MagicMock()}
+
+        injected_deps = DefaultDependencies(agent_registry=mock_agent_registry)
+        executor = WorkflowExecutor(
+            registry,
+            deps=injected_deps,
+            hooks=LifecycleHookManager(),
+        )
+
+        wf = _make_workflow([_make_step()])
+        events = [e async for e in executor.execute_stream(wf)]
+
+        assert len(captured) == 1
+        ctx = captured[0]
+        assert ctx.deps.agent_registry is mock_agent_registry
+        # Sanity: stream produced events
+        assert len(events) > 0
