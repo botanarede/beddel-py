@@ -1,4 +1,4 @@
-"""Unit tests for _parse_tool_flags helper (Story 3.5, Task 2)."""
+"""Unit tests for _parse_tool_flags helper (Story 4.0a, Task 2)."""
 
 from __future__ import annotations
 

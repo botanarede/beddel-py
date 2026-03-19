@@ -34,6 +34,11 @@ def _parse_tool_flags(tools: tuple[str, ...]) -> dict[str, Callable[..., Any]]:
                 param_hint="'--tool'",
             )
         name, target = spec.split("=", 1)
+        if not name:
+            raise click.BadParameter(
+                f"Tool name must not be empty in {spec!r}",
+                param_hint="'--tool'",
+            )
         if ":" not in target:
             raise click.BadParameter(
                 f"Expected format 'name=module:function', got {spec!r}",
@@ -43,7 +48,7 @@ def _parse_tool_flags(tools: tuple[str, ...]) -> dict[str, Callable[..., Any]]:
         try:
             mod = importlib.import_module(module_path)
             obj = getattr(mod, func_name)
-        except (ImportError, AttributeError) as exc:
+        except (ImportError, AttributeError, ValueError) as exc:
             raise click.BadParameter(
                 f"Cannot import tool '{name}': {module_path}:{func_name} — {exc}",
                 param_hint="'--tool'",

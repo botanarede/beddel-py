@@ -110,6 +110,8 @@ def create_beddel_handler(
     effective_registry: PrimitiveRegistry
     if registry is not None:
         effective_registry = registry
+    elif deps is not None and deps.registry is not None:
+        effective_registry = deps.registry
     else:
         effective_registry = PrimitiveRegistry()
         register_builtins(effective_registry)
