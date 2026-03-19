@@ -418,6 +418,8 @@ class Workflow(BaseModel):
         input_schema: Optional JSON-Schema-style dict for input validation.
         steps: Ordered list of steps to execute.
         metadata: Arbitrary metadata attached to the workflow.
+        allowed_tools: Optional allowlist of tool names permitted in this
+            workflow.  When ``None``, all registered tools are allowed.
     """
 
     id: str
@@ -427,6 +429,7 @@ class Workflow(BaseModel):
     input_schema: dict[str, Any] | None = None
     steps: list[Step]
     metadata: dict[str, Any] = Field(default_factory=dict)
+    allowed_tools: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
