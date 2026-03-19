@@ -66,9 +66,11 @@ def list_primitives() -> None:
 @click.option("--json-output", "as_json", is_flag=True, help="Output raw JSON.")
 def run(workflow_path: Path, inputs: tuple[str, ...], *, as_json: bool) -> None:
     """Execute a workflow and print results."""
+    from beddel.adapters.kiro_cli import KiroCLIAgentAdapter
     from beddel.adapters.litellm_adapter import LiteLLMAdapter
     from beddel.domain.errors import BeddelError
     from beddel.domain.executor import WorkflowExecutor
+    from beddel.domain.models import DefaultDependencies
     from beddel.domain.parser import WorkflowParser
     from beddel.domain.registry import PrimitiveRegistry
     from beddel.primitives import register_builtins
@@ -94,7 +96,16 @@ def run(workflow_path: Path, inputs: tuple[str, ...], *, as_json: bool) -> None:
     registry = PrimitiveRegistry()
     register_builtins(registry)
     adapter = LiteLLMAdapter()
-    executor = WorkflowExecutor(registry, provider=adapter)
+    deps = DefaultDependencies(
+        llm_provider=adapter,
+        agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
+        tool_registry={},
+        workflow_loader=lambda name: WorkflowParser.parse(
+            (workflow_path.parent / name).read_text()
+        ),
+        registry=registry,
+    )
+    executor = WorkflowExecutor(registry, deps=deps)
 
     # Execute
     try:
