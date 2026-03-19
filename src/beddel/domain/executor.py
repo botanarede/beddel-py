@@ -194,7 +194,11 @@ class WorkflowExecutor:
             return DefaultDependencies(
                 llm_provider=self._deps.llm_provider,
                 lifecycle_hooks=self._hook_manager,
-                execution_strategy=execution_strategy or self._deps.execution_strategy,
+                execution_strategy=(
+                    execution_strategy
+                    if execution_strategy is not None
+                    else self._deps.execution_strategy
+                ),
                 delegate_model=self._deps.delegate_model,
                 tracer=self._deps.tracer,
                 workflow_loader=self._deps.workflow_loader,

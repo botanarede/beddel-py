@@ -1724,7 +1724,7 @@ class TestTracingErrorHandling:
 
 
 # ---------------------------------------------------------------------------
-# Story 4.0a / Task 3 — deps parameter injection on WorkflowExecutor.__init__
+# Story 4.0 / Task 3 — deps parameter injection on WorkflowExecutor.__init__
 # ---------------------------------------------------------------------------
 
 

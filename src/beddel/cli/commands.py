@@ -70,7 +70,7 @@ def run(workflow_path: Path, inputs: tuple[str, ...], *, as_json: bool) -> None:
     from beddel.adapters.litellm_adapter import LiteLLMAdapter
     from beddel.domain.errors import BeddelError
     from beddel.domain.executor import WorkflowExecutor
-    from beddel.domain.models import DefaultDependencies
+    from beddel.domain.models import DefaultDependencies, Workflow
     from beddel.domain.parser import WorkflowParser
     from beddel.domain.registry import PrimitiveRegistry
     from beddel.primitives import register_builtins
@@ -96,13 +96,28 @@ def run(workflow_path: Path, inputs: tuple[str, ...], *, as_json: bool) -> None:
     registry = PrimitiveRegistry()
     register_builtins(registry)
     adapter = LiteLLMAdapter()
+
+    def _safe_workflow_loader(name: str) -> Workflow:
+        """Load a sub-workflow by name, confined to the parent directory."""
+        target = (workflow_path.parent / name).resolve()
+        root = workflow_path.parent.resolve()
+        if not target.is_relative_to(root):
+            raise BeddelError(
+                code="BEDDEL-CLI-001",
+                message=f"Workflow path escapes base directory: {name}",
+            )
+        if not target.exists():
+            raise BeddelError(
+                code="BEDDEL-CLI-002",
+                message=f"Sub-workflow not found: {name} (resolved: {target})",
+            )
+        return WorkflowParser.parse(target.read_text())
+
     deps = DefaultDependencies(
         llm_provider=adapter,
         agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
         tool_registry={},
-        workflow_loader=lambda name: WorkflowParser.parse(
-            (workflow_path.parent / name).read_text()
-        ),
+        workflow_loader=_safe_workflow_loader,
         registry=registry,
     )
     executor = WorkflowExecutor(registry, deps=deps)
