@@ -3,12 +3,59 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import click
+
+
+def _parse_tool_flags(tools: tuple[str, ...]) -> dict[str, Callable[..., Any]]:
+    """Parse ``--tool name=module:function`` flags into a callable registry.
+
+    Args:
+        tools: Tuple of tool specifications in ``name=module:function`` format.
+
+    Returns:
+        Dict mapping tool names to resolved callables.
+
+    Raises:
+        click.BadParameter: If format is invalid, import fails, or target
+            is not callable.
+    """
+    registry: dict[str, Callable[..., Any]] = {}
+    for spec in tools:
+        if "=" not in spec:
+            raise click.BadParameter(
+                f"Expected format 'name=module:function', got {spec!r}",
+                param_hint="'--tool'",
+            )
+        name, target = spec.split("=", 1)
+        if ":" not in target:
+            raise click.BadParameter(
+                f"Expected format 'name=module:function', got {spec!r}",
+                param_hint="'--tool'",
+            )
+        module_path, func_name = target.split(":", 1)
+        try:
+            mod = importlib.import_module(module_path)
+            obj = getattr(mod, func_name)
+        except (ImportError, AttributeError) as exc:
+            raise click.BadParameter(
+                f"Cannot import tool '{name}': {module_path}:{func_name} — {exc}",
+                param_hint="'--tool'",
+            ) from exc
+        if not callable(obj):
+            raise click.BadParameter(
+                f"Tool '{name}': {module_path}:{func_name} is not callable"
+                f" (got {type(obj).__name__})",
+                param_hint="'--tool'",
+            )
+        registry[name] = obj
+    return registry
 
 
 @click.group()
