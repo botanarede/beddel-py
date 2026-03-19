@@ -111,7 +111,20 @@ def list_primitives() -> None:
 @click.argument("workflow_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--input", "-i", "inputs", multiple=True, help="Input as key=value.")
 @click.option("--json-output", "as_json", is_flag=True, help="Output raw JSON.")
-def run(workflow_path: Path, inputs: tuple[str, ...], *, as_json: bool) -> None:
+@click.option(
+    "--tool",
+    "-t",
+    "tools",
+    multiple=True,
+    help="Register tool as name=module:function.",
+)
+def run(
+    workflow_path: Path,
+    inputs: tuple[str, ...],
+    tools: tuple[str, ...],
+    *,
+    as_json: bool,
+) -> None:
     """Execute a workflow and print results."""
     from beddel.adapters.kiro_cli import KiroCLIAgentAdapter
     from beddel.adapters.litellm_adapter import LiteLLMAdapter
@@ -160,10 +173,11 @@ def run(workflow_path: Path, inputs: tuple[str, ...], *, as_json: bool) -> None:
             )
         return WorkflowParser.parse(target.read_text())
 
+    parsed_tools = _parse_tool_flags(tools)
     deps = DefaultDependencies(
         llm_provider=adapter,
         agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
-        tool_registry={},
+        tool_registry=parsed_tools,
         workflow_loader=_safe_workflow_loader,
         registry=registry,
     )
