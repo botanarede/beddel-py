@@ -11,7 +11,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from beddel.adapters.litellm_adapter import LiteLLMAdapter
-from beddel.domain.models import DefaultDependencies, ExecutionContext
+from beddel.domain.executor import WorkflowExecutor
+from beddel.domain.models import DefaultDependencies, ExecutionContext, Step, Workflow
+from beddel.domain.ports import IPrimitive
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.primitives import register_builtins
 from beddel.primitives.llm import LLMPrimitive
@@ -285,3 +287,70 @@ class TestRegisterBuiltinsWiring:
             collected.append(text)
 
         assert collected == ["stream", " via", " registry"]
+
+
+# ---------------------------------------------------------------------------
+# Tests: Caller-provided deps wiring (Story 4.0, Task 4)
+# ---------------------------------------------------------------------------
+
+
+class TestCallerProvidedDepsWiring:
+    """Verify that WorkflowExecutor correctly propagates all caller-provided
+    dependencies through to the execution context — mirroring the CLI ``run``
+    command wiring pattern from Architecture section 9.1."""
+
+    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    async def test_cli_wiring_round_trip(self, mock_acompletion: AsyncMock) -> None:
+        """Full round-trip: build deps like CLI run, execute workflow, verify
+        all caller-provided deps are accessible in context."""
+        mock_acompletion.return_value = _make_completion_response()
+
+        # --- Arrange: mirror CLI run() wiring ---
+        registry = PrimitiveRegistry()
+        register_builtins(registry)
+
+        captured: list[ExecutionContext] = []
+
+        class _CapturePrimitive(IPrimitive):
+            async def execute(
+                self, config: dict[str, Any], context: ExecutionContext
+            ) -> dict[str, str]:
+                captured.append(context)
+                return {"status": "captured"}
+
+        registry.register("_capture", _CapturePrimitive())
+
+        adapter = LiteLLMAdapter()
+        mock_agent_registry: dict[str, Any] = {"kiro-cli": MagicMock()}
+        mock_workflow_loader = MagicMock()
+
+        deps = DefaultDependencies(
+            llm_provider=adapter,
+            agent_registry=mock_agent_registry,
+            tool_registry={},
+            workflow_loader=mock_workflow_loader,
+            registry=registry,
+        )
+
+        workflow = Workflow(
+            id="wiring-test",
+            name="Wiring Integration Test",
+            steps=[
+                Step(id="capture-step", primitive="_capture", config={}),
+            ],
+        )
+
+        executor = WorkflowExecutor(registry, deps=deps)
+
+        # --- Act ---
+        await executor.execute(workflow)
+
+        # --- Assert: all caller-provided deps present in context ---
+        assert len(captured) == 1
+        ctx = captured[0]
+        assert ctx.deps.agent_registry is mock_agent_registry
+        assert ctx.deps.tool_registry == {}
+        assert ctx.deps.tool_registry is not None
+        assert ctx.deps.workflow_loader is mock_workflow_loader
+        assert ctx.deps.registry is registry
+        assert ctx.deps.llm_provider is adapter
