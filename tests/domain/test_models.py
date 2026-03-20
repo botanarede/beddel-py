@@ -687,6 +687,7 @@ class TestAllExports:
             "RetryConfig",
             "Step",
             "StrategyType",
+            "ToolDeclaration",
             "Workflow",
         }
         assert set(models.__all__) == expected

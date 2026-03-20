@@ -40,6 +40,7 @@ __all__ = [
     "RetryConfig",
     "Step",
     "StrategyType",
+    "ToolDeclaration",
     "Workflow",
 ]
 
@@ -404,6 +405,27 @@ class BeddelEvent(BaseModel):
     timestamp: float = Field(default_factory=time.time)
 
 
+class ToolDeclaration(BaseModel):
+    """Declaration of a tool available to a workflow.
+
+    Each declaration maps a logical tool name to a Python callable target
+    using ``module:function`` format.  The parser resolves targets at parse
+    time via ``importlib``.
+
+    Note: ``allowed_tools`` (security allowlist) and ``tools`` (registration)
+    are orthogonal concerns.  ``allowed_tools`` restricts which tools can
+    execute; ``tools`` declares where tool code lives.  A tool can be
+    registered via ``tools`` but blocked by ``allowed_tools``.
+
+    Attributes:
+        name: Logical name used to reference this tool in the workflow.
+        target: Import path in ``module:function`` format.
+    """
+
+    name: str
+    target: str
+
+
 class Workflow(BaseModel):
     """Top-level workflow definition parsed from YAML.
 
@@ -420,6 +442,9 @@ class Workflow(BaseModel):
         metadata: Arbitrary metadata attached to the workflow.
         allowed_tools: Optional allowlist of tool names permitted in this
             workflow.  When ``None``, all registered tools are allowed.
+        tools: Optional list of inline tool declarations.  Each entry maps
+            a logical name to a ``module:function`` target resolved at parse
+            time.  When ``None``, no inline tools are declared.
     """
 
     id: str
@@ -430,6 +455,7 @@ class Workflow(BaseModel):
     steps: list[Step]
     metadata: dict[str, Any] = Field(default_factory=dict)
     allowed_tools: list[str] | None = None
+    tools: list[ToolDeclaration] | None = None
 
 
 # ---------------------------------------------------------------------------

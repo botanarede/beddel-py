@@ -9,7 +9,9 @@ Only stdlib, pydantic, PyYAML, and domain imports are allowed (domain core rule)
 
 from __future__ import annotations
 
+import importlib
 import re
+from collections.abc import Callable
 from typing import Any
 
 import yaml
@@ -56,6 +58,7 @@ class WorkflowParser:
         data = cls._load_yaml(yaml_str)
         workflow = cls._validate_schema(data)
         cls._validate_variable_references(workflow)
+        cls._resolve_inline_tools(workflow)
         return workflow
 
     @classmethod
@@ -189,3 +192,60 @@ class WorkflowParser:
         elif isinstance(value, list):
             for item in value:
                 cls._check_strings(item, step_id, invalid_refs)
+
+    @classmethod
+    def _resolve_inline_tools(cls, workflow: Workflow) -> None:
+        """Resolve inline tool declarations to Python callables.
+
+        For each :class:`~beddel.domain.models.ToolDeclaration` in
+        ``workflow.tools``, imports the module and retrieves the attribute
+        specified by the ``target`` field (``module:function`` format).
+        Resolved callables are stored in
+        ``workflow.metadata["_inline_tools"]``.
+
+        Args:
+            workflow: Validated workflow whose tools should be resolved.
+
+        Raises:
+            ParseError: ``BEDDEL-PARSE-002`` if a target cannot be imported,
+                the attribute does not exist, or the attribute is not callable.
+        """
+        if workflow.tools is None:
+            return
+
+        resolved: dict[str, Callable[..., Any]] = {}
+        for tool in workflow.tools:
+            target = tool.target
+            if ":" not in target:
+                raise ParseError(
+                    code=PARSE_SCHEMA_VALIDATION,
+                    message=(
+                        f"Invalid tool target '{target}' for tool '{tool.name}': "
+                        "expected 'module:function' format"
+                    ),
+                    details={"tool": tool.name, "target": target},
+                )
+
+            module_path, func_name = target.split(":", 1)
+            try:
+                mod = importlib.import_module(module_path)
+                obj = getattr(mod, func_name)
+            except (ImportError, AttributeError, ValueError) as exc:
+                raise ParseError(
+                    code=PARSE_SCHEMA_VALIDATION,
+                    message=(
+                        f"Cannot resolve tool target '{target}' for tool '{tool.name}': {exc}"
+                    ),
+                    details={"tool": tool.name, "target": target},
+                ) from exc
+
+            if not callable(obj):
+                raise ParseError(
+                    code=PARSE_SCHEMA_VALIDATION,
+                    message=(f"Tool target '{target}' for tool '{tool.name}' is not callable"),
+                    details={"tool": tool.name, "target": target},
+                )
+
+            resolved[tool.name] = obj
+
+        workflow.metadata["_inline_tools"] = resolved
