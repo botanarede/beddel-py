@@ -13,6 +13,32 @@ from typing import Any
 import click
 
 
+def _build_tool_registry(
+    workflow: Any,
+    parsed_tools: dict[str, Callable[..., Any]],
+) -> dict[str, Callable[..., Any]]:
+    """Build a merged tool registry using the 3-layer override pattern.
+
+    Merge order (later layers override earlier ones):
+      1. ``discover_builtin_tools()`` — built-in tools from ``beddel.tools.*``
+      2. ``workflow.metadata["_inline_tools"]`` — inline YAML ``tools:`` section
+      3. ``parsed_tools`` — CLI ``--tool`` flags
+
+    Args:
+        workflow: Parsed :class:`~beddel.domain.models.Workflow` instance.
+        parsed_tools: Dict of tools resolved from ``--tool`` CLI flags.
+
+    Returns:
+        Merged dict mapping tool names to callables.
+    """
+    from beddel.tools import discover_builtin_tools
+
+    merged = discover_builtin_tools()
+    merged.update(workflow.metadata.get("_inline_tools", {}))
+    merged.update(parsed_tools)
+    return merged
+
+
 def _parse_tool_flags(tools: tuple[str, ...]) -> dict[str, Callable[..., Any]]:
     """Parse ``--tool name=module:function`` flags into a callable registry.
 
@@ -179,10 +205,11 @@ def run(
         return WorkflowParser.parse(target.read_text())
 
     parsed_tools = _parse_tool_flags(tools)
+    merged_tools = _build_tool_registry(workflow, parsed_tools)
     deps = DefaultDependencies(
         llm_provider=adapter,
         agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
-        tool_registry=parsed_tools,
+        tool_registry=merged_tools,
         workflow_loader=_safe_workflow_loader,
         registry=registry,
     )
@@ -298,7 +325,7 @@ def serve(host: str, port: int, workflow_paths: tuple[Path, ...], tools: tuple[s
         deps = DefaultDependencies(
             llm_provider=adapter,
             agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
-            tool_registry=parsed_tools,
+            tool_registry=_build_tool_registry(workflow, parsed_tools),
             workflow_loader=_make_workflow_loader(wf_parent),
             registry=registry,
         )
