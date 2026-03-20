@@ -685,6 +685,7 @@ class TestAllExports:
             "ExecutionStrategy",
             "InterruptibleContext",
             "RetryConfig",
+            "SKIPPED",
             "Step",
             "StrategyType",
             "ToolDeclaration",
