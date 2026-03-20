@@ -177,15 +177,29 @@ steps:
 | `fallback` | Execute an alternative step on failure |
 | `delegate` | Delegate error recovery to agent judgment |
 
-**Primitive Registry** — Decorator-based registration with contract validation:
+**Primitive Registry** — Instance-based registration with contract validation:
 
 ```python
+from beddel.domain.ports import IPrimitive
 from beddel.domain.registry import PrimitiveRegistry
 
 registry = PrimitiveRegistry()
 
-@registry.register("my-custom-primitive")
-class MyPrimitive:
+class MyPrimitive(IPrimitive):
+    async def execute(self, config, context):
+        return {"result": "custom logic here"}
+
+registry.register("my-custom-primitive", MyPrimitive())
+```
+
+Or use the `@primitive` decorator for module-level registration:
+
+```python
+from beddel.domain.ports import IPrimitive
+from beddel.domain.registry import primitive
+
+@primitive("my-custom-primitive")
+class MyPrimitive(IPrimitive):
     async def execute(self, config, context):
         return {"result": "custom logic here"}
 ```
@@ -509,6 +523,10 @@ Epics 1–3 (Adaptive Core, Compositional Primitives, Observability & Integratio
 ## Contributing
 
 Contributions are welcome. Open an issue to discuss before submitting a PR. Guidelines will be documented as the project matures.
+
+## Newsletter
+
+[![Subscribe on Substack](https://img.shields.io/badge/Subscribe-Substack-orange?style=for-the-badge&logo=substack)](https://beddelprotocol.substack.com/subscribe)
 
 ## License
 
