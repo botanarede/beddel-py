@@ -25,6 +25,7 @@ Each yielded dict has the shape::
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import AsyncGenerator
 from typing import final
 
@@ -33,6 +34,8 @@ from beddel.domain.models import BeddelEvent
 from beddel.error_codes import INTERNAL_SERVER_ERROR
 
 __all__ = ["BeddelSSEAdapter"]
+
+logger = logging.getLogger(__name__)
 
 
 @final
@@ -87,14 +90,22 @@ class BeddelSSEAdapter:
 
                 yield {"event": event.event_type.value, "data": data}
         except BeddelError as exc:
+            # Sanitize: strip upstream exception text from message
+            is_adapter_error = exc.code.startswith("BEDDEL-ADAPT")
+            safe_message = exc.message.split(":")[0] if is_adapter_error else exc.message
             yield {
                 "event": "error",
-                "data": json.dumps({"code": exc.code, "message": exc.message}),
+                "data": json.dumps({"code": exc.code, "message": safe_message}),
             }
             yield {"event": "done", "data": ""}
-        except Exception as exc:
+        except Exception:
+            logger.exception("Unexpected error during SSE streaming")
+            error_payload = {
+                "code": INTERNAL_SERVER_ERROR,
+                "message": "Internal server error",
+            }
             yield {
                 "event": "error",
-                "data": json.dumps({"code": INTERNAL_SERVER_ERROR, "message": str(exc)}),
+                "data": json.dumps(error_payload),
             }
             yield {"event": "done", "data": ""}

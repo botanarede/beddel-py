@@ -160,12 +160,17 @@ def create_beddel_handler(
             return EventSourceResponse(sse_stream)
         except BeddelError as exc:
             status_code = 422 if isinstance(exc, _CLIENT_ERRORS) else 500
+            # Sanitize: exclude provider_error from details and strip
+            # upstream exception text from the message to avoid leaking
+            # credentials or internal state to HTTP clients.
+            safe_details = {k: v for k, v in exc.details.items() if k != "provider_error"}
+            safe_message = exc.message.split(":")[0] if status_code == 500 else exc.message
             return JSONResponse(
                 status_code=status_code,
                 content={
                     "code": exc.code,
-                    "message": exc.message,
-                    "details": exc.details,
+                    "message": safe_message,
+                    "details": safe_details,
                 },
             )
         except Exception:
