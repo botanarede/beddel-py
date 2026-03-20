@@ -167,7 +167,7 @@ class ChatPrimitive(IPrimitive):
             A list of message dicts suitable for the LLM provider.
 
         Raises:
-            PrimitiveError: ``BEDDEL-PRIM-005`` if any message dict is
+            PrimitiveError: ``BEDDEL-PRIM-006`` if any message dict is
                 missing ``role`` or ``content``.
         """
         messages: list[dict[str, Any]] = list(config.get("messages", []))

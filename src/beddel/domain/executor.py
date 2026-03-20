@@ -550,8 +550,8 @@ class WorkflowExecutor:
             context: Mutable execution context for the current workflow run.
 
         Returns:
-            The primitive's return value, or ``None`` when the step is
-            skipped due to a falsy condition.
+            The primitive's return value, or :data:`SKIPPED` when the step
+            is skipped due to a falsy condition.
 
         Raises:
             ExecutionError: ``BEDDEL-EXEC-002`` when the step fails.
@@ -639,8 +639,8 @@ class WorkflowExecutor:
             context: Mutable execution context for the current workflow run.
 
         Returns:
-            The primitive's return value, or ``None`` when the step is
-            skipped due to a falsy condition.
+            The primitive's return value, or :data:`SKIPPED` when the step
+            is skipped due to a falsy condition.
         """
         return await self.execute_step_with_context(step, context)
 

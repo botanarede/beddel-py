@@ -75,6 +75,7 @@ class CallAgentPrimitive(IPrimitive):
             A dict of the nested workflow's step results.
 
         Raises:
+            PrimitiveError: ``BEDDEL-PRIM-201`` if ``workflow`` key is missing.
             PrimitiveError: ``BEDDEL-PRIM-001`` if workflow_loader is missing.
             PrimitiveError: ``BEDDEL-PRIM-002`` if registry is missing.
             PrimitiveError: ``BEDDEL-PRIM-200`` if max depth is exceeded.
@@ -140,7 +141,8 @@ class CallAgentPrimitive(IPrimitive):
             context: Execution context for error details.
 
         Raises:
-            PrimitiveError: If ``workflow`` key is missing from config.
+            PrimitiveError: ``BEDDEL-PRIM-201`` if ``workflow`` key is
+                missing from config.
         """
         if "workflow" not in config:
             raise PrimitiveError(
