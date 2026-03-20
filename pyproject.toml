@@ -90,6 +90,16 @@ fastapi = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/beddel"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/beddel/",
+    "examples/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "pyproject.toml",
+]
+
 # -----------------------------------------------------------------------------
 # Ruff (Linting + Formatting)
 # -----------------------------------------------------------------------------

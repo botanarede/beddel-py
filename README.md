@@ -137,6 +137,35 @@ python run_workflow.py
 > Model names use the [LiteLLM format](https://docs.litellm.ai/) (`provider/model`). Avoid experimental (`-exp`) suffixes — they get retired without notice.
 
 
+## Examples
+
+The [`examples/`](./examples/) directory contains ready-to-run workflows:
+
+| Example | Primitives | What it demonstrates |
+|---------|-----------|---------------------|
+| [`research-pipeline.yaml`](./examples/research-pipeline.yaml) | llm, output-generator | Sequential multi-step, `$stepResult` cross-references, retry |
+| [`email-classifier.yaml`](./examples/email-classifier.yaml) | llm, output-generator | `if/then/else` branching, retry + skip strategies |
+| [`chat-with-guardrail.yaml`](./examples/chat-with-guardrail.yaml) | chat, guardrail, output-generator | Multi-turn conversation, output validation |
+
+Run any example with the CLI:
+
+```bash
+pip install beddel[all]
+export GEMINI_API_KEY="your-key-here"
+
+# Research pipeline
+beddel run examples/research-pipeline.yaml -i topic="AI agents" -i depth="brief"
+
+# Email classifier with branching
+beddel run examples/email-classifier.yaml -i email_body="How do I configure nginx SSL?"
+
+# Chat with guardrail validation
+beddel run examples/chat-with-guardrail.yaml \
+  -i question="What are the benefits of microservices?" \
+  -i context="enterprise software architecture"
+```
+
+
 ## Features
 
 ### Adaptive Core Engine (Epic 1)
@@ -494,17 +523,11 @@ Beddel follows Hexagonal Architecture (Ports & Adapters). The domain core never 
 
 ```bash
 git clone https://github.com/botanarede/beddel-py.git
-cd beddel/src/beddel-py
+cd beddel-py
 pip install -e ".[dev]"
 ```
 
-Run all quality gates (recommended):
-
-```bash
-bash scripts/run-gates.sh
-```
-
-Or individually:
+Run all quality gates:
 
 ```bash
 # Tests

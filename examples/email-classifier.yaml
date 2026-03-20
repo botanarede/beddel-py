@@ -1,0 +1,107 @@
+# =============================================================================
+# Email Classifier & Auto Responder
+# =============================================================================
+#
+# 3-step workflow with conditional branching:
+#   Step 1: classify intent (technical / general / spam) with retry
+#   Step 2: branch — generate response based on classification
+#   Step 3: format final output (skip on failure — optional)
+#
+# Primitives: llm (×3 branches), output-generator (×1)
+# Strategies: retry (step 1), skip (step 3)
+# Variables: $input.*, $stepResult.*, if/then/else branching
+#
+# Usage:
+#   beddel run examples/email-classifier.yaml \
+#     -i email_body="How do I configure SSL certificates on nginx?"
+# =============================================================================
+
+id: email_classifier
+name: Email Classifier & Auto Responder
+description: >
+  Classifies incoming email by intent, routes to the appropriate
+  response generator, and formats the output.
+version: "1.0"
+
+input_schema:
+  type: object
+  properties:
+    email_body:
+      type: string
+    response_format:
+      type: string
+      enum: ["text", "markdown", "json"]
+  required:
+    - email_body
+
+steps:
+  - id: classify
+    primitive: llm
+    config:
+      model: gemini/gemini-2.0-flash
+      prompt: >
+        Classify the following email into exactly one category.
+        Reply with ONLY the category name, nothing else.
+
+        Categories: technical, general, spam
+
+        Email:
+        $input.email_body
+      max_tokens: 10
+      temperature: 0.0
+    execution_strategy:
+      type: retry
+      retry:
+        max_attempts: 3
+        backoff_base: 1.0
+        jitter: true
+    timeout: 15.0
+
+  - id: respond
+    primitive: llm
+    if: "$stepResult.classify.content == 'technical'"
+    then:
+      - id: technical_response
+        primitive: llm
+        config:
+          model: gemini/gemini-2.0-flash
+          prompt: >
+            You are a senior technical support engineer.
+            Write a detailed, helpful response to this technical question.
+            Include specific steps or commands where applicable.
+
+            Question: $input.email_body
+          temperature: 0.3
+          max_tokens: 800
+    else:
+      - id: general_response
+        primitive: llm
+        config:
+          model: gemini/gemini-2.0-flash
+          prompt: >
+            You are a friendly customer support agent.
+            Write a warm, concise response to this email.
+            If it appears to be spam, politely decline and suggest
+            the sender verify their request.
+
+            Email: $input.email_body
+          temperature: 0.7
+          max_tokens: 400
+
+  - id: format_output
+    primitive: output-generator
+    config:
+      template: |
+        ## Email Classification Result
+
+        **Category:** $stepResult.classify.content
+
+        ### Response
+
+        $stepResult.respond.content
+
+        ---
+        _Processed by Beddel Email Classifier v1.0_
+      format: markdown
+    execution_strategy:
+      type: skip
