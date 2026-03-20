@@ -54,10 +54,10 @@ class TestDiscoverBuiltinTools:
         result = discover_builtin_tools()
         assert isinstance(result, dict)
 
-    def test_returns_empty_when_no_submodules_have_tools(self) -> None:
-        """No builtin tool submodules exist yet, so discovery returns empty."""
+    def test_discovers_builtin_tools(self) -> None:
+        """Builtin tool submodules are discovered by the registry."""
         result = discover_builtin_tools()
-        assert result == {}
+        assert len(result) > 0
 
     def test_all_values_are_callable(self) -> None:
         result = discover_builtin_tools()
