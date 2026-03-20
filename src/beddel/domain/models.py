@@ -38,11 +38,35 @@ __all__ = [
     "ExecutionStrategy",
     "InterruptibleContext",
     "RetryConfig",
+    "SKIPPED",
     "Step",
     "StrategyType",
     "ToolDeclaration",
     "Workflow",
 ]
+
+
+class _Skipped:
+    """Sentinel for skipped step results (condition was falsy).
+
+    Replaces ``None`` in ``context.step_results`` when a step's
+    ``if_condition`` evaluates to false.  Falsy like ``None`` but
+    distinguishable via identity (``result is SKIPPED``).
+    """
+
+    __slots__ = ()
+
+    def __bool__(self) -> bool:
+        """Return ``False`` — SKIPPED is falsy."""
+        return False
+
+    def __repr__(self) -> str:
+        """Return ``'SKIPPED'``."""
+        return "SKIPPED"
+
+
+SKIPPED = _Skipped()
+"""Module-level sentinel instance for skipped step results."""
 
 
 @dataclass

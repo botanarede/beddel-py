@@ -13,11 +13,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
 from beddel.domain.errors import ExecutionError, TracingError
 from beddel.domain.models import (
+    SKIPPED,
     BeddelEvent,
     DefaultDependencies,
     EventType,
@@ -54,6 +56,41 @@ __all__ = [
 ]
 
 logger = logging.getLogger(__name__)
+
+_COMPARISON_RE = re.compile(r"^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$")
+
+
+def _parse_literal(value: str) -> int | float | bool | str:
+    """Parse a literal value from the right side of a comparison.
+
+    Strips surrounding single or double quotes, then attempts to
+    interpret *value* as an int, float, or boolean
+    (``"true"``/``"false"`` case-insensitive).  Falls back to returning
+    the raw string.
+
+    Args:
+        value: The string to parse.
+
+    Returns:
+        The parsed literal as its native Python type.
+    """
+    # Strip surrounding quotes if present.
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    lower = value.lower()
+    if lower == "true":
+        return True
+    if lower == "false":
+        return False
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value
 
 
 class SequentialStrategy:
@@ -548,8 +585,8 @@ class WorkflowExecutor:
                     if step.then_steps:
                         await self._execute_steps(step.then_steps, context)
                 else:
-                    result = None
-                    context.step_results[step.id] = None
+                    result = SKIPPED
+                    context.step_results[step.id] = SKIPPED
                     if step.else_steps:
                         await self._execute_steps(step.else_steps, context)
             else:
@@ -718,10 +755,14 @@ class WorkflowExecutor:
     def _evaluate_condition(self, condition: str, context: ExecutionContext) -> bool:
         """Resolve a condition string and evaluate its truthiness.
 
-        The *condition* is first resolved through the
-        :class:`VariableResolver` (handling ``$input.*``,
-        ``$stepResult.*``, ``$env.*`` references).  The resolved value is
-        then coerced to a boolean:
+        First attempts to match a comparison expression of the form
+        ``<left> <op> <right>`` where ``<op>`` is one of ``==``, ``!=``,
+        ``>``, ``<``, ``>=``, ``<=``.  The left side is resolved via
+        :class:`VariableResolver`; the right side is parsed as a literal
+        (int, float, bool, or string).
+
+        When no comparison operator is found, the condition is resolved
+        as a single value and coerced to a boolean:
 
         * **Strings**: ``"true"`` (case-insensitive) → ``True``;
           ``"false"`` (case-insensitive) → ``False``; empty string →
@@ -736,6 +777,25 @@ class WorkflowExecutor:
         Returns:
             ``True`` if the resolved value is truthy, ``False`` otherwise.
         """
+        match = _COMPARISON_RE.match(condition)
+        if match:
+            left_expr, operator, right_expr = match.group(1), match.group(2), match.group(3)
+            left = self._resolver.resolve(left_expr.strip(), context)
+            right = _parse_literal(right_expr.strip())
+
+            if operator == "==":
+                return bool(left == right)
+            if operator == "!=":
+                return bool(left != right)
+            if operator == ">":
+                return bool(left > right)
+            if operator == "<":
+                return bool(left < right)
+            if operator == ">=":
+                return bool(left >= right)
+            if operator == "<=":
+                return bool(left <= right)
+
         resolved = self._resolver.resolve(condition, context)
 
         if isinstance(resolved, str):

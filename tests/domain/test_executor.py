@@ -13,6 +13,7 @@ from beddel.adapters.hooks import LifecycleHookManager
 from beddel.domain.errors import ExecutionError
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
+    SKIPPED,
     BeddelEvent,
     DefaultDependencies,
     EventType,
@@ -259,11 +260,11 @@ class TestConditionEvaluation:
 
         result = await executor.execute(wf)
 
-        # Main step result should be None (condition was falsy)
-        assert result["step_results"]["cond-s"] is None
+        # Main step result should be SKIPPED (condition was falsy)
+        assert result["step_results"]["cond-s"] is SKIPPED
         assert else_called
 
-    async def test_falsy_condition_without_else_stores_none(self) -> None:
+    async def test_falsy_condition_without_else_stores_skipped(self) -> None:
         registry, _ = _registry_with_stub()
         step = _make_step("cond-s", if_condition="false")
         wf = _make_workflow([step])
@@ -271,7 +272,7 @@ class TestConditionEvaluation:
 
         result = await executor.execute(wf)
 
-        assert result["step_results"]["cond-s"] is None
+        assert result["step_results"]["cond-s"] is SKIPPED
 
     async def test_truthy_condition_without_then_still_runs_step(self) -> None:
         registry, _ = _registry_with_stub(return_value="ran")
@@ -282,6 +283,131 @@ class TestConditionEvaluation:
         result = await executor.execute(wf)
 
         assert result["step_results"]["cond-s"] == "ran"
+
+
+# ---------------------------------------------------------------------------
+# Comparison condition evaluation
+# ---------------------------------------------------------------------------
+
+
+class TestComparisonConditions:
+    """Comparison operators in condition expressions."""
+
+    async def test_equals_int_comparison(self) -> None:
+        registry, _ = _registry_with_stub(return_value="ok")
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"count": 5}
+        result = executor._evaluate_condition("$stepResult.s1.count == 5", ctx)
+        assert result is True
+
+    async def test_not_equals_comparison(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"status": "pending"}
+        result = executor._evaluate_condition("$stepResult.s1.status != done", ctx)
+        assert result is True
+
+    async def test_greater_than_comparison(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"score": 90}
+        result = executor._evaluate_condition("$stepResult.s1.score > 80", ctx)
+        assert result is True
+
+    async def test_less_than_comparison(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"score": 50}
+        result = executor._evaluate_condition("$stepResult.s1.score < 80", ctx)
+        assert result is True
+
+    async def test_greater_equal_comparison(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"score": 80}
+        result = executor._evaluate_condition("$stepResult.s1.score >= 80", ctx)
+        assert result is True
+
+    async def test_less_equal_comparison(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"score": 80}
+        result = executor._evaluate_condition("$stepResult.s1.score <= 80", ctx)
+        assert result is True
+
+    async def test_bool_literal_comparison(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"active": True}
+        result = executor._evaluate_condition("$stepResult.s1.active == true", ctx)
+        assert result is True
+
+    async def test_float_literal_comparison(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"rate": 4.0}
+        result = executor._evaluate_condition("$stepResult.s1.rate > 3.14", ctx)
+        assert result is True
+
+    async def test_string_literal_comparison(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"status": "done"}
+        result = executor._evaluate_condition("$stepResult.s1.status == done", ctx)
+        assert result is True
+
+    async def test_comparison_false_result(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"count": 10}
+        result = executor._evaluate_condition("$stepResult.s1.count == 5", ctx)
+        assert result is False
+
+    async def test_no_operator_falls_back_to_truthiness(self) -> None:
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = {"flag": True}
+        result = executor._evaluate_condition("$stepResult.s1.flag", ctx)
+        assert result is True
+
+
+# ---------------------------------------------------------------------------
+# SKIPPED sentinel
+# ---------------------------------------------------------------------------
+
+
+class TestSkippedSentinel:
+    """SKIPPED sentinel object behaviour."""
+
+    def test_skipped_is_falsy(self) -> None:
+        assert bool(SKIPPED) is False
+
+    def test_skipped_repr(self) -> None:
+        assert repr(SKIPPED) == "SKIPPED"
+
+    async def test_falsy_condition_stores_skipped(self) -> None:
+        registry, _ = _registry_with_stub()
+        step = _make_step("cond-s", if_condition="false")
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry)
+
+        result = await executor.execute(wf)
+
+        assert result["step_results"]["cond-s"] is SKIPPED
+
+    def test_skipped_is_not_none(self) -> None:
+        assert SKIPPED is not None
 
 
 # ---------------------------------------------------------------------------

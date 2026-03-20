@@ -16,7 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 from beddel.domain.errors import ResolveError
-from beddel.domain.models import ExecutionContext
+from beddel.domain.models import SKIPPED, ExecutionContext
 from beddel.error_codes import RESOLVE_CIRCULAR, RESOLVE_MAX_DEPTH, RESOLVE_UNRESOLVABLE
 
 __all__ = [
@@ -352,8 +352,12 @@ def _traverse(data: dict[str, Any], path: str, namespace: str, raw_ref: str) -> 
     segments = path.split(".")
     current: Any = data
     for segment in segments:
+        if current is SKIPPED:
+            return SKIPPED
         if isinstance(current, dict) and segment in current:
             current = current[segment]
+            if current is SKIPPED:
+                return SKIPPED
         else:
             raise ResolveError(
                 code=RESOLVE_UNRESOLVABLE,

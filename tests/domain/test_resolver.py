@@ -357,3 +357,27 @@ class TestEmbeddedReferences:
         result = resolver.resolve("Items: $input.count total", ctx)
 
         assert result == "Items: 42 total"
+
+
+class TestSkippedStepResult:
+    """Tests for SKIPPED sentinel handling in resolver traversal."""
+
+    def test_skipped_step_result_returns_skipped(self) -> None:
+        from beddel.domain.models import SKIPPED
+
+        resolver = VariableResolver()
+        ctx = _ctx(step_results={"s1": SKIPPED})
+
+        result = resolver.resolve("$stepResult.s1", ctx)
+
+        assert result is SKIPPED
+
+    def test_skipped_step_nested_path_returns_skipped(self) -> None:
+        from beddel.domain.models import SKIPPED
+
+        resolver = VariableResolver()
+        ctx = _ctx(step_results={"s1": SKIPPED})
+
+        result = resolver.resolve("$stepResult.s1.output", ctx)
+
+        assert result is SKIPPED
