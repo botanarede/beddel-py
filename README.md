@@ -1,6 +1,6 @@
 # Beddel
 
-[![CI](https://github.com/botanarede/beddel-py/actions/workflows/ci.yml/badge.svg)](https://github.com/botanarede/beddel-py/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/beddel.svg)](https://pypi.org/project/beddel/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
@@ -8,11 +8,7 @@
 [![Pydantic v2](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pydantic/pydantic/main/docs/badge/v2.json)](https://docs.pydantic.dev/)
 [![Hatch](https://img.shields.io/badge/%F0%9F%A5%9A-Hatch-4051b5.svg)](https://github.com/pypa/hatch)
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)]()
-
-<!-- Uncomment when published to PyPI:
-[![PyPI version](https://img.shields.io/pypi/v/beddel.svg)](https://pypi.org/project/beddel/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/beddel.svg)](https://pypi.org/project/beddel/)
--->
 
 Declarative YAML-based AI workflow engine for Python.
 

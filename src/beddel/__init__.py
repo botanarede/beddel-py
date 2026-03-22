@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     )
     from beddel.integrations.sse import BeddelSSEAdapter as BeddelSSEAdapter
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Lazy imports to avoid circular dependency:
 # beddel → beddel.adapters → otel_adapter → beddel.__version__

@@ -12,7 +12,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "beddel"
-version = "0.1.0"
+version = "0.1.1"
 description = "Declarative YAML-based AI workflow engine SDK"
 readme = "README.md"
 license = "MIT"
