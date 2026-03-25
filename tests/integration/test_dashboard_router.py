@@ -270,3 +270,51 @@ class TestMountable:
         route_paths = [r.path for r in app.routes if hasattr(r, "path")]  # type: ignore[union-attr]
         assert "/api/workflows" in route_paths
         assert "/api/executions" in route_paths
+
+
+class TestConcurrentStreams:
+    """Concurrent stream management and stale-stream pruning."""
+
+    async def test_two_runs_create_separate_streams(self) -> None:
+        """Two POST /run calls produce independent streams."""
+        app, _ = _make_app()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            resp1 = await client.post("/api/workflows/wf-1/run", json={})
+            resp2 = await client.post("/api/workflows/wf-1/run", json={})
+            run_id_1 = resp1.json()["run_id"]
+            run_id_2 = resp2.json()["run_id"]
+            assert run_id_1 != run_id_2
+
+            # Consume first stream — second must still be available
+            sse1 = await client.get(f"/api/workflows/wf-1/events/{run_id_1}")
+            assert sse1.status_code == 200
+            events1 = _parse_sse_events(sse1.text)
+            assert any(e.get("event") == "workflow_start" for e in events1)
+
+            sse2 = await client.get(f"/api/workflows/wf-1/events/{run_id_2}")
+            assert sse2.status_code == 200
+            events2 = _parse_sse_events(sse2.text)
+            assert any(e.get("event") == "workflow_start" for e in events2)
+
+    async def test_stale_stream_pruned(self) -> None:
+        """Streams older than TTL are pruned when a new run is triggered."""
+        from unittest.mock import patch
+
+        app, _ = _make_app()
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            # Create a stream at t=0
+            with patch("time.monotonic", return_value=0.0):
+                resp1 = await client.post("/api/workflows/wf-1/run", json={})
+            stale_id = resp1.json()["run_id"]
+
+            # Create another stream at t=301 (past the 300s TTL)
+            with patch("time.monotonic", return_value=301.0):
+                await client.post("/api/workflows/wf-1/run", json={})
+
+            # The stale stream should have been pruned
+            resp_stale = await client.get(f"/api/workflows/wf-1/events/{stale_id}")
+            assert resp_stale.status_code == 404

@@ -9,6 +9,7 @@ The router is mountable on any existing FastAPI app via
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -45,7 +46,15 @@ def create_dashboard_router(
         An APIRouter with 6 endpoints mounted at ``/api`` prefix.
     """
     router = APIRouter(prefix="/api")
-    active_streams: dict[str, AsyncGenerator[dict[str, str], None]] = {}
+    _STREAM_TTL: float = 300.0  # seconds before an unconsumed stream is pruned
+    active_streams: dict[str, tuple[float, AsyncGenerator[dict[str, str], None]]] = {}
+
+    def _prune_stale_streams() -> None:
+        """Remove streams older than ``_STREAM_TTL`` (lazy sweep)."""
+        now = time.monotonic()
+        stale = [k for k, (ts, _) in active_streams.items() if now - ts > _STREAM_TTL]
+        for key in stale:
+            active_streams.pop(key, None)
 
     @router.get("/workflows")
     async def list_workflows() -> list[dict[str, Any]]:
@@ -72,7 +81,8 @@ def create_dashboard_router(
         except Exception:
             inputs = {}
         run_id, stream = await bridge.execute_and_stream(workflow, inputs)
-        active_streams[run_id] = stream
+        _prune_stale_streams()
+        active_streams[run_id] = (time.monotonic(), stream)
         return JSONResponse(
             content={
                 "run_id": run_id,
@@ -83,9 +93,10 @@ def create_dashboard_router(
     @router.get("/workflows/{workflow_id}/events/{exec_id}", response_model=None)
     async def stream_events(workflow_id: str, exec_id: str) -> EventSourceResponse | JSONResponse:
         """Stream SSE events for a running execution, or 404."""
-        stream = active_streams.pop(exec_id, None)
-        if stream is None:
+        entry = active_streams.pop(exec_id, None)
+        if entry is None:
             return JSONResponse(status_code=404, content={"detail": "Stream not found"})
+        _ts, stream = entry
         return EventSourceResponse(stream)
 
     @router.get("/executions")
