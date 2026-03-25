@@ -112,6 +112,11 @@ class ExecutionDependencies(Protocol):
         """Registry of named agent adapters, or ``None`` if not provided."""
         ...
 
+    @property
+    def context_reducer(self) -> IContextReducer | None:
+        """The context reducer for chat primitives, or ``None`` for FIFO fallback."""
+        ...
+
 
 class IExecutionStrategy(Protocol):
     """Contract for workflow execution strategies.

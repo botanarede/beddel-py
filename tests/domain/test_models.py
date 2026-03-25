@@ -534,6 +534,53 @@ class TestDefaultDependencies:
         assert "agent_adapter" in hints
         assert "agent_registry" in hints
 
+    # -- context_reducer --
+
+    def test_context_reducer_defaults_to_none(self) -> None:
+        """DefaultDependencies().context_reducer is None by default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+        assert deps.context_reducer is None
+
+    def test_context_reducer_stores_and_returns_instance(self) -> None:
+        """DefaultDependencies(context_reducer=obj) stores and returns it."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_reducer = AsyncMock()
+        mock_reducer.reduce = AsyncMock(return_value=[])
+        deps = DefaultDependencies(context_reducer=mock_reducer)
+        assert deps.context_reducer is mock_reducer
+
+    def test_context_reducer_explicit_none(self) -> None:
+        """Passing context_reducer=None explicitly is same as default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies(context_reducer=None)
+        assert deps.context_reducer is None
+
+    def test_context_reducer_does_not_affect_other_properties(self) -> None:
+        """Setting context_reducer leaves other deps at their defaults."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_reducer = AsyncMock()
+        deps = DefaultDependencies(context_reducer=mock_reducer)
+        assert deps.llm_provider is None
+        assert deps.lifecycle_hooks is None
+        assert deps.tracer is None
+        assert deps.agent_adapter is None
+
+    def test_execution_dependencies_protocol_has_context_reducer(self) -> None:
+        """ExecutionDependencies Protocol defines context_reducer."""
+        from beddel.domain.ports import ExecutionDependencies
+
+        hints = ExecutionDependencies.__protocol_attrs__
+        assert "context_reducer" in hints
+
 
 # ---------------------------------------------------------------------------
 # BeddelEvent

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from beddel.domain.ports import (
         IAgentAdapter,
+        IContextReducer,
         IExecutionStrategy,
         IHookManager,
         ILLMProvider,
@@ -212,6 +213,8 @@ class DefaultDependencies:
             configured.  Defaults to ``None``.
         agent_registry: Registry of named agent adapters keyed by name,
             or ``None`` if not provided.  Defaults to ``None``.
+        context_reducer: The context reducer for chat primitives,
+            or ``None`` for FIFO fallback.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -225,6 +228,7 @@ class DefaultDependencies:
         "_tracer",
         "_agent_adapter",
         "_agent_registry",
+        "_context_reducer",
     )
 
     def __init__(
@@ -239,6 +243,7 @@ class DefaultDependencies:
         tracer: ITracer[Any] | None = None,
         agent_adapter: IAgentAdapter | None = None,
         agent_registry: dict[str, IAgentAdapter] | None = None,
+        context_reducer: IContextReducer | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -250,6 +255,7 @@ class DefaultDependencies:
         self._tracer = tracer
         self._agent_adapter = agent_adapter
         self._agent_registry = agent_registry
+        self._context_reducer = context_reducer
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -300,6 +306,11 @@ class DefaultDependencies:
     def agent_registry(self) -> dict[str, IAgentAdapter] | None:
         """Registry of named agent adapters, or ``None`` if not provided."""
         return self._agent_registry
+
+    @property
+    def context_reducer(self) -> IContextReducer | None:
+        """The context reducer for chat primitives, or ``None`` for FIFO fallback."""
+        return self._context_reducer
 
 
 _log = logging.getLogger(__name__)
