@@ -1051,3 +1051,213 @@ class TestMessageValidation:
             await prim.execute(config, ctx)
 
         assert exc_info.value.code == "BEDDEL-PRIM-006"
+
+
+# ---------------------------------------------------------------------------
+# Tests: IContextReducer delegation (Story 4.0d)
+# ---------------------------------------------------------------------------
+
+
+class TestContextReducerDelegation:
+    """Tests for IContextReducer wiring in ChatPrimitive._apply_context_window."""
+
+    async def test_reducer_called_when_configured(self) -> None:
+        """When context_reducer is set and max_context_tokens is set, reduce() is called."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_reducer = AsyncMock()
+        mock_reducer.reduce = AsyncMock(return_value=[{"role": "user", "content": "reduced"}])
+
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
+        ctx.deps = DefaultDependencies(llm_provider=provider, context_reducer=mock_reducer)
+
+        config = {
+            "model": "gpt-4o",
+            "messages": [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there"},
+                {"role": "user", "content": "More"},
+            ],
+            "max_context_tokens": 1000,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        mock_reducer.reduce.assert_awaited_once()
+        call_args = mock_reducer.reduce.call_args
+        messages_arg = call_args[0][0]
+        # Should receive only non-system messages
+        assert len(messages_arg) == 3
+        assert all(m["role"] != "system" for m in messages_arg)
+
+    async def test_reducer_result_used_as_messages(self) -> None:
+        """The reduced messages from the mock are sent to the provider."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        reduced_msgs = [{"role": "user", "content": "summarized"}]
+        mock_reducer = AsyncMock()
+        mock_reducer.reduce = AsyncMock(return_value=reduced_msgs)
+
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
+        ctx.deps = DefaultDependencies(llm_provider=provider, context_reducer=mock_reducer)
+
+        config = {
+            "model": "gpt-4o",
+            "system": "Be helpful",
+            "messages": [
+                {"role": "user", "content": "A" * 400},
+                {"role": "assistant", "content": "B" * 400},
+                {"role": "user", "content": "C" * 400},
+            ],
+            "max_context_tokens": 500,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        # Provider should receive system + reduced messages
+        args, _ = provider.complete.call_args
+        sent_messages = args[1]
+        assert sent_messages[0] == {"role": "system", "content": "Be helpful"}
+        assert sent_messages[1:] == reduced_msgs
+
+    async def test_system_messages_preserved_with_reducer(self) -> None:
+        """System messages are always prepended, even when reducer is active."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_reducer = AsyncMock()
+        mock_reducer.reduce = AsyncMock(return_value=[{"role": "user", "content": "kept"}])
+
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
+        ctx.deps = DefaultDependencies(llm_provider=provider, context_reducer=mock_reducer)
+
+        config = {
+            "model": "gpt-4o",
+            "system": "System prompt",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_context_tokens": 1000,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        sent_messages = args[1]
+        assert sent_messages[0]["role"] == "system"
+        assert sent_messages[0]["content"] == "System prompt"
+
+    async def test_fifo_fallback_when_no_reducer(self) -> None:
+        """When context_reducer is None, existing FIFO behavior is preserved."""
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
+
+        config = {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": f"msg-{i}"} for i in range(5)],
+            "max_messages": 3,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        args, _ = provider.complete.call_args
+        sent_messages = args[1]
+        # FIFO: keep last 3 non-system messages
+        assert len(sent_messages) == 3
+        assert sent_messages[0]["content"] == "msg-2"
+
+    async def test_reducer_not_called_when_no_token_budget(self) -> None:
+        """When max_context_tokens is not set, reducer is NOT called."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_reducer = AsyncMock()
+        mock_reducer.reduce = AsyncMock(return_value=[])
+
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
+        ctx.deps = DefaultDependencies(llm_provider=provider, context_reducer=mock_reducer)
+
+        config = {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "Hello"}],
+            # No max_context_tokens — reducer should NOT be called
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        mock_reducer.reduce.assert_not_awaited()
+
+    async def test_reducer_receives_correct_token_budget(self) -> None:
+        """Budget passed to reducer = max_context_tokens - system_tokens."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_reducer = AsyncMock()
+        mock_reducer.reduce = AsyncMock(return_value=[{"role": "user", "content": "ok"}])
+
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
+        ctx.deps = DefaultDependencies(llm_provider=provider, context_reducer=mock_reducer)
+
+        # System message "Be concise" = 10 chars → _estimate_tokens = max(1, 10//4) + 4 = 6
+        config = {
+            "model": "gpt-4o",
+            "system": "Be concise",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_context_tokens": 100,
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        call_args = mock_reducer.reduce.call_args
+        budget_arg = call_args[0][1]
+        # Budget = 100 - 6 (system tokens) = 94
+        assert budget_arg == 94
+
+    async def test_reducer_with_zero_budget_returns_system_only(self) -> None:
+        """When system messages consume entire budget, only system messages returned."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_reducer = AsyncMock()
+        mock_reducer.reduce = AsyncMock(return_value=[])
+
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
+        ctx.deps = DefaultDependencies(llm_provider=provider, context_reducer=mock_reducer)
+
+        # System message with huge content to exhaust budget
+        config = {
+            "model": "gpt-4o",
+            "system": "A" * 400,  # ~104 tokens
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_context_tokens": 50,  # Less than system tokens
+        }
+
+        prim = ChatPrimitive()
+        await prim.execute(config, ctx)
+
+        # Reducer should NOT be called (budget <= 0)
+        mock_reducer.reduce.assert_not_awaited()
+
+        # Provider should receive only system message
+        args, _ = provider.complete.call_args
+        sent_messages = args[1]
+        assert len(sent_messages) == 1
+        assert sent_messages[0]["role"] == "system"
