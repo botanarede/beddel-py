@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from beddel.domain.models import ExecutionContext
-from beddel.domain.ports import ILLMProvider, IPrimitive
+from beddel.domain.ports import IContextReducer, ILLMProvider, IPrimitive
 from beddel.primitives._llm_utils import build_kwargs, get_model, get_provider
 from beddel.primitives.utils import validate_message
 
@@ -107,10 +107,12 @@ class ChatPrimitive(IPrimitive):
         provider = self._get_provider(context)
         model = self._get_model(config, context)
         messages = self._build_messages(config)
-        messages = self._apply_context_window(
+        reducer = getattr(context.deps, "context_reducer", None)
+        messages = await self._apply_context_window(
             messages,
             max_messages=config.get("max_messages", 50),
             max_context_tokens=config.get("max_context_tokens"),
+            context_reducer=reducer,
         )
         kwargs = self._build_kwargs(config)
 
@@ -177,11 +179,12 @@ class ChatPrimitive(IPrimitive):
             messages.insert(0, {"role": "system", "content": config["system"]})
         return messages
 
-    @staticmethod
-    def _apply_context_window(
+    async def _apply_context_window(
+        self,
         messages: list[dict[str, Any]],
         max_messages: int | None = 50,
         max_context_tokens: int | None = None,
+        context_reducer: IContextReducer | None = None,
     ) -> list[dict[str, Any]]:
         """Trim conversation history to fit within context window limits.
 
@@ -215,6 +218,14 @@ class ChatPrimitive(IPrimitive):
             older messages into a single summary message — to preserve
             important context that would otherwise be silently dropped.
 
+        Context reducer delegation:
+            When a ``context_reducer`` is provided and ``max_context_tokens``
+            is set, the method delegates to the reducer instead of applying
+            FIFO trimming.  The reducer receives only non-system messages
+            and a token budget pre-deducted for system message tokens.
+            When no reducer is configured or no token budget is set, the
+            existing FIFO behavior is preserved.
+
         Token estimation:
             Each message's token cost is estimated as
             ``max(1, len(content) // 4) + 4``:
@@ -240,6 +251,11 @@ class ChatPrimitive(IPrimitive):
                 Defaults to ``None`` (unlimited).  Uses
                 ``max(1, len(content) // 4) + 4`` as the per-message token
                 estimate.
+            context_reducer: Optional context reducer implementing
+                :class:`~beddel.domain.ports.IContextReducer`.  When
+                provided with a ``max_context_tokens`` budget, delegates
+                context reduction to this strategy instead of FIFO.
+                Defaults to ``None`` (FIFO fallback).
 
         Returns:
             A trimmed message list with system messages first, followed by
@@ -247,6 +263,15 @@ class ChatPrimitive(IPrimitive):
         """
         system_msgs = [m for m in messages if m.get("role") == "system"]
         non_system_msgs = [m for m in messages if m.get("role") != "system"]
+
+        # Reducer delegation path — when both reducer and token budget are set.
+        if context_reducer is not None and max_context_tokens is not None:
+            system_tokens = sum(_estimate_tokens(m.get("content", "")) for m in system_msgs)
+            budget = max_context_tokens - system_tokens
+            if budget <= 0:
+                return system_msgs
+            reduced = await context_reducer.reduce(non_system_msgs, budget)
+            return system_msgs + reduced
 
         # Step 1: Apply max_messages count limit (pair-aware).
         if max_messages is not None and len(non_system_msgs) > max_messages:
