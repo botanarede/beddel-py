@@ -19,7 +19,12 @@ from pydantic import ValidationError
 
 from beddel.domain.errors import ParseError
 from beddel.domain.models import Workflow
-from beddel.error_codes import PARSE_INVALID_YAML, PARSE_MALFORMED_VARS, PARSE_SCHEMA_VALIDATION
+from beddel.error_codes import (
+    PARSE_DUPLICATE_TOOL,
+    PARSE_INVALID_YAML,
+    PARSE_MALFORMED_VARS,
+    PARSE_SCHEMA_VALIDATION,
+)
 
 __all__ = [
     "WorkflowParser",
@@ -227,6 +232,14 @@ class WorkflowParser:
                 )
 
             module_path, func_name = target.split(":", 1)
+
+            if tool.name in resolved:
+                raise ParseError(
+                    code=PARSE_DUPLICATE_TOOL,
+                    message=(f"Duplicate tool name '{tool.name}' in workflow tools section"),
+                    details={"tool": tool.name, "target": target},
+                )
+
             try:
                 mod = importlib.import_module(module_path)
                 obj = getattr(mod, func_name)

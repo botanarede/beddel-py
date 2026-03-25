@@ -381,6 +381,37 @@ class TestComparisonConditions:
         result = executor._evaluate_condition("$stepResult.s1.flag", ctx)
         assert result is True
 
+    async def test_comparison_type_error_raises_execution_error(self) -> None:
+        """Incompatible types in comparison raise ExecutionError, not TypeError."""
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = SKIPPED
+        with pytest.raises(ExecutionError, match="Condition comparison failed"):
+            executor._evaluate_condition("$stepResult.s1 > 5", ctx)
+
+    async def test_comparison_type_error_includes_details(self) -> None:
+        """ExecutionError from TypeError includes condition, types, and operator."""
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = SKIPPED
+        with pytest.raises(ExecutionError) as exc_info:
+            executor._evaluate_condition("$stepResult.s1 > 5", ctx)
+        assert exc_info.value.code == "BEDDEL-EXEC-012"
+        assert "operator" in exc_info.value.details
+        assert exc_info.value.details["operator"] == ">"
+        assert exc_info.value.details["left_type"] == "_Skipped"
+
+    async def test_comparison_equality_with_skipped_does_not_raise(self) -> None:
+        """Equality operators with SKIPPED should not raise — they return bool."""
+        registry = PrimitiveRegistry()
+        executor = WorkflowExecutor(registry)
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.step_results["s1"] = SKIPPED
+        result = executor._evaluate_condition("$stepResult.s1 == 5", ctx)
+        assert result is False
+
 
 # ---------------------------------------------------------------------------
 # SKIPPED sentinel
@@ -408,6 +439,24 @@ class TestSkippedSentinel:
 
     def test_skipped_is_not_none(self) -> None:
         assert SKIPPED is not None
+
+    async def test_skipped_step_comparison_raises_execution_error(self) -> None:
+        """Full executor flow: SKIPPED result compared with number triggers TypeError guard."""
+        registry, _ = _registry_with_stub(return_value={"value": 10})
+        step1 = _make_step("step1", if_condition="false")
+        step2 = _make_step("step2", if_condition="$stepResult.step1.value > 5")
+        wf = _make_workflow([step1, step2])
+        executor = WorkflowExecutor(registry)
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await executor.execute(wf)
+
+        # The FAIL strategy wraps the condition error as EXEC-002;
+        # the original EXEC-012 TypeError guard is chained as __cause__.
+        assert exc_info.value.code == "BEDDEL-EXEC-002"
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, ExecutionError)
+        assert cause.code == "BEDDEL-EXEC-012"
 
 
 # ---------------------------------------------------------------------------

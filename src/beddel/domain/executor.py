@@ -42,6 +42,7 @@ from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.resolver import VariableResolver
 from beddel.domain.tracing_utils import extract_token_usage
 from beddel.error_codes import (
+    EXEC_CONDITION_TYPE_ERROR,
     EXEC_DELEGATE_FAILED,
     EXEC_DELEGATE_INVALID,
     EXEC_NO_FALLBACK,
@@ -783,18 +784,35 @@ class WorkflowExecutor:
             left = self._resolver.resolve(left_expr.strip(), context)
             right = _parse_literal(right_expr.strip())
 
-            if operator == "==":
-                return bool(left == right)
-            if operator == "!=":
-                return bool(left != right)
-            if operator == ">":
-                return bool(left > right)
-            if operator == "<":
-                return bool(left < right)
-            if operator == ">=":
-                return bool(left >= right)
-            if operator == "<=":
-                return bool(left <= right)
+            try:
+                if operator == "==":
+                    return bool(left == right)
+                if operator == "!=":
+                    return bool(left != right)
+                if operator == ">":
+                    return bool(left > right)
+                if operator == "<":
+                    return bool(left < right)
+                if operator == ">=":
+                    return bool(left >= right)
+                if operator == "<=":
+                    return bool(left <= right)
+            except TypeError as exc:
+                raise ExecutionError(
+                    code=EXEC_CONDITION_TYPE_ERROR,
+                    message=(
+                        f"Condition comparison failed: "
+                        f"{type(left).__name__} {operator} {type(right).__name__}"
+                    ),
+                    details={
+                        "condition": condition,
+                        "left_value": repr(left),
+                        "left_type": type(left).__name__,
+                        "right_value": repr(right),
+                        "right_type": type(right).__name__,
+                        "operator": operator,
+                    },
+                ) from exc
 
         resolved = self._resolver.resolve(condition, context)
 

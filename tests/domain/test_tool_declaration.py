@@ -117,6 +117,19 @@ tools:
     target: "json:__name__"
 """
 
+_YAML_WITH_DUPLICATE_TOOLS = """\
+id: t
+name: t
+steps:
+  - id: s1
+    primitive: llm
+tools:
+  - name: dumper
+    target: "json:dumps"
+  - name: dumper
+    target: "json:loads"
+"""
+
 
 class TestParserInlineToolResolution:
     """Tests for WorkflowParser resolving inline tools at parse time."""
@@ -152,3 +165,10 @@ class TestParserInlineToolResolution:
         wf = WorkflowParser.parse(_YAML_WITH_TOOLS)
         assert isinstance(wf.metadata["_inline_tools"], dict)
         assert callable(wf.metadata["_inline_tools"]["dumper"])
+
+    def test_raises_parse_error_on_duplicate_tool_name(self) -> None:
+        with pytest.raises(ParseError) as exc_info:
+            WorkflowParser.parse(_YAML_WITH_DUPLICATE_TOOLS)
+        assert exc_info.value.code == "BEDDEL-PARSE-004"
+        assert "Duplicate tool name" in exc_info.value.message
+        assert exc_info.value.details["tool"] == "dumper"

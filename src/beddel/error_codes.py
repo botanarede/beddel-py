@@ -63,6 +63,9 @@ PARSE_SCHEMA_VALIDATION: str = "BEDDEL-PARSE-002"
 PARSE_MALFORMED_VARS: str = "BEDDEL-PARSE-003"
 """Malformed variable references."""
 
+PARSE_DUPLICATE_TOOL: str = "BEDDEL-PARSE-004"
+"""Duplicate tool name in workflow tools section."""
+
 # ---------------------------------------------------------------------------
 # Resolver codes  (RESOLVE prefix, 600 range)
 # ---------------------------------------------------------------------------
@@ -179,6 +182,9 @@ EXEC_DELEGATE_FAILED: str = "BEDDEL-EXEC-010"
 EXEC_DELEGATE_INVALID: str = "BEDDEL-EXEC-011"
 """Delegate invalid action."""
 
+EXEC_CONDITION_TYPE_ERROR: str = "BEDDEL-EXEC-012"
+"""Condition comparison failed — incompatible types."""
+
 # ---------------------------------------------------------------------------
 # Agent codes  (AGENT prefix, 700 range)
 # ---------------------------------------------------------------------------
@@ -245,6 +251,7 @@ ALL_CODES: dict[str, str] = {
     "PARSE_INVALID_YAML": PARSE_INVALID_YAML,
     "PARSE_SCHEMA_VALIDATION": PARSE_SCHEMA_VALIDATION,
     "PARSE_MALFORMED_VARS": PARSE_MALFORMED_VARS,
+    "PARSE_DUPLICATE_TOOL": PARSE_DUPLICATE_TOOL,
     # Resolver
     "RESOLVE_UNRESOLVABLE": RESOLVE_UNRESOLVABLE,
     "RESOLVE_CIRCULAR": RESOLVE_CIRCULAR,
@@ -298,6 +305,7 @@ ALL_CODES: dict[str, str] = {
     "EXEC_TIMEOUT": EXEC_TIMEOUT,
     "EXEC_DELEGATE_FAILED": EXEC_DELEGATE_FAILED,
     "EXEC_DELEGATE_INVALID": EXEC_DELEGATE_INVALID,
+    "EXEC_CONDITION_TYPE_ERROR": EXEC_CONDITION_TYPE_ERROR,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }
