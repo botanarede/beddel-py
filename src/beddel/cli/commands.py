@@ -260,7 +260,20 @@ def run(
     multiple=True,
     help="Register tool as name=module:function.",
 )
-def serve(host: str, port: int, workflow_paths: tuple[Path, ...], tools: tuple[str, ...]) -> None:
+@click.option(
+    "--dashboard",
+    is_flag=True,
+    default=False,
+    help="Mount Dashboard Server Protocol endpoints at /api.",
+)
+def serve(
+    host: str,
+    port: int,
+    workflow_paths: tuple[Path, ...],
+    tools: tuple[str, ...],
+    *,
+    dashboard: bool,
+) -> None:
     """Start a FastAPI server exposing workflows as SSE endpoints."""
     try:
         import uvicorn  # type: ignore[import-not-found]
@@ -297,6 +310,8 @@ def serve(host: str, port: int, workflow_paths: tuple[Path, ...], tools: tuple[s
     parsed_tools = _parse_tool_flags(tools)
 
     loaded = 0
+    all_workflows: dict[str, Workflow] = {}
+    shared_deps: DefaultDependencies | None = None
     for wf_path in workflow_paths:
         yaml_str = wf_path.read_text()
         workflow = WorkflowParser.parse(yaml_str)
@@ -335,7 +350,18 @@ def serve(host: str, port: int, workflow_paths: tuple[Path, ...], tools: tuple[s
         )
         app.include_router(router, prefix=f"/workflows/{workflow.id}")
         click.echo(f"  Mounted: /workflows/{workflow.id} ({wf_path.name})")
+        all_workflows[workflow.id] = workflow
+        shared_deps = deps
         loaded += 1
+
+    if dashboard and all_workflows and shared_deps is not None:
+        from beddel.domain.executor import WorkflowExecutor
+        from beddel.integrations.dashboard import create_dashboard_router
+
+        shared_executor = WorkflowExecutor(registry, deps=shared_deps)
+        dashboard_router = create_dashboard_router(all_workflows, shared_executor)
+        app.include_router(dashboard_router)
+        click.echo(f"  Dashboard API: http://{host}:{port}/api")
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -344,5 +370,7 @@ def serve(host: str, port: int, workflow_paths: tuple[Path, ...], tools: tuple[s
     click.echo(f"Beddel v{__version__} — {loaded} workflow(s)")
     click.echo(f"Listening on http://{host}:{port}")
     click.echo(f"Health: http://{host}:{port}/health")
+    if dashboard:
+        click.echo(f"Dashboard API: http://{host}:{port}/api")
 
     uvicorn.run(app, host=host, port=port, log_level="info")
