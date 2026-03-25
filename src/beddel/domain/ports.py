@@ -477,12 +477,24 @@ class IAgentAdapter(Protocol):
 class IContextReducer(Protocol):
     """Contract for pluggable context reduction strategies.
 
-    Planned port for context-window management in chat-based primitives.
-    Implementations will provide strategies such as summarization, semantic
+    Port for context-window management in chat-based primitives.
+    Implementations provide strategies such as summarization, semantic
     selection, or sliding-window approaches to replace the current FIFO
     truncation in ``ChatPrimitive._apply_context_window()``.
 
-    Planned — not yet wired into any primitive.
+    Wired into ``ChatPrimitive`` as of Story 4.0d.  When a reducer is
+    injected via ``context.deps.context_reducer`` and ``max_context_tokens``
+    is set, the primitive delegates to ``reduce()`` instead of FIFO.
+
+    Invariants:
+        Implementations MUST return valid message sequences.  In particular:
+
+        - Tool-call assistant messages (containing ``tool_calls``) and their
+          corresponding tool-response messages (``role: "tool"``) MUST be
+          kept as atomic pairs.  Dropping one side produces invalid sequences
+          that LLM providers reject with a 400 error.
+        - The returned list MUST fit within ``token_budget``.
+        - Message ordering MUST be preserved (no reordering).
 
     [Source: docs/architecture/6-port-interfaces.md — context reduction]
     """

@@ -265,6 +265,8 @@ class ChatPrimitive(IPrimitive):
         non_system_msgs = [m for m in messages if m.get("role") != "system"]
 
         # Reducer delegation path — when both reducer and token budget are set.
+        # NOTE: reducer path runs before max_messages trimming — reducer handles
+        # its own message selection.  FIFO count trimming is bypassed intentionally.
         if context_reducer is not None and max_context_tokens is not None:
             system_tokens = sum(_estimate_tokens(m.get("content", "")) for m in system_msgs)
             budget = max_context_tokens - system_tokens

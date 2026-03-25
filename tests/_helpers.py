@@ -26,6 +26,7 @@ def make_context(
     tool_registry: dict[str, Callable[..., Any]] | None = None,
     workflow_loader: Callable[[str], Any] | None = None,
     registry: PrimitiveRegistry | None = None,
+    context_reducer: Any | None = None,
 ) -> ExecutionContext:
     """Build an ``ExecutionContext`` for primitive unit tests.
 
@@ -43,12 +44,14 @@ def make_context(
         tool_registry: Optional tool-name → callable mapping.
         workflow_loader: Optional callable that loads a ``Workflow`` by id.
         registry: Optional ``PrimitiveRegistry`` instance.
+        context_reducer: Optional context reducer (or mock).
 
     Returns:
         A configured ``ExecutionContext`` instance.
     """
     has_deps = any(
-        arg is not None for arg in (llm_provider, tool_registry, workflow_loader, registry)
+        arg is not None
+        for arg in (llm_provider, tool_registry, workflow_loader, registry, context_reducer)
     )
 
     ctx = ExecutionContext(
@@ -65,6 +68,7 @@ def make_context(
             tool_registry=tool_registry,
             workflow_loader=workflow_loader,
             registry=registry,
+            context_reducer=context_reducer,
         )
 
     return ctx
