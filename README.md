@@ -10,9 +10,9 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange.svg)]()
 [![PyPI downloads](https://img.shields.io/pypi/dm/beddel.svg)](https://pypi.org/project/beddel/)
 
-Declarative YAML-based AI workflow engine for Python.
+Declarative YAML-based AI workflow engine for Python. Knowledge-architecture-aware.
 
-Define outcome-driven AI workflows in YAML — the engine handles adaptive execution with conditional branching, retry strategies, multi-provider LLM abstraction, and compositional primitives. YAML for the backbone, code escape hatches for complex logic.
+Define outcome-driven AI workflows in YAML — the engine handles adaptive execution with conditional branching, retry strategies, multi-provider LLM abstraction, and compositional primitives. Bring your domain knowledge in any format; Beddel workflows reason over it. YAML for the backbone, code escape hatches for complex logic.
 
 ```yaml
 steps:
@@ -34,6 +34,7 @@ steps:
 - Lifecycle hooks for custom logging, metrics, and side effects
 - Expose workflows as HTTP/SSE endpoints with one function call
 - Hexagonal architecture — swap adapters without touching domain logic
+- Extensible namespace system — plug in domain knowledge, memory, or any data source via `register_namespace()`
 
 ## Installation
 
@@ -179,9 +180,12 @@ prompt: "Using key $env.API_KEY"                # Environment variables
 ```
 
 ```python
-# Register custom namespaces
+# Register custom namespaces — domain knowledge, memory, or any data source
 resolver.register_namespace("memory", my_memory_handler)
+resolver.register_namespace("knowledge", my_domain_handler)
 ```
+
+The namespace system is the integration point for domain knowledge. The handler behind `$knowledge.*` can be a YAML file in development, a Neo4j graph in production, or a formal ontology endpoint in enterprise — the workflow YAML stays the same. Beddel is a *consumer* of knowledge architectures, not a builder.
 
 **Adaptive Workflow Executor** — Sequential execution with step-level conditional branching (`if/then/else`), configurable execution strategies per step, and step-level timeout support. The executor evaluates conditions and adapts flow — not a pure sequential dispatcher.
 
@@ -543,8 +547,9 @@ The `-Wd` flag turns `DeprecationWarning` into errors, catching deprecated API u
 
 Epics 1–3 (Adaptive Core, Compositional Primitives, Observability & Integration) are complete. Upcoming:
 
-- **Epic 4** — Adaptive Execution Patterns: reflection loops, parallel execution, circuit breaker, goal-oriented execution, MCP-native tool integration
-- **Epic 5** — Agent Autonomy & Safety: human-in-the-loop, model tier selection, PII tokenization, state persistence, cost controls
+- **Epic 4** — Adaptive Execution Patterns: reflection loops, parallel execution, circuit breaker, goal-oriented execution, durable execution, MCP-native tool integration
+- **Epic 5** — Agent Autonomy & Safety: human-on-the-loop (HOTL), model tier selection, PII tokenization, state persistence, episodic memory, cost controls with budget enforcement
+- **Epic 6** — Ecosystem & Enterprise Integration: multi-agent coordination, event-driven execution, decision-centric runtime, skill composition, knowledge architecture port (`IKnowledgeProvider` — consume domain knowledge from YAML files, knowledge graphs, or formal ontologies through a unified interface)
 
 ## Contributing
 
