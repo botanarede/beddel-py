@@ -697,9 +697,11 @@ class TestEventTypeEnum:
         assert EventType.RETRY == "retry"
         assert EventType.REFLECTION_START == "reflection_start"
         assert EventType.REFLECTION_END == "reflection_end"
+        assert EventType.PARALLEL_START == "parallel_start"
+        assert EventType.PARALLEL_END == "parallel_end"
 
     def test_member_count(self) -> None:
-        assert len(EventType) == 11
+        assert len(EventType) == 13
 
 
 # ---------------------------------------------------------------------------

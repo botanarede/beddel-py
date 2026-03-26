@@ -406,6 +406,8 @@ class EventType(StrEnum):
         RETRY: Emitted when a step retry is attempted.
         REFLECTION_START: Will be emitted when a reflection loop iteration begins (planned).
         REFLECTION_END: Will be emitted when a reflection loop iteration completes (planned).
+        PARALLEL_START: Will be emitted when a parallel fan-out begins (planned).
+        PARALLEL_END: Will be emitted when a parallel fan-in completes (planned).
     """
 
     WORKFLOW_START = "workflow_start"
@@ -420,6 +422,9 @@ class EventType(StrEnum):
 
     REFLECTION_START = "reflection_start"
     REFLECTION_END = "reflection_end"
+
+    PARALLEL_START = "parallel_start"
+    PARALLEL_END = "parallel_end"
 
     # --- Reserved for future epics (not yet implemented) ---
     # CHECKPOINT = "checkpoint"    # Epic 5: emitted when execution state is checkpointed

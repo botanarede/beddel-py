@@ -206,6 +206,9 @@ EXEC_REFLECTION_NO_EVALUATE: str = "BEDDEL-EXEC-021"
 EXEC_REFLECTION_THRESHOLD_TYPE: str = "BEDDEL-EXEC-022"
 """Threshold convergence requires numeric evaluate result."""
 
+EXEC_PARALLEL_GROUP_FAILED: str = "BEDDEL-EXEC-030"
+"""Parallel group execution failed."""
+
 # ---------------------------------------------------------------------------
 # Agent codes  (AGENT prefix, 700 range)
 # ---------------------------------------------------------------------------
@@ -334,6 +337,7 @@ ALL_CODES: dict[str, str] = {
     "EXEC_REFLECTION_NO_GENERATE": EXEC_REFLECTION_NO_GENERATE,
     "EXEC_REFLECTION_NO_EVALUATE": EXEC_REFLECTION_NO_EVALUATE,
     "EXEC_REFLECTION_THRESHOLD_TYPE": EXEC_REFLECTION_THRESHOLD_TYPE,
+    "EXEC_PARALLEL_GROUP_FAILED": EXEC_PARALLEL_GROUP_FAILED,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }
