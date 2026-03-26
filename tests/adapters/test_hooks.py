@@ -401,3 +401,67 @@ class TestThreadSafety:
         manager = LifecycleHookManager(hooks)
         await asyncio.gather(*(manager.remove_hook(h) for h in hooks))
         assert len(manager._hooks) == 0
+
+    async def test_iteration_stable_during_concurrent_add(self) -> None:
+        """Snapshot isolation: hook added during dispatch does NOT receive in-flight event."""
+        import asyncio as _asyncio
+
+        class _SlowHook(ILifecycleHook):
+            def __init__(self) -> None:
+                self.called = False
+
+            async def on_step_start(self, step_id: str, primitive: str) -> None:
+                self.called = True
+                await _asyncio.sleep(0.05)  # Yield control to event loop
+
+        class _LateHook(ILifecycleHook):
+            def __init__(self) -> None:
+                self.step_start_calls: list[str] = []
+
+            async def on_step_start(self, step_id: str, primitive: str) -> None:
+                self.step_start_calls.append(step_id)
+
+        slow = _SlowHook()
+        late = _LateHook()
+        manager = LifecycleHookManager([slow])
+
+        async def dispatch_and_add() -> None:
+            dispatch_task = _asyncio.create_task(manager.on_step_start("s1", "llm"))
+            await _asyncio.sleep(0.01)  # Let dispatch start and take snapshot
+            await manager.add_hook(late)  # Add after snapshot taken
+            await dispatch_task
+
+        await dispatch_and_add()
+        assert slow.called
+        assert late.step_start_calls == []  # Late hook missed the in-flight event
+
+        # But late hook DOES receive subsequent events
+        await manager.on_step_start("s2", "chat")
+        assert late.step_start_calls == ["s2"]
+
+    async def test_iteration_stable_during_concurrent_remove(self) -> None:
+        """Removing a hook during dispatch does not cause iteration errors."""
+        import asyncio as _asyncio
+
+        class _SlowHook(ILifecycleHook):
+            def __init__(self) -> None:
+                self.called = False
+
+            async def on_step_end(self, step_id: str, result: Any) -> None:
+                self.called = True
+                await _asyncio.sleep(0.05)
+
+        slow = _SlowHook()
+        victim = _RecordingHook()
+        manager = LifecycleHookManager([slow, victim])
+
+        async def dispatch_and_remove() -> None:
+            dispatch_task = _asyncio.create_task(manager.on_step_end("s1", "ok"))
+            await _asyncio.sleep(0.01)
+            await manager.remove_hook(victim)  # Remove during iteration
+            await dispatch_task
+
+        await dispatch_and_remove()
+        assert slow.called
+        # victim was in the snapshot, so it still received the event
+        assert len(victim.calls) == 1

@@ -76,7 +76,9 @@ class LifecycleHookManager(IHookManager):
             workflow_id: Identifier of the workflow being executed.
             inputs: User-supplied inputs for the workflow run.
         """
-        for hook in self._hooks:
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
             try:
                 if asyncio.iscoroutinefunction(hook.on_workflow_start):
                     await hook.on_workflow_start(workflow_id, inputs)
@@ -96,7 +98,9 @@ class LifecycleHookManager(IHookManager):
             workflow_id: Identifier of the workflow that completed.
             result: The final workflow result dict.
         """
-        for hook in self._hooks:
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
             try:
                 if asyncio.iscoroutinefunction(hook.on_workflow_end):
                     await hook.on_workflow_end(workflow_id, result)
@@ -116,7 +120,9 @@ class LifecycleHookManager(IHookManager):
             step_id: Identifier of the step about to execute.
             primitive: Name of the primitive being invoked.
         """
-        for hook in self._hooks:
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
             try:
                 if asyncio.iscoroutinefunction(hook.on_step_start):
                     await hook.on_step_start(step_id, primitive)
@@ -136,7 +142,9 @@ class LifecycleHookManager(IHookManager):
             step_id: Identifier of the step that completed.
             result: The step's return value.
         """
-        for hook in self._hooks:
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
             try:
                 if asyncio.iscoroutinefunction(hook.on_step_end):
                     await hook.on_step_end(step_id, result)
@@ -156,7 +164,9 @@ class LifecycleHookManager(IHookManager):
             step_id: Identifier of the step that failed.
             error: The exception that was raised.
         """
-        for hook in self._hooks:
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
             try:
                 if asyncio.iscoroutinefunction(hook.on_error):
                     await hook.on_error(step_id, error)
@@ -177,7 +187,9 @@ class LifecycleHookManager(IHookManager):
             attempt: The retry attempt number (1-based).
             error: The exception that triggered the retry.
         """
-        for hook in self._hooks:
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
             try:
                 if asyncio.iscoroutinefunction(hook.on_retry):
                     await hook.on_retry(step_id, attempt, error)
@@ -198,7 +210,9 @@ class LifecycleHookManager(IHookManager):
             alternatives: Alternative options that were considered.
             rationale: Explanation for why this decision was chosen.
         """
-        for hook in self._hooks:
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
             try:
                 if asyncio.iscoroutinefunction(hook.on_decision):
                     await hook.on_decision(decision, alternatives, rationale)
