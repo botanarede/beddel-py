@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from _helpers import make_context, make_provider
 
 from beddel.domain.errors import PrimitiveError
-from beddel.domain.models import ExecutionContext
+from beddel.domain.models import DefaultDependencies, ExecutionContext
 from beddel.domain.registry import PrimitiveRegistry
+from beddel.error_codes import PRIM_TOOL_USE_MAX_ITERATIONS
 from beddel.primitives import register_builtins
 from beddel.primitives.llm import LLMPrimitive
 
@@ -371,3 +373,121 @@ class TestRegisterBuiltins:
         register_builtins(registry)
 
         assert isinstance(registry.get("llm"), LLMPrimitive)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Tool-use loop integration (Story 4.0f, Task 4)
+# ---------------------------------------------------------------------------
+
+
+class TestLLMToolUseLoop:
+    """Tests for tool-use loop wiring in LLMPrimitive.execute()."""
+
+    @staticmethod
+    def _tool_call_response(
+        tool_name: str = "get_weather",
+        arguments: str = '{"city": "London"}',
+        call_id: str = "call_abc",
+    ) -> dict[str, Any]:
+        return {
+            "content": None,
+            "finish_reason": "tool_calls",
+            "tool_calls": [
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {"name": tool_name, "arguments": arguments},
+                }
+            ],
+        }
+
+    @staticmethod
+    def _text_response(content: str = "Final answer") -> dict[str, Any]:
+        return {"content": content, "finish_reason": "stop"}
+
+    @staticmethod
+    def _make_context_with_tools(
+        provider: Any,
+        registry: dict[str, Any] | None = None,
+    ) -> ExecutionContext:
+        if registry is None:
+            registry = {"get_weather": lambda city: f"Sunny in {city}"}
+        deps = DefaultDependencies(llm_provider=provider, tool_registry=registry)
+        return ExecutionContext(workflow_id="test", current_step_id="s1", deps=deps)
+
+    async def test_execute_with_tool_use_loop(self) -> None:
+        """Config has tool_schemas; provider returns tool_calls then text."""
+        provider = make_provider()
+        # Override complete to return tool_calls first, then text
+        provider.complete = AsyncMock(
+            side_effect=[
+                self._tool_call_response("get_weather", '{"city": "London"}', "call_1"),
+                # run_tool_use_loop makes the second call
+                self._text_response("It's sunny in London"),
+            ]
+        )
+        ctx = self._make_context_with_tools(provider)
+        config: dict[str, Any] = {
+            "model": "gpt-4o",
+            "prompt": "What's the weather?",
+            "tool_schemas": [{"type": "function", "function": {"name": "get_weather"}}],
+        }
+
+        prim = LLMPrimitive()
+        result = await prim.execute(config, ctx)
+
+        assert result["content"] == "It's sunny in London"
+        # Initial call + 1 loop iteration call = at least 2 calls
+        assert provider.complete.await_count >= 2
+
+    async def test_execute_without_tool_schemas_unchanged(self) -> None:
+        """No tool_schemas in config — existing behaviour, no loop."""
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
+        config: dict[str, Any] = {"model": "gpt-4o", "prompt": "Hi"}
+
+        prim = LLMPrimitive()
+        result = await prim.execute(config, ctx)
+
+        provider.complete.assert_awaited_once_with(
+            "gpt-4o",
+            [{"role": "user", "content": "Hi"}],
+        )
+        assert result == {"content": "Hello!"}
+
+    async def test_execute_tool_schemas_no_tool_calls(self) -> None:
+        """Config has tool_schemas but provider returns text-only (no tool_calls)."""
+        provider = make_provider(complete_return={"content": "No tools needed"})
+        ctx = self._make_context_with_tools(provider)
+        config: dict[str, Any] = {
+            "model": "gpt-4o",
+            "prompt": "Hello",
+            "tool_schemas": [{"type": "function", "function": {"name": "get_weather"}}],
+        }
+
+        prim = LLMPrimitive()
+        result = await prim.execute(config, ctx)
+
+        assert result["content"] == "No tools needed"
+        # Only the initial call, no loop
+        provider.complete.assert_awaited_once()
+
+    async def test_execute_tool_use_max_iterations(self) -> None:
+        """Config has tool_schemas and max_tool_iterations=1; always returns tool_calls."""
+        provider = make_provider()
+        provider.complete = AsyncMock(
+            return_value=self._tool_call_response("get_weather", '{"city": "X"}', "call_loop"),
+        )
+        ctx = self._make_context_with_tools(provider)
+        config: dict[str, Any] = {
+            "model": "gpt-4o",
+            "prompt": "Loop forever",
+            "tool_schemas": [{"type": "function", "function": {"name": "get_weather"}}],
+            "max_tool_iterations": 1,
+        }
+
+        prim = LLMPrimitive()
+        with pytest.raises(PrimitiveError) as exc_info:
+            await prim.execute(config, ctx)
+
+        assert exc_info.value.code == PRIM_TOOL_USE_MAX_ITERATIONS

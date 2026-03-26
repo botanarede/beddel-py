@@ -14,6 +14,7 @@ from typing import Any
 from beddel.domain.models import ExecutionContext
 from beddel.domain.ports import ILLMProvider, IPrimitive
 from beddel.primitives._llm_utils import build_kwargs, get_model, get_provider
+from beddel.primitives._tool_use import run_tool_use_loop
 
 __all__ = [
     "LLMPrimitive",
@@ -94,6 +95,27 @@ class LLMPrimitive(IPrimitive):
 
         if config.get("stream"):
             return {"stream": provider.stream(model, messages, **kwargs)}
+
+        tool_schemas = config.get("tool_schemas")
+        if tool_schemas:
+            # Forward tools to initial LLM call
+            response = await provider.complete(model, messages, tools=tool_schemas, **kwargs)
+            if response.get("tool_calls"):
+                tool_registry = context.deps.tool_registry
+                if tool_registry is None:
+                    tool_registry = {}
+                return await run_tool_use_loop(
+                    provider,
+                    model,
+                    messages,
+                    tool_schemas,
+                    tool_registry,
+                    context,
+                    max_iterations=config.get("max_tool_iterations", 10),
+                    allowed_tools=context.metadata.get("_workflow_allowed_tools"),
+                    provider_kwargs=kwargs,
+                )
+            return response
 
         return await provider.complete(model, messages, **kwargs)
 
