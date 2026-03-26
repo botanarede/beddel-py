@@ -418,11 +418,10 @@ class TestLLMToolUseLoop:
     async def test_execute_with_tool_use_loop(self) -> None:
         """Config has tool_schemas; provider returns tool_calls then text."""
         provider = make_provider()
-        # Override complete to return tool_calls first, then text
+        # Loop calls complete: tool_calls response, then text response
         provider.complete = AsyncMock(
             side_effect=[
                 self._tool_call_response("get_weather", '{"city": "London"}', "call_1"),
-                # run_tool_use_loop makes the second call
                 self._text_response("It's sunny in London"),
             ]
         )
@@ -437,8 +436,8 @@ class TestLLMToolUseLoop:
         result = await prim.execute(config, ctx)
 
         assert result["content"] == "It's sunny in London"
-        # Initial call + 1 loop iteration call = at least 2 calls
-        assert provider.complete.await_count >= 2
+        # Loop iteration 1 (tool_calls) + iteration 2 (text) = 2 calls
+        assert provider.complete.await_count == 2
 
     async def test_execute_without_tool_schemas_unchanged(self) -> None:
         """No tool_schemas in config — existing behaviour, no loop."""
@@ -469,7 +468,7 @@ class TestLLMToolUseLoop:
         result = await prim.execute(config, ctx)
 
         assert result["content"] == "No tools needed"
-        # Only the initial call, no loop
+        # Loop calls complete once, sees no tool_calls, returns immediately
         provider.complete.assert_awaited_once()
 
     async def test_execute_tool_use_max_iterations(self) -> None:

@@ -1324,7 +1324,8 @@ class TestChatToolUseLoop:
         result = await prim.execute(config, ctx)
 
         assert result["content"] == "It's sunny in London"
-        assert provider.complete.await_count >= 2
+        # Loop iteration 1 (tool_calls) + iteration 2 (text) = 2 calls
+        assert provider.complete.await_count == 2
 
     async def test_execute_without_tool_schemas_unchanged(self) -> None:
         """No tool_schemas in config — existing behaviour, no loop."""
@@ -1372,10 +1373,15 @@ class TestChatToolUseLoop:
 
         assert result["content"] == "Rainy in Paris"
 
-        # The first call to provider.complete should have received windowed messages
+        # The first call to provider.complete should have received windowed messages.
+        # NOTE: run_tool_use_loop mutates the messages list in-place (appends
+        # assistant + tool messages), so by inspection time the list has grown.
+        # We verify windowing by checking the first 5 elements are the trimmed
+        # user messages (msg-5 through msg-9).
         first_call_args = provider.complete.call_args_list[0]
         first_messages = first_call_args[0][1]
-        # max_messages=5 trims 10 messages to last 5
-        assert len(first_messages) == 5
+        # First 5 messages are the windowed user messages
         assert first_messages[0]["content"] == "msg-5"
-        assert first_messages[-1]["content"] == "msg-9"
+        assert first_messages[4]["content"] == "msg-9"
+        # The loop appended assistant + tool messages after the first call
+        assert len(first_messages) == 7

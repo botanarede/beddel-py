@@ -147,13 +147,13 @@ PRIM_TOOL_TIMEOUT: str = "BEDDEL-PRIM-303"
 PRIM_TOOL_NOT_ALLOWED: str = "BEDDEL-PRIM-304"
 """Tool not in workflow allowed_tools list."""
 
-PRIM_TOOL_USE_MAX_ITERATIONS: str = "BEDDEL-PRIM-410"
+PRIM_TOOL_USE_MAX_ITERATIONS: str = "BEDDEL-PRIM-310"
 """Function calling loop exceeded max iterations."""
 
-PRIM_TOOL_USE_NOT_FOUND: str = "BEDDEL-PRIM-411"
+PRIM_TOOL_USE_NOT_FOUND: str = "BEDDEL-PRIM-311"
 """Tool requested by LLM not found in tool_registry."""
 
-PRIM_TOOL_USE_EXEC_FAILED: str = "BEDDEL-PRIM-412"
+PRIM_TOOL_USE_EXEC_FAILED: str = "BEDDEL-PRIM-312"
 """Tool invocation within function calling loop failed."""
 
 # ---------------------------------------------------------------------------
