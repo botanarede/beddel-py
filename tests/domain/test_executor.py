@@ -1304,6 +1304,56 @@ class TestExecuteStream:
         chunk_indices = [i for i, e in enumerate(events) if e.event_type == EventType.TEXT_CHUNK]
         assert all(ci > max(step_end_indices) for ci in chunk_indices)
 
+    async def test_execute_stream_cancels_task_on_abandon(self) -> None:
+        """Background strategy task is cancelled when generator is abandoned early."""
+        execution_started = asyncio.Event()
+        execution_continued = False
+
+        async def _slow_exec(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            execution_started.set()
+            await asyncio.sleep(10)  # Long-running — should be cancelled
+            nonlocal execution_continued
+            execution_continued = True
+            return "should not reach"
+
+        registry, _ = _registry_with_stub(side_effect=_slow_exec)
+        wf = _make_workflow([_make_step("s1"), _make_step("s2")])
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+
+        # Consume only the first event (WORKFLOW_START), then abandon.
+        async for event in executor.execute_stream(wf):
+            if event.event_type == EventType.WORKFLOW_START:
+                break
+
+        # Give the event loop a chance to process cancellation.
+        await asyncio.sleep(0.1)
+
+        # The long-running step should NOT have completed.
+        assert not execution_continued
+
+    async def test_execute_stream_fail_strategy_yields_error_then_raises(self) -> None:
+        """FAIL strategy: ERROR event is yielded, then ExecutionError is raised.
+
+        This is the pre-existing contract preserved by the queue refactor.
+        ERROR events are informational (fired by on_error hook for all strategies).
+        The exception is the fatal signal for FAIL strategy.
+        """
+        registry, _ = _registry_with_stub(side_effect=RuntimeError("fatal"))
+        step = _make_step("fail-s", strategy_type=StrategyType.FAIL)
+        wf = _make_workflow([step])
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+
+        events: list[BeddelEvent] = []
+        with pytest.raises(ExecutionError):
+            async for event in executor.execute_stream(wf):
+                events.append(event)
+
+        # ERROR event was yielded before the exception propagated.
+        error_events = [e for e in events if e.event_type == EventType.ERROR]
+        assert len(error_events) == 1
+        assert error_events[0].step_id == "fail-s"
+        assert "fatal" in error_events[0].data["error"]
+
 
 # ---------------------------------------------------------------------------
 # AC-6 — Strategy injection

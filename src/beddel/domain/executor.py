@@ -11,6 +11,7 @@ Only stdlib + pydantic + domain imports are allowed in this module
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import random
 import re
@@ -386,6 +387,10 @@ class WorkflowExecutor:
             :class:`BeddelEvent` instances for workflow start/end, step
             start/end, errors, retries, and text chunks.
         """
+        # Unbounded queue — backpressure is not enforced. For TEXT_CHUNK-heavy
+        # flows, consider switching to a bounded queue with await queue.put()
+        # (hooks are already async, so this is safe). Deferred per architect
+        # review (Story 4.0g F9).
         queue: asyncio.Queue[BeddelEvent | None] = asyncio.Queue()
 
         class _Collector(ILifecycleHook):
@@ -481,6 +486,7 @@ class WorkflowExecutor:
                     else:
                         raise
 
+            task: asyncio.Task[None] | None = None
             try:
 
                 async def _run_strategy() -> None:
@@ -546,6 +552,11 @@ class WorkflowExecutor:
                 # Propagate any strategy execution error.
                 await task
             finally:
+                # Cancel background task if generator was abandoned early.
+                if task is not None and not task.done():
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
                 if tracer is not None and workflow_span is not None:
                     try:
                         tracer.end_span(workflow_span)
