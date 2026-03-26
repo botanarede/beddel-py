@@ -54,9 +54,9 @@ async def run_tool_use_loop(
         The final LLM response dict (no tool_calls).
 
     Raises:
-        PrimitiveError: BEDDEL-PRIM-410 if max iterations exceeded.
-        PrimitiveError: BEDDEL-PRIM-411 if tool not found in registry.
-        PrimitiveError: BEDDEL-PRIM-412 if tool execution fails.
+        PrimitiveError: BEDDEL-PRIM-310 if max iterations exceeded.
+        PrimitiveError: BEDDEL-PRIM-311 if tool not found in registry.
+        PrimitiveError: BEDDEL-PRIM-312 if tool execution fails.
         PrimitiveError: BEDDEL-PRIM-304 if tool not in allowed_tools.
     """
     kwargs = dict(provider_kwargs or {})
@@ -158,7 +158,7 @@ async def _execute_tool(
         The tool function's return value.
 
     Raises:
-        PrimitiveError: BEDDEL-PRIM-412 if tool execution fails.
+        PrimitiveError: BEDDEL-PRIM-312 if tool execution fails.
     """
     try:
         if asyncio.iscoroutinefunction(tool_fn):
