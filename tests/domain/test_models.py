@@ -183,6 +183,43 @@ class TestStep:
 
 
 # ---------------------------------------------------------------------------
+# Step — tags field
+# ---------------------------------------------------------------------------
+
+
+class TestStepTags:
+    """Tests for the Step.tags field (step-level tagging)."""
+
+    def test_step_tags_defaults_to_empty_list(self) -> None:
+        """Step created without tags has an empty list."""
+        # Arrange / Act
+        step = Step(**_minimal_step())
+
+        # Assert
+        assert step.tags == []
+
+    def test_step_tags_stores_values(self) -> None:
+        """Step created with explicit tags stores and returns them."""
+        # Arrange / Act
+        step = Step(**_minimal_step(tags=["generate", "evaluate"]))
+
+        # Assert
+        assert step.tags == ["generate", "evaluate"]
+
+    def test_step_tags_preserved_through_serialization(self) -> None:
+        """Tags survive a model_dump → model_validate round-trip."""
+        # Arrange
+        step = Step(**_minimal_step(tags=["generate", "evaluate"]))
+
+        # Act
+        data = step.model_dump()
+        restored = Step.model_validate(data)
+
+        # Assert
+        assert restored.tags == ["generate", "evaluate"]
+
+
+# ---------------------------------------------------------------------------
 # ExecutionStrategy
 # ---------------------------------------------------------------------------
 

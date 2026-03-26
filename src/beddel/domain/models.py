@@ -166,6 +166,7 @@ class Step(BaseModel):
         stream: Whether to stream output from this step.
         parallel: Reserved for Epic 4 — parallel execution flag.
         metadata: Arbitrary metadata attached to the step.
+        tags: Optional tags for step-level filtering by execution strategies.
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -183,6 +184,7 @@ class Step(BaseModel):
     stream: bool = False
     parallel: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
 
 
 class DefaultDependencies:
