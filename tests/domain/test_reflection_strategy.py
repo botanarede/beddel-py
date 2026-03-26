@@ -231,6 +231,30 @@ class TestReflectionDefaults:
         assert strategy._algorithm == "exact-match"
         assert strategy._threshold == 0.9
 
+    def test_reflection_invalid_algorithm_raises(self) -> None:
+        """Invalid convergence_algorithm raises ValueError at construction."""
+        with pytest.raises(ValueError, match="Unknown convergence_algorithm"):
+            ReflectionStrategy({"convergence_algorithm": "fuzzy-match"})
+
+
+class TestReflectionThresholdTypeError:
+    """Tests for non-numeric evaluate result with threshold algorithm."""
+
+    @pytest.mark.asyncio
+    async def test_reflection_threshold_non_numeric_raises(self) -> None:
+        """Threshold algorithm raises ExecutionError on non-numeric eval result."""
+        gen = _step("gen", tags=["generate"])
+        ev = _step("ev", tags=["evaluate"])
+        wf = _workflow(gen, ev)
+        ctx = _context()
+        runner = _MockStepRunner({"gen": ["x"], "ev": ["not-a-number"]})
+        strategy = ReflectionStrategy(
+            {"convergence_algorithm": "threshold", "convergence_threshold": 0.8}
+        )
+
+        with pytest.raises(ExecutionError, match="BEDDEL-EXEC-022"):
+            await strategy.execute(wf, ctx, runner)
+
 
 class _RecordingHookManager:
     """Records on_decision calls. Used as lifecycle_hooks in deps."""

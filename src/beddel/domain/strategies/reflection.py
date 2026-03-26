@@ -27,6 +27,7 @@ from beddel.domain.utils import StepFilter
 from beddel.error_codes import (
     EXEC_REFLECTION_NO_EVALUATE,
     EXEC_REFLECTION_NO_GENERATE,
+    EXEC_REFLECTION_THRESHOLD_TYPE,
 )
 
 _log = logging.getLogger(__name__)
@@ -63,6 +64,13 @@ class ReflectionStrategy:
         self._max_iterations: int = cfg.get("max_iterations", 5)
         self._algorithm: str = cfg.get("convergence_algorithm", "exact-match")
         self._threshold: float = cfg.get("convergence_threshold", 0.9)
+
+        _valid_algorithms = frozenset({"exact-match", "threshold"})
+        if self._algorithm not in _valid_algorithms:
+            raise ValueError(
+                f"Unknown convergence_algorithm {self._algorithm!r}. "
+                f"Valid values: {sorted(_valid_algorithms)}"
+            )
 
     async def execute(
         self,
@@ -128,7 +136,14 @@ class ReflectionStrategy:
 
             # Check convergence
             if self._algorithm == "threshold":
-                converged = float(current_eval) >= self._threshold
+                try:
+                    converged = float(current_eval) >= self._threshold
+                except (ValueError, TypeError) as exc:
+                    raise ExecutionError(
+                        EXEC_REFLECTION_THRESHOLD_TYPE,
+                        f"Threshold convergence requires numeric evaluate result, "
+                        f"got {type(current_eval).__name__}: {current_eval!r}",
+                    ) from exc
             else:
                 # exact-match: first iteration previous is None → never converges
                 converged = str(current_eval) == str(previous_eval)

@@ -404,8 +404,8 @@ class EventType(StrEnum):
         TEXT_CHUNK: Emitted for each streamed text chunk.
         ERROR: Emitted when an error occurs.
         RETRY: Emitted when a step retry is attempted.
-        REFLECTION_START: Emitted when a reflection loop begins.
-        REFLECTION_END: Emitted when a reflection loop completes.
+        REFLECTION_START: Will be emitted when a reflection loop iteration begins (planned).
+        REFLECTION_END: Will be emitted when a reflection loop iteration completes (planned).
     """
 
     WORKFLOW_START = "workflow_start"

@@ -203,6 +203,9 @@ EXEC_REFLECTION_NO_GENERATE: str = "BEDDEL-EXEC-020"
 EXEC_REFLECTION_NO_EVALUATE: str = "BEDDEL-EXEC-021"
 """No evaluate steps found in reflection workflow."""
 
+EXEC_REFLECTION_THRESHOLD_TYPE: str = "BEDDEL-EXEC-022"
+"""Threshold convergence requires numeric evaluate result."""
+
 # ---------------------------------------------------------------------------
 # Agent codes  (AGENT prefix, 700 range)
 # ---------------------------------------------------------------------------
@@ -330,6 +333,7 @@ ALL_CODES: dict[str, str] = {
     "EXEC_CONDITION_TYPE_ERROR": EXEC_CONDITION_TYPE_ERROR,
     "EXEC_REFLECTION_NO_GENERATE": EXEC_REFLECTION_NO_GENERATE,
     "EXEC_REFLECTION_NO_EVALUATE": EXEC_REFLECTION_NO_EVALUATE,
+    "EXEC_REFLECTION_THRESHOLD_TYPE": EXEC_REFLECTION_THRESHOLD_TYPE,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }
