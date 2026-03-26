@@ -1246,6 +1246,64 @@ class TestExecuteStream:
         # Confirm it's NOT the ReverseStrategy (which would give ["s3", "s2", "s1"])
         assert step_start_ids != ["s3", "s2", "s1"]
 
+    async def test_execute_stream_streaming_steps_with_custom_strategy(self) -> None:
+        """Streaming steps emit TEXT_CHUNK events after strategy completes with custom order."""
+        from beddel.domain.ports import IPrimitive
+
+        async def _chunk_gen() -> Any:
+            for chunk in ["A", "B", "C"]:
+                yield chunk
+
+        async def _stream_exec(config: dict[str, Any], context: ExecutionContext) -> Any:
+            return {"stream": _chunk_gen()}
+
+        class _StreamStub(IPrimitive):
+            async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
+                return await _stream_exec(config, context)
+
+        class _NormalStub(IPrimitive):
+            async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
+                return "ok"
+
+        class _ReverseStrategy:
+            async def execute(
+                self,
+                workflow: Workflow,
+                context: ExecutionContext,
+                step_runner: Any,
+            ) -> None:
+                for step in reversed(workflow.steps):
+                    await step_runner(step, context)
+
+        registry = PrimitiveRegistry()
+        registry.register("test-prim", _NormalStub())
+        registry.register("stream-prim", _StreamStub())
+
+        s1 = _make_step("s1", primitive="test-prim")
+        s2 = _make_step("s2", primitive="stream-prim", stream=True)
+        s3 = _make_step("s3", primitive="test-prim")
+        wf = _make_workflow([s1, s2, s3])
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf, execution_strategy=_ReverseStrategy()):
+            events.append(event)
+
+        # TEXT_CHUNK events carry the streamed data for s2.
+        text_chunks = [e for e in events if e.event_type == EventType.TEXT_CHUNK]
+        assert len(text_chunks) == 3
+        assert [c.data["text"] for c in text_chunks] == ["A", "B", "C"]
+        assert all(c.step_id == "s2" for c in text_chunks)
+
+        # Strategy executed steps in reverse order: s3, s2, s1.
+        step_start_ids = [e.step_id for e in events if e.event_type == EventType.STEP_START]
+        assert step_start_ids == ["s3", "s2", "s1"]
+
+        # TEXT_CHUNK events appear AFTER all STEP_END events (consumed post-strategy).
+        step_end_indices = [i for i, e in enumerate(events) if e.event_type == EventType.STEP_END]
+        chunk_indices = [i for i, e in enumerate(events) if e.event_type == EventType.TEXT_CHUNK]
+        assert all(ci > max(step_end_indices) for ci in chunk_indices)
+
 
 # ---------------------------------------------------------------------------
 # AC-6 — Strategy injection

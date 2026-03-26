@@ -504,7 +504,7 @@ class WorkflowExecutor:
                             self._execute_step,
                         )
 
-                        # Consume streaming results in declaration order.
+                        # Consume streaming results in execution order.
                         step_map = {s.id: s for s in workflow.steps}
                         for step_id, step_result in context.step_results.items():
                             step_def = step_map.get(step_id)
