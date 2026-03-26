@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from _helpers import make_context, make_provider
 
 from beddel.domain.errors import PrimitiveError
-from beddel.domain.models import ExecutionContext
+from beddel.domain.models import DefaultDependencies, ExecutionContext
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.primitives import register_builtins
 from beddel.primitives.chat import ChatPrimitive
@@ -1261,3 +1262,120 @@ class TestContextReducerDelegation:
         sent_messages = args[1]
         assert len(sent_messages) == 1
         assert sent_messages[0]["role"] == "system"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Tool-use loop integration (Story 4.0f, Task 5)
+# ---------------------------------------------------------------------------
+
+
+class TestChatToolUseLoop:
+    """Tests for tool-use loop wiring in ChatPrimitive.execute()."""
+
+    @staticmethod
+    def _tool_call_response(
+        tool_name: str = "get_weather",
+        arguments: str = '{"city": "London"}',
+        call_id: str = "call_abc",
+    ) -> dict[str, Any]:
+        return {
+            "content": None,
+            "finish_reason": "tool_calls",
+            "tool_calls": [
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {"name": tool_name, "arguments": arguments},
+                }
+            ],
+        }
+
+    @staticmethod
+    def _text_response(content: str = "Final answer") -> dict[str, Any]:
+        return {"content": content, "finish_reason": "stop"}
+
+    @staticmethod
+    def _make_context_with_tools(
+        provider: Any,
+        registry: dict[str, Any] | None = None,
+    ) -> ExecutionContext:
+        if registry is None:
+            registry = {"get_weather": lambda city: f"Sunny in {city}"}
+        deps = DefaultDependencies(llm_provider=provider, tool_registry=registry)
+        return ExecutionContext(workflow_id="test", current_step_id="s1", deps=deps)
+
+    async def test_execute_with_tool_use_loop(self) -> None:
+        """Config has tool_schemas; provider returns tool_calls then text."""
+        provider = make_provider()
+        provider.complete = AsyncMock(
+            side_effect=[
+                self._tool_call_response("get_weather", '{"city": "London"}', "call_1"),
+                self._text_response("It's sunny in London"),
+            ]
+        )
+        ctx = self._make_context_with_tools(provider)
+        config: dict[str, Any] = {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "What's the weather?"}],
+            "tool_schemas": [{"type": "function", "function": {"name": "get_weather"}}],
+        }
+
+        prim = ChatPrimitive()
+        result = await prim.execute(config, ctx)
+
+        assert result["content"] == "It's sunny in London"
+        assert provider.complete.await_count >= 2
+
+    async def test_execute_without_tool_schemas_unchanged(self) -> None:
+        """No tool_schemas in config — existing behaviour, no loop."""
+        provider = make_provider()
+        ctx = make_context(llm_provider=provider)
+        config: dict[str, Any] = {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": "Hi"}],
+        }
+
+        prim = ChatPrimitive()
+        result = await prim.execute(config, ctx)
+
+        provider.complete.assert_awaited_once_with(
+            "gpt-4o",
+            [{"role": "user", "content": "Hi"}],
+        )
+        assert result == {"content": "Hello!"}
+
+    async def test_execute_tool_use_with_context_windowing(self) -> None:
+        """Context windowing applies before the tool-use loop starts.
+
+        Set max_messages=5 with 10 messages. Verify the initial
+        provider.complete call received windowed (trimmed) messages.
+        """
+        provider = make_provider()
+        provider.complete = AsyncMock(
+            side_effect=[
+                self._tool_call_response("get_weather", '{"city": "Paris"}', "call_w"),
+                self._text_response("Rainy in Paris"),
+            ]
+        )
+        ctx = self._make_context_with_tools(provider)
+
+        all_messages = [{"role": "user", "content": f"msg-{i}"} for i in range(10)]
+        config: dict[str, Any] = {
+            "model": "gpt-4o",
+            "messages": all_messages,
+            "max_messages": 5,
+            "tool_schemas": [{"type": "function", "function": {"name": "get_weather"}}],
+        }
+
+        prim = ChatPrimitive()
+        result = await prim.execute(config, ctx)
+
+        assert result["content"] == "Rainy in Paris"
+
+        # The first call to provider.complete should have received windowed messages
+        first_call_args = provider.complete.call_args_list[0]
+        first_messages = first_call_args[0][1]
+        # max_messages=5 trims 10 messages to last 5
+        assert len(first_messages) == 5
+        assert first_messages[0]["content"] == "msg-5"
+        assert first_messages[-1]["content"] == "msg-9"
