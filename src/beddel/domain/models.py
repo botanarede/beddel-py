@@ -404,6 +404,8 @@ class EventType(StrEnum):
         TEXT_CHUNK: Emitted for each streamed text chunk.
         ERROR: Emitted when an error occurs.
         RETRY: Emitted when a step retry is attempted.
+        REFLECTION_START: Emitted when a reflection loop begins.
+        REFLECTION_END: Emitted when a reflection loop completes.
     """
 
     WORKFLOW_START = "workflow_start"
@@ -415,6 +417,9 @@ class EventType(StrEnum):
     TEXT_CHUNK = "text_chunk"
     ERROR = "error"
     RETRY = "retry"
+
+    REFLECTION_START = "reflection_start"
+    REFLECTION_END = "reflection_end"
 
     # --- Reserved for future epics (not yet implemented) ---
     # CHECKPOINT = "checkpoint"    # Epic 5: emitted when execution state is checkpointed

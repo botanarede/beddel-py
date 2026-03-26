@@ -695,9 +695,11 @@ class TestEventTypeEnum:
         assert EventType.TEXT_CHUNK == "text_chunk"
         assert EventType.ERROR == "error"
         assert EventType.RETRY == "retry"
+        assert EventType.REFLECTION_START == "reflection_start"
+        assert EventType.REFLECTION_END == "reflection_end"
 
     def test_member_count(self) -> None:
-        assert len(EventType) == 9
+        assert len(EventType) == 11
 
 
 # ---------------------------------------------------------------------------

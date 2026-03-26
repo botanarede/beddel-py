@@ -197,6 +197,12 @@ EXEC_DELEGATE_INVALID: str = "BEDDEL-EXEC-011"
 EXEC_CONDITION_TYPE_ERROR: str = "BEDDEL-EXEC-012"
 """Condition comparison failed — incompatible types."""
 
+EXEC_REFLECTION_NO_GENERATE: str = "BEDDEL-EXEC-020"
+"""No generate steps found in reflection workflow."""
+
+EXEC_REFLECTION_NO_EVALUATE: str = "BEDDEL-EXEC-021"
+"""No evaluate steps found in reflection workflow."""
+
 # ---------------------------------------------------------------------------
 # Agent codes  (AGENT prefix, 700 range)
 # ---------------------------------------------------------------------------
@@ -322,6 +328,8 @@ ALL_CODES: dict[str, str] = {
     "EXEC_DELEGATE_FAILED": EXEC_DELEGATE_FAILED,
     "EXEC_DELEGATE_INVALID": EXEC_DELEGATE_INVALID,
     "EXEC_CONDITION_TYPE_ERROR": EXEC_CONDITION_TYPE_ERROR,
+    "EXEC_REFLECTION_NO_GENERATE": EXEC_REFLECTION_NO_GENERATE,
+    "EXEC_REFLECTION_NO_EVALUATE": EXEC_REFLECTION_NO_EVALUATE,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

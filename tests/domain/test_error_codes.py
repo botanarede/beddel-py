@@ -245,3 +245,26 @@ class TestToolUseLoopCodes:
         ]
         for code in codes:
             assert pattern.match(code), f"{code!r} does not match BEDDEL-PRIM-3XX"
+
+
+class TestReflectionCodes:
+    """Tests for reflection loop error codes (Story 4.1)."""
+
+    def test_exec_reflection_no_generate_value(self) -> None:
+        """EXEC_REFLECTION_NO_GENERATE maps to BEDDEL-EXEC-020."""
+        assert ALL_CODES["EXEC_REFLECTION_NO_GENERATE"] == "BEDDEL-EXEC-020"
+
+    def test_exec_reflection_no_evaluate_value(self) -> None:
+        """EXEC_REFLECTION_NO_EVALUATE maps to BEDDEL-EXEC-021."""
+        assert ALL_CODES["EXEC_REFLECTION_NO_EVALUATE"] == "BEDDEL-EXEC-021"
+
+    def test_reflection_codes_in_all_codes(self) -> None:
+        """Both reflection codes are registered in ALL_CODES."""
+        assert "EXEC_REFLECTION_NO_GENERATE" in ALL_CODES
+        assert "EXEC_REFLECTION_NO_EVALUATE" in ALL_CODES
+
+    def test_reflection_codes_match_exec_pattern(self) -> None:
+        """Both reflection codes match BEDDEL-EXEC-NNN pattern."""
+        pattern = re.compile(r"^BEDDEL-EXEC-\d{3}$")
+        assert pattern.match(ALL_CODES["EXEC_REFLECTION_NO_GENERATE"])
+        assert pattern.match(ALL_CODES["EXEC_REFLECTION_NO_EVALUATE"])
