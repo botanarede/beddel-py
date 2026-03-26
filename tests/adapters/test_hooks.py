@@ -465,3 +465,40 @@ class TestThreadSafety:
         assert slow.called
         # victim was in the snapshot, so it still received the event
         assert len(victim.calls) == 1
+
+    async def test_no_deadlock_hook_adds_hook_during_dispatch(self) -> None:
+        """Hook calling add_hook during dispatch does not deadlock.
+
+        Validates that the lock is NOT held during hook execution — only
+        during the snapshot copy.  A hook that calls ``manager.add_hook()``
+        inside its callback must be able to acquire the lock without
+        deadlocking.
+        """
+        import asyncio as _asyncio
+
+        late = _RecordingHook()
+
+        class _SelfRegisteringHook(ILifecycleHook):
+            def __init__(self, mgr: LifecycleHookManager, to_add: ILifecycleHook) -> None:
+                self._mgr = mgr
+                self._to_add = to_add
+                self.called = False
+
+            async def on_step_start(self, step_id: str, primitive: str) -> None:
+                self.called = True
+                await self._mgr.add_hook(self._to_add)
+
+        manager = LifecycleHookManager()
+        registering = _SelfRegisteringHook(manager, late)
+        await manager.add_hook(registering)
+
+        # Must complete without deadlock — use wait_for as a safety net
+        await _asyncio.wait_for(manager.on_step_start("s1", "llm"), timeout=2.0)
+        assert registering.called
+        # late was added DURING dispatch, so it missed the in-flight event
+        assert late.calls == []
+
+        # But late hook receives subsequent events
+        await manager.on_step_start("s2", "chat")
+        assert len(late.calls) == 1
+        assert late.calls[0] == ("on_step_start", ("s2", "chat"))
