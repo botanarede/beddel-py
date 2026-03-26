@@ -355,9 +355,10 @@ class WorkflowExecutor:
         lifecycle point instead of collecting results into a dict.
 
         A temporary :class:`ILifecycleHook` is installed to capture events
-        produced by the existing execution internals (``_execute_step``,
-        ``_retry_step``, etc.).  All step events are buffered during strategy
-        execution and yielded in a batch after the strategy completes.
+        produced by the execution internals (``_execute_step``,
+        ``_retry_step``, etc.).  Events are pushed to an
+        :class:`asyncio.Queue` and yielded in real-time as the strategy
+        executes, rather than being batched after completion.
 
         For steps with ``stream=True``, the stored async-generator result
         is consumed and each chunk is yielded as a ``TEXT_CHUNK`` event.
@@ -385,10 +386,10 @@ class WorkflowExecutor:
             :class:`BeddelEvent` instances for workflow start/end, step
             start/end, errors, retries, and text chunks.
         """
-        events: list[BeddelEvent] = []
+        queue: asyncio.Queue[BeddelEvent | None] = asyncio.Queue()
 
         class _Collector(ILifecycleHook):
-            """Internal hook that buffers events for the generator.
+            """Internal hook that pushes events to a queue for real-time streaming.
 
             Note: ``on_decision`` is intentionally not overridden — decision
             events are not surfaced in the SSE stream.  When Gap #19
@@ -396,8 +397,11 @@ class WorkflowExecutor:
             override here to emit a ``DECISION`` BeddelEvent.
             """
 
+            def __init__(self, q: asyncio.Queue[BeddelEvent | None]) -> None:
+                self._queue = q
+
             async def on_workflow_start(self, workflow_id: str, inputs: dict[str, Any]) -> None:
-                events.append(
+                self._queue.put_nowait(
                     BeddelEvent(
                         event_type=EventType.WORKFLOW_START,
                         data={"workflow_id": workflow_id, "inputs": inputs},
@@ -405,7 +409,7 @@ class WorkflowExecutor:
                 )
 
             async def on_workflow_end(self, workflow_id: str, result: dict[str, Any]) -> None:
-                events.append(
+                self._queue.put_nowait(
                     BeddelEvent(
                         event_type=EventType.WORKFLOW_END,
                         data={"workflow_id": workflow_id},
@@ -413,7 +417,7 @@ class WorkflowExecutor:
                 )
 
             async def on_step_start(self, step_id: str, primitive: str) -> None:
-                events.append(
+                self._queue.put_nowait(
                     BeddelEvent(
                         event_type=EventType.STEP_START,
                         step_id=step_id,
@@ -422,7 +426,7 @@ class WorkflowExecutor:
                 )
 
             async def on_step_end(self, step_id: str, result: Any) -> None:
-                events.append(
+                self._queue.put_nowait(
                     BeddelEvent(
                         event_type=EventType.STEP_END,
                         step_id=step_id,
@@ -431,7 +435,7 @@ class WorkflowExecutor:
                 )
 
             async def on_error(self, step_id: str, error: Exception) -> None:
-                events.append(
+                self._queue.put_nowait(
                     BeddelEvent(
                         event_type=EventType.ERROR,
                         step_id=step_id,
@@ -443,7 +447,7 @@ class WorkflowExecutor:
                 )
 
             async def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:
-                events.append(
+                self._queue.put_nowait(
                     BeddelEvent(
                         event_type=EventType.RETRY,
                         step_id=step_id,
@@ -451,7 +455,7 @@ class WorkflowExecutor:
                     )
                 )
 
-        collector = _Collector()
+        collector = _Collector(queue)
         await self._hook_manager.add_hook(collector)
 
         try:
@@ -478,39 +482,69 @@ class WorkflowExecutor:
                         raise
 
             try:
-                await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
-                for event in events:
+
+                async def _run_strategy() -> None:
+                    """Execute the full workflow lifecycle in a background task.
+
+                    Dispatches workflow_start, runs the strategy, consumes
+                    streaming step results, dispatches workflow_end, and
+                    pushes the sentinel to signal completion.
+                    """
+                    try:
+                        await self._dispatch_hook(
+                            "on_workflow_start",
+                            workflow.id,
+                            effective_inputs,
+                        )
+
+                        strategy = context.deps.execution_strategy or SequentialStrategy()
+                        await strategy.execute(
+                            workflow,
+                            context,
+                            self._execute_step,
+                        )
+
+                        # Consume streaming results in declaration order.
+                        step_map = {s.id: s for s in workflow.steps}
+                        for step_id, step_result in context.step_results.items():
+                            step_def = step_map.get(step_id)
+                            if (
+                                step_def
+                                and step_def.stream
+                                and isinstance(step_result, dict)
+                                and "stream" in step_result
+                            ):
+                                async for chunk in step_result["stream"]:
+                                    queue.put_nowait(
+                                        BeddelEvent(
+                                            event_type=EventType.TEXT_CHUNK,
+                                            step_id=step_id,
+                                            data={"text": chunk},
+                                        )
+                                    )
+
+                        result: dict[str, Any] = {
+                            "step_results": dict(context.step_results),
+                            "metadata": dict(context.metadata),
+                        }
+                        await self._dispatch_hook(
+                            "on_workflow_end",
+                            workflow.id,
+                            result,
+                        )
+                    finally:
+                        queue.put_nowait(None)  # Sentinel — always sent
+
+                task = asyncio.create_task(_run_strategy())
+
+                while True:
+                    event = await queue.get()
+                    if event is None:
+                        break
                     yield event
-                events.clear()
 
-                strategy = context.deps.execution_strategy or SequentialStrategy()
-                await strategy.execute(workflow, context, self._execute_step)
-
-                for event in events:
-                    yield event
-                events.clear()
-
-                # Consume streaming results for all steps in declaration order.
-                # Execution order was determined by the strategy above; this loop
-                # only reads already-completed results.
-                for step in workflow.steps:
-                    step_result = context.step_results.get(step.id)
-                    if step.stream and isinstance(step_result, dict) and "stream" in step_result:
-                        async for chunk in step_result["stream"]:
-                            yield BeddelEvent(
-                                event_type=EventType.TEXT_CHUNK,
-                                step_id=step.id,
-                                data={"text": chunk},
-                            )
-
-                result: dict[str, Any] = {
-                    "step_results": dict(context.step_results),
-                    "metadata": dict(context.metadata),
-                }
-                await self._dispatch_hook("on_workflow_end", workflow.id, result)
-                for event in events:
-                    yield event
-                events.clear()
+                # Propagate any strategy execution error.
+                await task
             finally:
                 if tracer is not None and workflow_span is not None:
                     try:

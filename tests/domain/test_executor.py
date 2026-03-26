@@ -1111,6 +1111,49 @@ class TestExecuteStream:
         step_ids = [e.step_id for e in step_start_events]
         assert step_ids == ["s3", "s2", "s1"]
 
+    async def test_execute_stream_realtime_event_ordering(self) -> None:
+        """Events from a 3-step workflow arrive in correct real-time order via queue."""
+        registry, _ = _registry_with_stub(return_value="ok")
+        steps = [_make_step("a"), _make_step("b"), _make_step("c")]
+        wf = _make_workflow(steps)
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf):
+            events.append(event)
+
+        types = [e.event_type for e in events]
+        assert types == [
+            EventType.WORKFLOW_START,
+            EventType.STEP_START,
+            EventType.STEP_END,
+            EventType.STEP_START,
+            EventType.STEP_END,
+            EventType.STEP_START,
+            EventType.STEP_END,
+            EventType.WORKFLOW_END,
+        ]
+        # Verify step ordering matches declaration order.
+        step_ids = [e.step_id for e in events if e.step_id is not None]
+        assert step_ids == ["a", "a", "b", "b", "c", "c"]
+
+    async def test_execute_stream_queue_sentinel_terminates(self) -> None:
+        """Generator terminates cleanly after sentinel; no extra events after WORKFLOW_END."""
+        registry, _ = _registry_with_stub(return_value="done")
+        wf = _make_workflow([_make_step("only")])
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf):
+            events.append(event)
+
+        # Generator must be exhausted — last event is WORKFLOW_END.
+        assert len(events) >= 1
+        assert events[-1].event_type == EventType.WORKFLOW_END
+        # No events after WORKFLOW_END (sentinel terminated the loop).
+        types_after_end = [e.event_type for e in events[events.index(events[-1]) + 1 :]]
+        assert types_after_end == []
+
 
 # ---------------------------------------------------------------------------
 # AC-6 — Strategy injection
