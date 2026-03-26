@@ -133,6 +133,20 @@ class ReflectionStrategy:
                 # exact-match: first iteration previous is None → never converges
                 converged = str(current_eval) == str(previous_eval)
 
+            # Fire on_decision hook
+            hooks = context.deps.lifecycle_hooks
+            if hooks:
+                try:
+                    await hooks.on_decision(
+                        decision="reflection_converged" if converged else "reflection_continue",
+                        alternatives=["converge", "continue"],
+                        rationale=f"Iteration {iteration}/{self._max_iterations}: "
+                        f"{'converged' if converged else 'not converged'} "
+                        f"via {self._algorithm}",
+                    )
+                except Exception:
+                    _log.warning("on_decision hook failed", exc_info=True)
+
             if converged:
                 break
 

@@ -229,3 +229,85 @@ class TestReflectionDefaults:
         assert strategy._max_iterations == 5
         assert strategy._algorithm == "exact-match"
         assert strategy._threshold == 0.9
+
+
+class _RecordingHookManager:
+    """Records on_decision calls. Used as lifecycle_hooks in deps."""
+
+    def __init__(self) -> None:
+        self.decisions: list[tuple[str, list[str], str]] = []
+
+    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+        self.decisions.append((decision, alternatives, rationale))
+
+
+class TestReflectionOnDecision:
+    @pytest.mark.asyncio
+    async def test_reflection_on_decision_fires_each_iteration(self) -> None:
+        """on_decision is called once per iteration with correct args."""
+        from beddel.domain.models import DefaultDependencies
+
+        recorder = _RecordingHookManager()
+        gen = _step("gen", tags=["generate"])
+        ev = _step("ev", tags=["evaluate"])
+        wf = _workflow(gen, ev)
+        ctx = ExecutionContext(
+            workflow_id="wf-test",
+            deps=DefaultDependencies(lifecycle_hooks=recorder),  # type: ignore[arg-type]
+        )
+        # eval returns different values then same → converges on iteration 2
+        runner = _MockStepRunner({"gen": ["x"], "ev": ["val_a", "val_a"]})
+        strategy = ReflectionStrategy({"max_iterations": 5})
+
+        await strategy.execute(wf, ctx, runner)
+
+        assert len(recorder.decisions) == 2
+        # First iteration: previous is None → not converged
+        assert recorder.decisions[0][0] == "reflection_continue"
+        # Second iteration: same eval → converged
+        assert recorder.decisions[1][0] == "reflection_converged"
+        # All calls have correct alternatives
+        for _, alts, _ in recorder.decisions:
+            assert alts == ["converge", "continue"]
+        # Rationale contains iteration number and algorithm
+        assert "1/5" in recorder.decisions[0][2]
+        assert "exact-match" in recorder.decisions[0][2]
+        assert "2/5" in recorder.decisions[1][2]
+
+    @pytest.mark.asyncio
+    async def test_reflection_on_decision_converged_decision(self) -> None:
+        """Final on_decision call has decision='reflection_converged'."""
+        from beddel.domain.models import DefaultDependencies
+
+        recorder = _RecordingHookManager()
+        gen = _step("gen", tags=["generate"])
+        ev = _step("ev", tags=["evaluate"])
+        wf = _workflow(gen, ev)
+        ctx = ExecutionContext(
+            workflow_id="wf-test",
+            deps=DefaultDependencies(lifecycle_hooks=recorder),  # type: ignore[arg-type]
+        )
+        # eval returns same value → converges on iteration 2
+        runner = _MockStepRunner({"gen": ["x"], "ev": ["same"]})
+        strategy = ReflectionStrategy({"max_iterations": 10})
+
+        await strategy.execute(wf, ctx, runner)
+
+        assert recorder.decisions[-1][0] == "reflection_converged"
+
+    @pytest.mark.asyncio
+    async def test_reflection_on_decision_no_hooks(self) -> None:
+        """No error when lifecycle_hooks is None in deps."""
+        gen = _step("gen", tags=["generate"])
+        ev = _step("ev", tags=["evaluate"])
+        wf = _workflow(gen, ev)
+        # Default deps → lifecycle_hooks=None
+        ctx = _context()
+        runner = _MockStepRunner({"gen": ["x"], "ev": ["same"]})
+        strategy = ReflectionStrategy({"max_iterations": 5})
+
+        # Should complete without error
+        await strategy.execute(wf, ctx, runner)
+
+        meta = ctx.metadata["_reflection"]
+        assert meta["converged"] is True
