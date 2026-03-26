@@ -35,6 +35,7 @@ from beddel.domain.ports import (
 from beddel.domain.registry import PrimitiveRegistry, primitive
 from beddel.domain.resolver import VariableResolver
 from beddel.domain.strategies import AgentDelegationStrategy
+from beddel.domain.utils import StepFilter, StepFilterPredicate
 
 __all__ = [
     "AdapterError",
@@ -58,6 +59,8 @@ __all__ = [
     "ResolveError",
     "RetryConfig",
     "Step",
+    "StepFilter",
+    "StepFilterPredicate",
     "StepRunner",
     "StrategyType",
     "VariableResolver",

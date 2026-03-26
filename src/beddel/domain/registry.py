@@ -15,7 +15,7 @@ from typing import Any
 
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.ports import IPrimitive
-from beddel.error_codes import PRIM_INVALID_TYPE, PRIM_NOT_FOUND
+from beddel.error_codes import PRIM_INVALID_TYPE, PRIM_NOT_FOUND, PRIM_UNREGISTER_NOT_FOUND
 
 __all__ = [
     "PrimitiveRegistry",
@@ -76,6 +76,25 @@ class PrimitiveRegistry:
             raise PrimitiveError(
                 PRIM_NOT_FOUND,
                 f"Primitive not found: {name!r}",
+                {"name": name},
+            ) from None
+
+    def unregister(self, name: str) -> None:
+        """Remove a primitive from the registry by name.
+
+        Args:
+            name: The primitive name to remove.
+
+        Raises:
+            PrimitiveError: ``BEDDEL-PRIM-007`` if no primitive is registered
+                under *name*.
+        """
+        try:
+            del self._primitives[name]
+        except KeyError:
+            raise PrimitiveError(
+                PRIM_UNREGISTER_NOT_FOUND,
+                f"Cannot unregister: primitive {name!r} not found",
                 {"name": name},
             ) from None
 

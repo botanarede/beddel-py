@@ -69,6 +69,64 @@ class TestGetUnknown:
         assert exc_info.value.details == {"name": "missing"}
 
 
+class TestUnregister:
+    """Tests for PrimitiveRegistry.unregister()."""
+
+    def test_unregister_removes_primitive(self) -> None:
+        # Arrange
+        registry = PrimitiveRegistry()
+        registry.register("removable", DummyPrimitive())
+
+        # Act
+        registry.unregister("removable")
+
+        # Assert
+        assert registry.has("removable") is False
+
+    def test_unregister_not_found_raises(self) -> None:
+        # Arrange
+        registry = PrimitiveRegistry()
+
+        # Act & Assert
+        with pytest.raises(PrimitiveError) as exc_info:
+            registry.unregister("nonexistent")
+
+        assert exc_info.value.code == "BEDDEL-PRIM-007"
+        assert "nonexistent" in exc_info.value.message
+        assert exc_info.value.details == {"name": "nonexistent"}
+
+    def test_unregister_then_reregister(self) -> None:
+        # Arrange
+        registry = PrimitiveRegistry()
+        first = DummyPrimitive()
+        second = DummyPrimitive()
+        registry.register("reusable", first)
+
+        # Act
+        registry.unregister("reusable")
+        registry.register("reusable", second)
+
+        # Assert
+        assert registry.has("reusable") is True
+        assert registry.get("reusable") is second
+
+    def test_unregister_does_not_affect_other_primitives(self) -> None:
+        # Arrange
+        registry = PrimitiveRegistry()
+        prim_a = DummyPrimitive()
+        prim_b = DummyPrimitive()
+        registry.register("a", prim_a)
+        registry.register("b", prim_b)
+
+        # Act
+        registry.unregister("a")
+
+        # Assert
+        assert registry.has("a") is False
+        assert registry.has("b") is True
+        assert registry.get("b") is prim_b
+
+
 class TestRegisterInvalidPrimitive:
     """Tests for PrimitiveRegistry.register() with non-IPrimitive objects."""
 
