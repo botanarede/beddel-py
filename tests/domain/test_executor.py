@@ -1154,6 +1154,98 @@ class TestExecuteStream:
         types_after_end = [e.event_type for e in events[events.index(events[-1]) + 1 :]]
         assert types_after_end == []
 
+    async def test_execute_stream_delegates_to_custom_strategy(self) -> None:
+        """Custom strategy controls step order; both STEP_START and STEP_END reflect it."""
+
+        class _ReverseStrategy:
+            async def execute(
+                self,
+                workflow: Workflow,
+                context: ExecutionContext,
+                step_runner: Any,
+            ) -> None:
+                for step in reversed(workflow.steps):
+                    await step_runner(step, context)
+
+        registry, _ = _registry_with_stub(return_value="ok")
+        steps = [_make_step("s1"), _make_step("s2"), _make_step("s3")]
+        wf = _make_workflow(steps)
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf, execution_strategy=_ReverseStrategy()):
+            events.append(event)
+
+        step_start_ids = [e.step_id for e in events if e.event_type == EventType.STEP_START]
+        step_end_ids = [e.step_id for e in events if e.event_type == EventType.STEP_END]
+        assert step_start_ids == ["s3", "s2", "s1"]
+        assert step_end_ids == ["s3", "s2", "s1"]
+
+    async def test_execute_stream_uses_deps_strategy(self) -> None:
+        """Deps-injected strategy is used when no parameter is passed."""
+
+        class _ReverseStrategy:
+            async def execute(
+                self,
+                workflow: Workflow,
+                context: ExecutionContext,
+                step_runner: Any,
+            ) -> None:
+                for step in reversed(workflow.steps):
+                    await step_runner(step, context)
+
+        registry, _ = _registry_with_stub(return_value="ok")
+        injected_deps = DefaultDependencies(execution_strategy=_ReverseStrategy())
+        steps = [_make_step("s1"), _make_step("s2"), _make_step("s3")]
+        wf = _make_workflow(steps)
+        executor = WorkflowExecutor(registry, deps=injected_deps, hooks=LifecycleHookManager())
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf):
+            events.append(event)
+
+        step_start_ids = [e.step_id for e in events if e.event_type == EventType.STEP_START]
+        assert step_start_ids == ["s3", "s2", "s1"]
+
+    async def test_execute_stream_parameter_overrides_deps_strategy(self) -> None:
+        """execution_strategy parameter takes precedence over the strategy in deps."""
+
+        class _ReverseStrategy:
+            async def execute(
+                self,
+                workflow: Workflow,
+                context: ExecutionContext,
+                step_runner: Any,
+            ) -> None:
+                for step in reversed(workflow.steps):
+                    await step_runner(step, context)
+
+        class _SkipFirstStrategy:
+            async def execute(
+                self,
+                workflow: Workflow,
+                context: ExecutionContext,
+                step_runner: Any,
+            ) -> None:
+                for step in workflow.steps[1:]:
+                    await step_runner(step, context)
+
+        registry, _ = _registry_with_stub(return_value="ok")
+        injected_deps = DefaultDependencies(execution_strategy=_ReverseStrategy())
+        steps = [_make_step("s1"), _make_step("s2"), _make_step("s3")]
+        wf = _make_workflow(steps)
+        executor = WorkflowExecutor(registry, deps=injected_deps, hooks=LifecycleHookManager())
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf, execution_strategy=_SkipFirstStrategy()):
+            events.append(event)
+
+        step_start_ids = [e.step_id for e in events if e.event_type == EventType.STEP_START]
+        # SkipFirstStrategy skips s1, runs s2 and s3 in declaration order
+        assert step_start_ids == ["s2", "s3"]
+        # Confirm it's NOT the ReverseStrategy (which would give ["s3", "s2", "s1"])
+        assert step_start_ids != ["s3", "s2", "s1"]
+
 
 # ---------------------------------------------------------------------------
 # AC-6 — Strategy injection
