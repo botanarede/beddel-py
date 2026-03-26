@@ -8,6 +8,7 @@ import pytest
 
 from beddel.domain.errors import ExecutionError
 from beddel.domain.models import ExecutionContext, Step, Workflow
+from beddel.domain.ports import IPrimitive
 from beddel.domain.strategies.reflection import ReflectionStrategy
 
 
@@ -239,6 +240,71 @@ class _RecordingHookManager:
 
     async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
         self.decisions.append((decision, alternatives, rationale))
+
+
+class _IntegrationPrimitive(IPrimitive):
+    """Minimal IPrimitive subclass for integration tests."""
+
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    async def execute(self, config: dict[str, Any], context: ExecutionContext) -> str:
+        self.call_count += 1
+        return f"result_{self.call_count}"
+
+
+class TestReflectionIntegration:
+    """Integration tests: WorkflowExecutor + ReflectionStrategy end-to-end."""
+
+    @pytest.mark.asyncio
+    async def test_execute_with_reflection_strategy(self) -> None:
+        """WorkflowExecutor.execute() completes with ReflectionStrategy."""
+        from beddel.domain.executor import WorkflowExecutor
+        from beddel.domain.registry import PrimitiveRegistry
+
+        prim = _IntegrationPrimitive()
+        registry = PrimitiveRegistry()
+        registry.register("llm", prim)
+
+        gen = _step("gen", primitive="llm", tags=["generate"])
+        ev = _step("ev", primitive="llm", tags=["evaluate"])
+        wf = _workflow(gen, ev)
+
+        strategy = ReflectionStrategy({"max_iterations": 3})
+        executor = WorkflowExecutor(registry=registry)
+        result = await executor.execute(wf, execution_strategy=strategy)
+
+        # Executor returns {"step_results": {...}, "metadata": {...}}
+        assert "gen" in result["step_results"]
+        assert "ev" in result["step_results"]
+        assert result["metadata"]["_reflection"]["algorithm"] == "exact-match"
+        assert result["metadata"]["_reflection"]["iterations"] <= 3
+
+    @pytest.mark.asyncio
+    async def test_execute_stream_with_reflection_strategy(self) -> None:
+        """WorkflowExecutor.execute_stream() yields events with ReflectionStrategy."""
+        from beddel.adapters.hooks import LifecycleHookManager
+        from beddel.domain.executor import WorkflowExecutor
+        from beddel.domain.models import BeddelEvent
+        from beddel.domain.registry import PrimitiveRegistry
+
+        prim = _IntegrationPrimitive()
+        registry = PrimitiveRegistry()
+        registry.register("llm", prim)
+
+        gen = _step("gen", primitive="llm", tags=["generate"])
+        ev = _step("ev", primitive="llm", tags=["evaluate"])
+        wf = _workflow(gen, ev)
+
+        strategy = ReflectionStrategy({"max_iterations": 2})
+        executor = WorkflowExecutor(registry=registry, hooks=LifecycleHookManager())
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf, execution_strategy=strategy):
+            events.append(event)
+
+        event_types = [e.event_type.value for e in events]
+        assert "workflow_start" in event_types
+        assert "workflow_end" in event_types
 
 
 class TestReflectionOnDecision:
