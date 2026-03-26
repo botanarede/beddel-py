@@ -147,6 +147,15 @@ PRIM_TOOL_TIMEOUT: str = "BEDDEL-PRIM-303"
 PRIM_TOOL_NOT_ALLOWED: str = "BEDDEL-PRIM-304"
 """Tool not in workflow allowed_tools list."""
 
+PRIM_TOOL_USE_MAX_ITERATIONS: str = "BEDDEL-PRIM-410"
+"""Function calling loop exceeded max iterations."""
+
+PRIM_TOOL_USE_NOT_FOUND: str = "BEDDEL-PRIM-411"
+"""Tool requested by LLM not found in tool_registry."""
+
+PRIM_TOOL_USE_EXEC_FAILED: str = "BEDDEL-PRIM-412"
+"""Tool invocation within function calling loop failed."""
+
 # ---------------------------------------------------------------------------
 # Adapter codes  (ADAPT prefix, 400 range)
 # ---------------------------------------------------------------------------
@@ -281,6 +290,9 @@ ALL_CODES: dict[str, str] = {
     "PRIM_TOOL_MISSING_CONFIG": PRIM_TOOL_MISSING_CONFIG,
     "PRIM_TOOL_TIMEOUT": PRIM_TOOL_TIMEOUT,
     "PRIM_TOOL_NOT_ALLOWED": PRIM_TOOL_NOT_ALLOWED,
+    "PRIM_TOOL_USE_MAX_ITERATIONS": PRIM_TOOL_USE_MAX_ITERATIONS,
+    "PRIM_TOOL_USE_NOT_FOUND": PRIM_TOOL_USE_NOT_FOUND,
+    "PRIM_TOOL_USE_EXEC_FAILED": PRIM_TOOL_USE_EXEC_FAILED,
     # Adapter
     "ADAPT_AUTH_FAILURE": ADAPT_AUTH_FAILURE,
     "ADAPT_PROVIDER_ERROR": ADAPT_PROVIDER_ERROR,

@@ -206,3 +206,42 @@ class TestPrimInvalidMessageCode:
     def test_prim_invalid_message_code_value(self) -> None:
         """PRIM_INVALID_MESSAGE maps to BEDDEL-PRIM-006."""
         assert ALL_CODES["PRIM_INVALID_MESSAGE"] == "BEDDEL-PRIM-006"
+
+
+class TestToolUseLoopCodes:
+    """Tool-use loop error codes (Story 4.0f) are registered correctly."""
+
+    def test_tool_use_max_iterations_value(self) -> None:
+        """PRIM_TOOL_USE_MAX_ITERATIONS maps to BEDDEL-PRIM-410."""
+        assert ALL_CODES["PRIM_TOOL_USE_MAX_ITERATIONS"] == "BEDDEL-PRIM-410"
+
+    def test_tool_use_not_found_value(self) -> None:
+        """PRIM_TOOL_USE_NOT_FOUND maps to BEDDEL-PRIM-411."""
+        assert ALL_CODES["PRIM_TOOL_USE_NOT_FOUND"] == "BEDDEL-PRIM-411"
+
+    def test_tool_use_exec_failed_value(self) -> None:
+        """PRIM_TOOL_USE_EXEC_FAILED maps to BEDDEL-PRIM-412."""
+        assert ALL_CODES["PRIM_TOOL_USE_EXEC_FAILED"] == "BEDDEL-PRIM-412"
+
+    def test_all_tool_use_codes_in_all_codes(self) -> None:
+        """All 3 tool-use loop codes are registered in ALL_CODES."""
+        keys = [
+            "PRIM_TOOL_USE_MAX_ITERATIONS",
+            "PRIM_TOOL_USE_NOT_FOUND",
+            "PRIM_TOOL_USE_EXEC_FAILED",
+        ]
+        for key in keys:
+            assert key in ALL_CODES, f"{key} missing from ALL_CODES"
+
+    def test_tool_use_codes_match_prim_4xx_pattern(self) -> None:
+        """All tool-use codes match BEDDEL-PRIM-4XX pattern."""
+        import re
+
+        pattern = re.compile(r"^BEDDEL-PRIM-4\d{2}$")
+        codes = [
+            ALL_CODES["PRIM_TOOL_USE_MAX_ITERATIONS"],
+            ALL_CODES["PRIM_TOOL_USE_NOT_FOUND"],
+            ALL_CODES["PRIM_TOOL_USE_EXEC_FAILED"],
+        ]
+        for code in codes:
+            assert pattern.match(code), f"{code!r} does not match BEDDEL-PRIM-4XX"
