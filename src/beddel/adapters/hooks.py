@@ -46,6 +46,7 @@ class LifecycleHookManager(IHookManager):
 
     def __init__(self, hooks: list[ILifecycleHook] | None = None) -> None:
         self._hooks: list[ILifecycleHook] = list(hooks) if hooks else []
+        self._lock = asyncio.Lock()
 
     async def add_hook(self, hook: ILifecycleHook) -> None:
         """Register a new hook handler.
@@ -53,7 +54,8 @@ class LifecycleHookManager(IHookManager):
         Args:
             hook: The lifecycle hook handler to add.
         """
-        self._hooks.append(hook)
+        async with self._lock:
+            self._hooks.append(hook)
 
     async def remove_hook(self, hook: ILifecycleHook) -> None:
         """Unregister a hook handler.
@@ -63,8 +65,9 @@ class LifecycleHookManager(IHookManager):
         Args:
             hook: The lifecycle hook handler to remove.
         """
-        with contextlib.suppress(ValueError):
-            self._hooks.remove(hook)
+        async with self._lock:
+            with contextlib.suppress(ValueError):
+                self._hooks.remove(hook)
 
     async def on_workflow_start(self, workflow_id: str, inputs: dict[str, Any]) -> None:
         """Dispatch workflow-start event to all registered hooks.

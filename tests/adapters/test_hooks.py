@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from beddel.adapters.hooks import LifecycleHookManager
@@ -377,3 +378,26 @@ class TestAllEventMethods:
         assert hook.calls == [
             ("on_decision", ("use-gpt4", ["use-claude", "use-llama"], "best quality"))
         ]
+
+
+# ---------------------------------------------------------------------------
+# Tests: Thread-safety / concurrent hook registration (Story 4.0h, Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestThreadSafety:
+    """Thread-safety tests for concurrent hook registration (Story 4.0h)."""
+
+    async def test_concurrent_add_hook_no_lost_hooks(self) -> None:
+        """asyncio.gather adding 50 hooks concurrently loses no appends."""
+        manager = LifecycleHookManager()
+        hooks = [_RecordingHook() for _ in range(50)]
+        await asyncio.gather(*(manager.add_hook(h) for h in hooks))
+        assert len(manager._hooks) == 50
+
+    async def test_concurrent_remove_hook_no_errors(self) -> None:
+        """asyncio.gather removing 50 hooks concurrently raises no errors."""
+        hooks = [_RecordingHook() for _ in range(50)]
+        manager = LifecycleHookManager(hooks)
+        await asyncio.gather(*(manager.remove_hook(h) for h in hooks))
+        assert len(manager._hooks) == 0
