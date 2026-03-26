@@ -530,3 +530,74 @@ class TestErrorWrappingStream:
                 pass
 
         assert exc_info.value.code == "BEDDEL-ADAPT-002"
+
+
+# ---------------------------------------------------------------------------
+# Tests: Tool calls passthrough (Story 4.0f, Task 2)
+# ---------------------------------------------------------------------------
+
+
+def _make_completion_response_with_tool_calls() -> MagicMock:
+    """Build a mock litellm response with tool_calls on the message."""
+    response = _make_completion_response(finish_reason="tool_calls")
+    tc1 = MagicMock()
+    tc1.id = "call_abc123"
+    tc1.type = "function"
+    tc1.function.name = "get_weather"
+    tc1.function.arguments = '{"city": "London"}'
+    response.choices[0].message.tool_calls = [tc1]
+    return response
+
+
+class TestToolCallsPassthrough:
+    """Tests for tool_calls passthrough in LiteLLMAdapter.complete()."""
+
+    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    async def test_complete_with_tool_calls(self, mock_acompletion: AsyncMock) -> None:
+        """Verify tool_calls are included in the response dict when present."""
+        # Arrange
+        mock_acompletion.return_value = _make_completion_response_with_tool_calls()
+        adapter = LiteLLMAdapter()
+
+        # Act
+        result = await adapter.complete(_MODEL, _MESSAGES)
+
+        # Assert
+        assert "tool_calls" in result
+        assert len(result["tool_calls"]) == 1
+        tc = result["tool_calls"][0]
+        assert tc["id"] == "call_abc123"
+        assert tc["type"] == "function"
+        assert tc["function"]["name"] == "get_weather"
+        assert tc["function"]["arguments"] == '{"city": "London"}'
+        assert result["finish_reason"] == "tool_calls"
+
+    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    async def test_complete_without_tool_calls(self, mock_acompletion: AsyncMock) -> None:
+        """Verify tool_calls key is absent when message.tool_calls is None."""
+        # Arrange
+        response = _make_completion_response()
+        response.choices[0].message.tool_calls = None
+        mock_acompletion.return_value = response
+        adapter = LiteLLMAdapter()
+
+        # Act
+        result = await adapter.complete(_MODEL, _MESSAGES)
+
+        # Assert
+        assert "tool_calls" not in result
+
+    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    async def test_complete_forwards_tools_kwarg(self, mock_acompletion: AsyncMock) -> None:
+        """Verify tools kwarg is forwarded to litellm.acompletion via **kwargs."""
+        # Arrange
+        mock_acompletion.return_value = _make_completion_response()
+        adapter = LiteLLMAdapter()
+        tools = [{"type": "function", "function": {"name": "test"}}]
+
+        # Act
+        await adapter.complete(_MODEL, _MESSAGES, tools=tools)
+
+        # Assert
+        call_kwargs = mock_acompletion.call_args.kwargs
+        assert call_kwargs["tools"] == tools

@@ -169,7 +169,7 @@ class LiteLLMAdapter(ILLMProvider):
 
         choice = response.choices[0]  # type: ignore[union-attr]
         usage = response.usage  # type: ignore[union-attr]
-        return {
+        result: dict[str, Any] = {
             "content": choice.message.content,
             "model": response.model,  # type: ignore[union-attr]
             "usage": {
@@ -179,6 +179,19 @@ class LiteLLMAdapter(ILLMProvider):
             },
             "finish_reason": choice.finish_reason,
         }
+        if choice.message.tool_calls:
+            result["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": tc.type,
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in choice.message.tool_calls
+            ]
+        return result
 
     async def stream(
         self,
