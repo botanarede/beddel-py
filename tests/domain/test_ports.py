@@ -228,3 +228,57 @@ class TestIHookManagerExports:
         from beddel import domain
 
         assert "IContextReducer" in domain.__all__
+
+
+class TestICircuitBreaker:
+    """Tests for the ICircuitBreaker Protocol interface."""
+
+    def test_has_record_failure_method(self) -> None:
+        """ICircuitBreaker defines a record_failure method."""
+        from beddel.domain.ports import ICircuitBreaker
+
+        assert hasattr(ICircuitBreaker, "record_failure")
+
+    def test_has_record_success_method(self) -> None:
+        """ICircuitBreaker defines a record_success method."""
+        from beddel.domain.ports import ICircuitBreaker
+
+        assert hasattr(ICircuitBreaker, "record_success")
+
+    def test_has_is_open_method(self) -> None:
+        """ICircuitBreaker defines an is_open method."""
+        from beddel.domain.ports import ICircuitBreaker
+
+        assert hasattr(ICircuitBreaker, "is_open")
+
+    def test_has_state_method(self) -> None:
+        """ICircuitBreaker defines a state method."""
+        from beddel.domain.ports import ICircuitBreaker
+
+        assert hasattr(ICircuitBreaker, "state")
+
+    def test_in_ports_all(self) -> None:
+        """ICircuitBreaker is in ports.py __all__."""
+        from beddel.domain import ports
+
+        assert "ICircuitBreaker" in ports.__all__
+
+    def test_importable_from_domain(self) -> None:
+        """ICircuitBreaker is importable from beddel.domain."""
+        from beddel.domain import ICircuitBreaker
+        from beddel.domain.ports import ICircuitBreaker as PortsICircuitBreaker
+
+        assert ICircuitBreaker is PortsICircuitBreaker
+
+    def test_in_domain_all(self) -> None:
+        """ICircuitBreaker is in domain __all__."""
+        from beddel import domain
+
+        assert "ICircuitBreaker" in domain.__all__
+
+    def test_execution_dependencies_has_circuit_breaker(self) -> None:
+        """ExecutionDependencies Protocol defines circuit_breaker property."""
+        from beddel.domain.ports import ExecutionDependencies
+
+        hints = ExecutionDependencies.__protocol_attrs__
+        assert "circuit_breaker" in hints

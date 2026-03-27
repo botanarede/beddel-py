@@ -43,6 +43,7 @@ from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.resolver import VariableResolver
 from beddel.domain.tracing_utils import extract_token_usage
 from beddel.error_codes import (
+    CB_CIRCUIT_OPEN,
     EXEC_CONDITION_TYPE_ERROR,
     EXEC_DELEGATE_FAILED,
     EXEC_DELEGATE_INVALID,
@@ -93,6 +94,16 @@ def _parse_literal(value: str) -> int | float | bool | str:
     except ValueError:
         pass
     return value
+
+
+def _extract_provider(model: str) -> str:
+    """Extract provider name from model identifier.
+
+    ``'openai/gpt-4o'`` → ``'openai'``, ``'gpt-4o'`` → ``'gpt-4o'``.
+    """
+    if "/" in model:
+        return model.split("/", 1)[0]
+    return model
 
 
 class SequentialStrategy:
@@ -245,6 +256,8 @@ class WorkflowExecutor:
                 tool_registry=self._deps.tool_registry,
                 agent_adapter=self._deps.agent_adapter,
                 agent_registry=self._deps.agent_registry,
+                context_reducer=self._deps.context_reducer,
+                circuit_breaker=self._deps.circuit_breaker,
             )
         return DefaultDependencies(
             llm_provider=self._provider,
@@ -605,6 +618,20 @@ class WorkflowExecutor:
         context.current_step_id = step.id
         await self._dispatch_hook("on_step_start", step.id, step.primitive)
 
+        # --- Circuit breaker check (LLM primitives only) ---
+        cb = context.deps.circuit_breaker
+        _cb_provider: str = ""
+        _cb_active = cb is not None and step.primitive in ("llm", "chat")
+        if _cb_active:
+            assert cb is not None  # narrowing for mypy
+            _cb_provider = _extract_provider(step.config.get("model", ""))
+            if _cb_provider and cb.is_open(_cb_provider):
+                raise ExecutionError(
+                    CB_CIRCUIT_OPEN,
+                    f"Circuit breaker open for provider: {_cb_provider}",
+                    details={"provider": _cb_provider, "state": cb.state(_cb_provider)},
+                )
+
         tracer = context.deps.tracer
         step_span: Any = None
         if tracer is not None:
@@ -639,8 +666,39 @@ class WorkflowExecutor:
                 result = await self._run_with_timeout(step, context)
 
             await self._dispatch_hook("on_step_end", step.id, result)
+            # --- Circuit breaker: record success ---
+            if _cb_active and _cb_provider:
+                assert cb is not None
+                state_before = cb.state(_cb_provider)
+                cb.record_success(_cb_provider)
+                state_after = cb.state(_cb_provider)
+                if state_before == "half-open" and state_after == "closed":
+                    await self._dispatch_hook(
+                        "on_step_end",
+                        step.id,
+                        BeddelEvent(
+                            event_type=EventType.CIRCUIT_CLOSE,
+                            data={"provider": _cb_provider, "state": state_after},
+                        ),
+                    )
             return result
         except Exception as exc:
+            # --- Circuit breaker: record failure ---
+            if _cb_active and _cb_provider:
+                assert cb is not None
+                state_before = cb.state(_cb_provider)
+                cb.record_failure(_cb_provider)
+                state_after = cb.state(_cb_provider)
+                if state_before != "open" and state_after == "open":
+                    await self._dispatch_hook(
+                        "on_step_end",
+                        step.id,
+                        BeddelEvent(
+                            event_type=EventType.CIRCUIT_OPEN,
+                            data={"provider": _cb_provider, "state": state_after},
+                        ),
+                    )
+
             if tracer is not None and step_span is not None:
                 try:
                     tracer.end_span(

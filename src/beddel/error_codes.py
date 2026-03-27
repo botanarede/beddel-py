@@ -16,7 +16,8 @@ Range       Prefix    Domain
 500 – 599   EXEC      Workflow execution
 600 – 699   RESOLVE   Variable resolution
 700 – 799   AGENT     Agent adapter errors
-800 – 899   CODEX     Codex integration errors (planned)
+800 – 849   CB        Circuit breaker errors
+850 – 899   CODEX     Codex integration errors (planned)
 ==========  ========  ===========
 """
 
@@ -46,6 +47,9 @@ RESOLVE_RANGE: tuple[int, int] = (600, 699)
 
 AGENT_RANGE: tuple[int, int] = (700, 799)
 """Agent adapter errors."""
+
+CB_RANGE: tuple[int, int] = (500, 549)
+"""Circuit breaker errors."""
 
 CODEX_RANGE: tuple[int, int] = (800, 899)
 """Codex integration errors (planned — Epic 4.1A)."""
@@ -213,6 +217,19 @@ EXEC_PARALLEL_COLLECT_FAILED: str = "BEDDEL-EXEC-031"
 """Parallel group execution failed (collect-all — multiple errors)."""
 
 # ---------------------------------------------------------------------------
+# Circuit Breaker codes  (CB prefix, 500 range)
+# ---------------------------------------------------------------------------
+
+CB_CIRCUIT_OPEN: str = "BEDDEL-CB-500"
+"""Circuit breaker is open for the target provider."""
+
+CB_FALLBACK_FAILED: str = "BEDDEL-CB-501"
+"""Fallback provider also failed while circuit was open."""
+
+CB_RECOVERY_PROBE_FAILED: str = "BEDDEL-CB-502"
+"""Half-open recovery probe failed, circuit remains open."""
+
+# ---------------------------------------------------------------------------
 # Agent codes  (AGENT prefix, 700 range)
 # ---------------------------------------------------------------------------
 
@@ -342,6 +359,10 @@ ALL_CODES: dict[str, str] = {
     "EXEC_REFLECTION_THRESHOLD_TYPE": EXEC_REFLECTION_THRESHOLD_TYPE,
     "EXEC_PARALLEL_GROUP_FAILED": EXEC_PARALLEL_GROUP_FAILED,
     "EXEC_PARALLEL_COLLECT_FAILED": EXEC_PARALLEL_COLLECT_FAILED,
+    # Circuit Breaker
+    "CB_CIRCUIT_OPEN": CB_CIRCUIT_OPEN,
+    "CB_FALLBACK_FAILED": CB_FALLBACK_FAILED,
+    "CB_RECOVERY_PROBE_FAILED": CB_RECOVERY_PROBE_FAILED,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

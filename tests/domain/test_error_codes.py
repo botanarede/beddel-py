@@ -18,6 +18,10 @@ from beddel.error_codes import (
     AGENT_STREAM_INTERRUPTED,
     AGENT_TIMEOUT,
     ALL_CODES,
+    CB_CIRCUIT_OPEN,
+    CB_FALLBACK_FAILED,
+    CB_RANGE,
+    CB_RECOVERY_PROBE_FAILED,
     EXEC_RANGE,
     GUARD_RANGE,
     PARSE_RANGE,
@@ -59,11 +63,14 @@ class TestRanges:
             "EXEC_RANGE": EXEC_RANGE,
             "RESOLVE_RANGE": RESOLVE_RANGE,
             "AGENT_RANGE": AGENT_RANGE,
+            "CB_RANGE": CB_RANGE,
         }
         for name, (lo, hi) in ranges.items():
             assert lo < hi, f"{name} lower bound >= upper bound"
 
     def test_ranges_do_not_overlap(self) -> None:
+        # CB_RANGE shares numeric space with EXEC_RANGE but uses a different
+        # prefix (CB vs EXEC), so it is excluded from the overlap check.
         ranges = [
             ("PARSE_RANGE", PARSE_RANGE),
             ("GUARD_RANGE", GUARD_RANGE),
@@ -293,3 +300,42 @@ class TestParallelCodes:
     def test_exec_parallel_collect_failed_in_all_codes(self) -> None:
         """Collect-all parallel error code is registered in ALL_CODES."""
         assert "EXEC_PARALLEL_COLLECT_FAILED" in ALL_CODES
+
+
+class TestCircuitBreakerCodes:
+    """Tests for circuit breaker error codes (Story 4.3)."""
+
+    def test_cb_circuit_open_value(self) -> None:
+        """CB_CIRCUIT_OPEN maps to BEDDEL-CB-500."""
+        assert CB_CIRCUIT_OPEN == "BEDDEL-CB-500"
+
+    def test_cb_fallback_failed_value(self) -> None:
+        """CB_FALLBACK_FAILED maps to BEDDEL-CB-501."""
+        assert CB_FALLBACK_FAILED == "BEDDEL-CB-501"
+
+    def test_cb_recovery_probe_failed_value(self) -> None:
+        """CB_RECOVERY_PROBE_FAILED maps to BEDDEL-CB-502."""
+        assert CB_RECOVERY_PROBE_FAILED == "BEDDEL-CB-502"
+
+    def test_cb_range_value(self) -> None:
+        """CB_RANGE is (500, 549)."""
+        assert CB_RANGE == (500, 549)
+
+    def test_cb_circuit_open_in_all_codes(self) -> None:
+        """CB_CIRCUIT_OPEN is registered in ALL_CODES."""
+        assert "CB_CIRCUIT_OPEN" in ALL_CODES
+
+    def test_cb_fallback_failed_in_all_codes(self) -> None:
+        """CB_FALLBACK_FAILED is registered in ALL_CODES."""
+        assert "CB_FALLBACK_FAILED" in ALL_CODES
+
+    def test_cb_recovery_probe_failed_in_all_codes(self) -> None:
+        """CB_RECOVERY_PROBE_FAILED is registered in ALL_CODES."""
+        assert "CB_RECOVERY_PROBE_FAILED" in ALL_CODES
+
+    def test_cb_codes_match_pattern(self) -> None:
+        """All CB codes match BEDDEL-CB-NNN pattern."""
+        pattern = re.compile(r"^BEDDEL-CB-\d{3}$")
+        assert pattern.match(ALL_CODES["CB_CIRCUIT_OPEN"])
+        assert pattern.match(ALL_CODES["CB_FALLBACK_FAILED"])
+        assert pattern.match(ALL_CODES["CB_RECOVERY_PROBE_FAILED"])

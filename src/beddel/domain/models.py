@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from beddel.domain.ports import (
         IAgentAdapter,
+        ICircuitBreaker,
         IContextReducer,
         IExecutionStrategy,
         IHookManager,
@@ -33,6 +34,8 @@ from pydantic import BaseModel, ConfigDict, Field
 __all__ = [
     "AgentResult",
     "BeddelEvent",
+    "CircuitBreakerConfig",
+    "CircuitState",
     "DefaultDependencies",
     "ErrorSemantics",
     "EventType",
@@ -165,6 +168,36 @@ class ParallelConfig(BaseModel):
     isolate_context: bool = False
 
 
+class CircuitState(StrEnum):
+    """State of a circuit breaker protecting a provider.
+
+    - ``CLOSED``: Normal operation — requests flow through.
+    - ``OPEN``: Circuit tripped — requests are short-circuited to fallback.
+    - ``HALF_OPEN``: Recovery probe in progress — a single request is allowed through.
+    """
+
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half-open"
+
+
+class CircuitBreakerConfig(BaseModel):
+    """Configuration for the per-provider circuit breaker.
+
+    Controls when the circuit opens after consecutive failures and how
+    recovery is attempted.
+
+    Attributes:
+        failure_threshold: Number of consecutive failures before the circuit opens.
+        recovery_window: Seconds to wait in the open state before attempting a probe.
+        success_threshold: Consecutive successes in half-open state to close the circuit.
+    """
+
+    failure_threshold: int = 5
+    recovery_window: float = 60.0
+    success_threshold: int = 2
+
+
 class ExecutionStrategy(BaseModel):
     """Strategy applied when a step encounters an error.
 
@@ -249,6 +282,8 @@ class DefaultDependencies:
             or ``None`` if not provided.  Defaults to ``None``.
         context_reducer: The context reducer for chat primitives,
             or ``None`` for FIFO fallback.  Defaults to ``None``.
+        circuit_breaker: The circuit breaker for provider fault tolerance,
+            or ``None`` if not configured.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -263,6 +298,7 @@ class DefaultDependencies:
         "_agent_adapter",
         "_agent_registry",
         "_context_reducer",
+        "_circuit_breaker",
     )
 
     def __init__(
@@ -278,6 +314,7 @@ class DefaultDependencies:
         agent_adapter: IAgentAdapter | None = None,
         agent_registry: dict[str, IAgentAdapter] | None = None,
         context_reducer: IContextReducer | None = None,
+        circuit_breaker: ICircuitBreaker | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -290,6 +327,7 @@ class DefaultDependencies:
         self._agent_adapter = agent_adapter
         self._agent_registry = agent_registry
         self._context_reducer = context_reducer
+        self._circuit_breaker = circuit_breaker
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -345,6 +383,11 @@ class DefaultDependencies:
     def context_reducer(self) -> IContextReducer | None:
         """The context reducer for chat primitives, or ``None`` for FIFO fallback."""
         return self._context_reducer
+
+    @property
+    def circuit_breaker(self) -> ICircuitBreaker | None:
+        """The circuit breaker for provider fault tolerance, or ``None`` if not configured."""
+        return self._circuit_breaker
 
 
 _log = logging.getLogger(__name__)
@@ -457,6 +500,9 @@ class EventType(StrEnum):
 
     PARALLEL_START = "parallel_start"
     PARALLEL_END = "parallel_end"
+
+    CIRCUIT_OPEN = "circuit_open"
+    CIRCUIT_CLOSE = "circuit_close"
 
     # --- Reserved for future epics (not yet implemented) ---
     # CHECKPOINT = "checkpoint"    # Epic 5: emitted when execution state is checkpointed

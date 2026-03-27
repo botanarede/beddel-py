@@ -9,6 +9,8 @@ from pydantic import ValidationError
 
 from beddel.domain.models import (
     BeddelEvent,
+    CircuitBreakerConfig,
+    CircuitState,
     ErrorSemantics,
     EventType,
     ExecutionContext,
@@ -701,9 +703,11 @@ class TestEventTypeEnum:
         assert EventType.REFLECTION_END == "reflection_end"
         assert EventType.PARALLEL_START == "parallel_start"
         assert EventType.PARALLEL_END == "parallel_end"
+        assert EventType.CIRCUIT_OPEN == "circuit_open"
+        assert EventType.CIRCUIT_CLOSE == "circuit_close"
 
     def test_member_count(self) -> None:
-        assert len(EventType) == 13
+        assert len(EventType) == 15
 
 
 # ---------------------------------------------------------------------------
@@ -814,6 +818,8 @@ class TestAllExports:
         expected = {
             "AgentResult",
             "BeddelEvent",
+            "CircuitBreakerConfig",
+            "CircuitState",
             "DefaultDependencies",
             "ErrorSemantics",
             "EventType",
@@ -829,3 +835,114 @@ class TestAllExports:
             "Workflow",
         }
         assert set(models.__all__) == expected
+
+
+# ---------------------------------------------------------------------------
+# CircuitState & CircuitBreakerConfig (Story 4.3)
+# ---------------------------------------------------------------------------
+
+
+class TestCircuitStateEnum:
+    """Tests for the CircuitState string enum."""
+
+    def test_closed_value(self) -> None:
+        """CLOSED maps to 'closed'."""
+        assert CircuitState.CLOSED == "closed"
+
+    def test_open_value(self) -> None:
+        """OPEN maps to 'open'."""
+        assert CircuitState.OPEN == "open"
+
+    def test_half_open_value(self) -> None:
+        """HALF_OPEN maps to 'half-open'."""
+        assert CircuitState.HALF_OPEN == "half-open"
+
+    def test_member_count(self) -> None:
+        """CircuitState has exactly 3 members."""
+        assert len(CircuitState) == 3
+
+
+class TestCircuitBreakerConfig:
+    """Tests for the CircuitBreakerConfig Pydantic model."""
+
+    def test_defaults(self) -> None:
+        """CircuitBreakerConfig() uses prescribed defaults."""
+        cfg = CircuitBreakerConfig()
+
+        assert cfg.failure_threshold == 5
+        assert cfg.recovery_window == 60.0
+        assert cfg.success_threshold == 2
+
+    def test_custom_values(self) -> None:
+        """CircuitBreakerConfig accepts custom values for all fields."""
+        cfg = CircuitBreakerConfig(
+            failure_threshold=10,
+            recovery_window=120.0,
+            success_threshold=3,
+        )
+
+        assert cfg.failure_threshold == 10
+        assert cfg.recovery_window == 120.0
+        assert cfg.success_threshold == 3
+
+
+class TestCircuitEventTypes:
+    """Tests for circuit breaker EventType members."""
+
+    def test_circuit_open_value(self) -> None:
+        """EventType.CIRCUIT_OPEN maps to 'circuit_open'."""
+        assert EventType.CIRCUIT_OPEN == "circuit_open"
+
+    def test_circuit_close_value(self) -> None:
+        """EventType.CIRCUIT_CLOSE maps to 'circuit_close'."""
+        assert EventType.CIRCUIT_CLOSE == "circuit_close"
+
+
+# ---------------------------------------------------------------------------
+# DefaultDependencies — circuit_breaker (Story 4.3, Task 2)
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultDependenciesCircuitBreaker:
+    """Tests for DefaultDependencies.circuit_breaker property."""
+
+    def test_circuit_breaker_defaults_to_none(self) -> None:
+        """DefaultDependencies().circuit_breaker is None by default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+        assert deps.circuit_breaker is None
+
+    def test_circuit_breaker_stores_and_returns_instance(self) -> None:
+        """DefaultDependencies(circuit_breaker=mock) stores and returns it."""
+        from unittest.mock import MagicMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_cb = MagicMock()
+        mock_cb.record_failure = MagicMock()
+        mock_cb.record_success = MagicMock()
+        mock_cb.is_open = MagicMock(return_value=False)
+        mock_cb.state = MagicMock(return_value="closed")
+        deps = DefaultDependencies(circuit_breaker=mock_cb)
+        assert deps.circuit_breaker is mock_cb
+
+    def test_circuit_breaker_explicit_none(self) -> None:
+        """Passing circuit_breaker=None explicitly is same as default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies(circuit_breaker=None)
+        assert deps.circuit_breaker is None
+
+    def test_circuit_breaker_does_not_affect_other_properties(self) -> None:
+        """Setting circuit_breaker leaves other deps at their defaults."""
+        from unittest.mock import MagicMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies(circuit_breaker=MagicMock())
+        assert deps.llm_provider is None
+        assert deps.lifecycle_hooks is None
+        assert deps.tracer is None
+        assert deps.agent_adapter is None
+        assert deps.context_reducer is None

@@ -35,6 +35,7 @@ __all__ = [
     "SpanT",
     "ExecutionDependencies",
     "IAgentAdapter",
+    "ICircuitBreaker",
     "IContextReducer",
     "IExecutionStrategy",
     "IHookManager",
@@ -115,6 +116,11 @@ class ExecutionDependencies(Protocol):
     @property
     def context_reducer(self) -> IContextReducer | None:
         """The context reducer for chat primitives, or ``None`` for FIFO fallback."""
+        ...
+
+    @property
+    def circuit_breaker(self) -> ICircuitBreaker | None:
+        """The circuit breaker for provider fault tolerance, or ``None`` if not configured."""
         ...
 
 
@@ -519,6 +525,72 @@ class IContextReducer(Protocol):
 
         Returns:
             A reduced message list that fits within ``token_budget``.
+        """
+        ...
+
+
+class ICircuitBreaker(Protocol):
+    """Contract for per-provider circuit breaker implementations.
+
+    Tracks failure/success rates per provider and controls whether
+    requests should be short-circuited to a fallback.  The circuit
+    transitions through three states: CLOSED → OPEN → HALF_OPEN → CLOSED.
+
+    Implementations MUST be thread-safe — the circuit breaker may be
+    shared across concurrent async tasks.
+
+    [Source: docs/architecture/6-port-interfaces.md §6.10]
+    """
+
+    def record_failure(self, provider: str) -> None:
+        """Record a failed request for the given provider.
+
+        Increments the failure counter.  When the failure threshold is
+        reached, the circuit transitions to OPEN.
+
+        Args:
+            provider: Identifier of the provider that failed.
+        """
+        ...
+
+    def record_success(self, provider: str) -> None:
+        """Record a successful request for the given provider.
+
+        Resets the failure counter.  In HALF_OPEN state, increments the
+        success counter and transitions to CLOSED when the success
+        threshold is reached.
+
+        Args:
+            provider: Identifier of the provider that succeeded.
+        """
+        ...
+
+    def is_open(self, provider: str) -> bool:
+        """Check whether the circuit is open for the given provider.
+
+        Returns ``True`` when requests should be short-circuited (OPEN
+        state within the recovery window).  Returns ``False`` for CLOSED,
+        HALF_OPEN, or OPEN-past-recovery-window (which transitions to
+        HALF_OPEN).
+
+        Args:
+            provider: Identifier of the provider to check.
+
+        Returns:
+            ``True`` if the circuit is open and requests should be blocked.
+        """
+        ...
+
+    def state(self, provider: str) -> str:
+        """Return the current circuit state for the given provider.
+
+        Unknown providers return ``"closed"`` (default state).
+
+        Args:
+            provider: Identifier of the provider to query.
+
+        Returns:
+            One of ``"closed"``, ``"open"``, or ``"half-open"``.
         """
         ...
 

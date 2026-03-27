@@ -2238,3 +2238,149 @@ class TestDepsParameterInjection:
         assert ctx.deps.agent_registry is mock_agent_registry
         # Sanity: stream produced events
         assert len(events) > 0
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker integration (Story 4.3, Task 4)
+# ---------------------------------------------------------------------------
+
+
+class TestCircuitBreakerIntegration:
+    """Circuit breaker checks in execute_step_with_context."""
+
+    async def test_circuit_breaker_blocks_open_provider(self) -> None:
+        """Open circuit raises ExecutionError with BEDDEL-CB-500."""
+        registry, _ = _registry_with_stub(prim_name="llm", return_value="ok")
+        cb = MagicMock()
+        cb.is_open.return_value = True
+        cb.state.return_value = "open"
+
+        deps = DefaultDependencies(circuit_breaker=cb)
+        executor = WorkflowExecutor(registry, deps=deps)
+
+        step = _make_step("s1", primitive="llm", config={"model": "openai/gpt-4o"})
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.deps = deps
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await executor.execute_step_with_context(step, ctx)
+
+        assert exc_info.value.code == "BEDDEL-CB-500"
+        assert exc_info.value.details["provider"] == "openai"
+        cb.is_open.assert_called_once_with("openai")
+
+    async def test_circuit_breaker_allows_closed_provider(self) -> None:
+        """Closed circuit allows step to execute normally."""
+        registry, mock = _registry_with_stub(prim_name="llm", return_value="llm-result")
+        cb = MagicMock()
+        cb.is_open.return_value = False
+        cb.state.return_value = "closed"
+
+        deps = DefaultDependencies(circuit_breaker=cb)
+        executor = WorkflowExecutor(registry, deps=deps)
+
+        step = _make_step("s1", primitive="llm", config={"model": "openai/gpt-4o"})
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.deps = deps
+
+        result = await executor.execute_step_with_context(step, ctx)
+
+        assert result == "llm-result"
+        cb.is_open.assert_called_once_with("openai")
+        cb.record_success.assert_called_once_with("openai")
+
+    async def test_circuit_breaker_records_success(self) -> None:
+        """record_success called with provider name after successful LLM step."""
+        registry, _ = _registry_with_stub(prim_name="chat", return_value="chat-ok")
+        cb = MagicMock()
+        cb.is_open.return_value = False
+        cb.state.return_value = "closed"
+
+        deps = DefaultDependencies(circuit_breaker=cb)
+        executor = WorkflowExecutor(registry, deps=deps)
+
+        step = _make_step("s1", primitive="chat", config={"model": "anthropic/claude-3-opus"})
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.deps = deps
+
+        await executor.execute_step_with_context(step, ctx)
+
+        cb.record_success.assert_called_once_with("anthropic")
+
+    async def test_circuit_breaker_records_failure(self) -> None:
+        """record_failure called with provider name when LLM step raises."""
+        registry, _ = _registry_with_stub(
+            prim_name="llm", side_effect=RuntimeError("provider down")
+        )
+        cb = MagicMock()
+        cb.is_open.return_value = False
+        cb.state.return_value = "closed"
+
+        deps = DefaultDependencies(circuit_breaker=cb)
+        executor = WorkflowExecutor(registry, deps=deps)
+
+        step = _make_step("s1", primitive="llm", config={"model": "openai/gpt-4o"})
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.deps = deps
+
+        with pytest.raises(ExecutionError):
+            await executor.execute_step_with_context(step, ctx)
+
+        cb.record_failure.assert_called_once_with("openai")
+
+    async def test_circuit_breaker_not_checked_for_non_llm_steps(self) -> None:
+        """Circuit breaker methods NOT called for non-LLM primitives."""
+        registry, _ = _registry_with_stub(prim_name="output-generator", return_value="output")
+        cb = MagicMock()
+
+        deps = DefaultDependencies(circuit_breaker=cb)
+        executor = WorkflowExecutor(registry, deps=deps)
+
+        step = _make_step("s1", primitive="output-generator", config={})
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.deps = deps
+
+        result = await executor.execute_step_with_context(step, ctx)
+
+        assert result == "output"
+        cb.is_open.assert_not_called()
+        cb.record_success.assert_not_called()
+        cb.record_failure.assert_not_called()
+
+    async def test_no_circuit_breaker_configured(self) -> None:
+        """No circuit breaker in deps — step executes normally (backward compat)."""
+        registry, _ = _registry_with_stub(prim_name="llm", return_value="ok")
+        deps = DefaultDependencies()
+        executor = WorkflowExecutor(registry, deps=deps)
+
+        step = _make_step("s1", primitive="llm", config={"model": "openai/gpt-4o"})
+        ctx = ExecutionContext(workflow_id="wf-1", inputs={})
+        ctx.deps = deps
+
+        result = await executor.execute_step_with_context(step, ctx)
+
+        assert result == "ok"
+
+
+class TestExtractProvider:
+    """Unit tests for _extract_provider helper."""
+
+    def test_slash_separated(self) -> None:
+        from beddel.domain.executor import _extract_provider
+
+        assert _extract_provider("openai/gpt-4o") == "openai"
+
+    def test_no_slash(self) -> None:
+        from beddel.domain.executor import _extract_provider
+
+        assert _extract_provider("gpt-4o") == "gpt-4o"
+
+    def test_anthropic_model(self) -> None:
+        from beddel.domain.executor import _extract_provider
+
+        assert _extract_provider("anthropic/claude-3-opus") == "anthropic"
+
+    def test_empty_string(self) -> None:
+        from beddel.domain.executor import _extract_provider
+
+        assert _extract_provider("") == ""

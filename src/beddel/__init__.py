@@ -21,6 +21,7 @@ from beddel.domain.models import AgentResult, DefaultDependencies, Interruptible
 from beddel.domain.ports import (
     ExecutionDependencies,
     IAgentAdapter,
+    ICircuitBreaker,
     IExecutionStrategy,
     ILifecycleHook,
     ITracer,
@@ -79,6 +80,7 @@ __all__ = [
     "ExecutionDependencies",
     "ExecutionError",
     "IAgentAdapter",
+    "ICircuitBreaker",
     "IExecutionStrategy",
     "ILifecycleHook",
     "ITracer",
