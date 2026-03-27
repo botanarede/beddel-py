@@ -10,6 +10,7 @@ from beddel.domain.errors import (
     AdapterError,
     AgentError,
     BeddelError,
+    DurableError,
     ExecutionError,
     ParseError,
     PrimitiveError,
@@ -38,6 +39,7 @@ from beddel.domain.strategies import (
 from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
+    from beddel.adapters.event_store import SQLiteEventStore as SQLiteEventStore
     from beddel.adapters.hooks import LifecycleHookManager as LifecycleHookManager
     from beddel.adapters.kiro_cli import KiroCLIAgentAdapter as KiroCLIAgentAdapter
     from beddel.integrations.fastapi import (
@@ -53,6 +55,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
     "KiroCLIAgentAdapter": ("beddel.adapters.kiro_cli", "KiroCLIAgentAdapter"),
     "LifecycleHookManager": ("beddel.adapters.hooks", "LifecycleHookManager"),
+    "SQLiteEventStore": ("beddel.adapters.event_store", "SQLiteEventStore"),
     "create_beddel_handler": (
         "beddel.integrations.fastapi",
         "create_beddel_handler",
@@ -82,6 +85,7 @@ __all__ = [
     "BeddelError",
     "BeddelSSEAdapter",
     "DefaultDependencies",
+    "DurableError",
     "DurableExecutionStrategy",
     "ExecutionDependencies",
     "ExecutionError",
@@ -101,6 +105,7 @@ __all__ = [
     "ResolveError",
     "SequentialStrategy",
     "SpanT",
+    "SQLiteEventStore",
     "StepRunner",
     "TracingError",
     "create_beddel_handler",

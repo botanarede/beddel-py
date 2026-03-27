@@ -475,6 +475,7 @@ class InterruptibleContext:
             "metadata": safe_metadata,
             "current_step_id": getattr(self, "current_step_id", None),
             "suspended": self.suspended,
+            "event_store_position": getattr(self, "metadata", {}).get("_event_store_position", 0),
         }
 
     def restore(self, data: dict[str, Any]) -> None:
@@ -485,6 +486,8 @@ class InterruptibleContext:
         self.metadata = data.get("metadata", {})  # type: ignore[attr-defined]
         self.current_step_id = data.get("current_step_id")  # type: ignore[attr-defined]
         self.suspended = data.get("suspended", False)
+        if "event_store_position" in data:
+            self.metadata["_event_store_position"] = data["event_store_position"]  # type: ignore[attr-defined]
 
 
 class ExecutionContext(InterruptibleContext, BaseModel):

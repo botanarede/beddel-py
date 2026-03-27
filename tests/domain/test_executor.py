@@ -1454,7 +1454,7 @@ class TestInterruptibleContext:
         assert restored.step_results == original.step_results
         assert restored.current_step_id == original.current_step_id
         assert restored.suspended == original.suspended
-        assert restored.metadata == {"run_id": "abc123"}
+        assert restored.metadata == {"run_id": "abc123", "_event_store_position": 0}
 
     async def test_suspended_stops_execution_early(self) -> None:
         """Setting suspended=True mid-run causes the executor to skip remaining steps."""
@@ -1507,7 +1507,7 @@ class TestInterruptibleContext:
         assert new_ctx.step_results == {"s1": "r1", "s2": "r2"}
         assert new_ctx.current_step_id == "s2"
         assert new_ctx.suspended is True
-        assert new_ctx.metadata == {"run_id": "abc123"}
+        assert new_ctx.metadata == {"run_id": "abc123", "_event_store_position": 0}
 
     async def test_suspended_default_is_false(self) -> None:
         """A fresh ExecutionContext has suspended=False by default."""

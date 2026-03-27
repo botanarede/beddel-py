@@ -1090,3 +1090,37 @@ class TestDefaultDependenciesEventStore:
 
         deps = DefaultDependencies(event_store=None)
         assert deps.event_store is None
+
+
+# ---------------------------------------------------------------------------
+# InterruptibleContext — event_store_position (Story 4.6b, Task 4)
+# ---------------------------------------------------------------------------
+
+
+class TestInterruptibleContextEventStorePosition:
+    """Tests for event_store_position in serialize/restore."""
+
+    def test_serialize_includes_event_store_position(self) -> None:
+        """serialize() includes event_store_position from metadata."""
+        ctx = ExecutionContext(workflow_id="wf-pos")
+        ctx.metadata["_event_store_position"] = 3
+
+        data = ctx.serialize()
+
+        assert data["event_store_position"] == 3
+
+    def test_serialize_event_store_position_default_zero(self) -> None:
+        """serialize() defaults event_store_position to 0 when not set."""
+        ctx = ExecutionContext(workflow_id="wf-pos-default")
+
+        data = ctx.serialize()
+
+        assert data["event_store_position"] == 0
+
+    def test_restore_reads_event_store_position(self) -> None:
+        """restore() reads event_store_position into metadata."""
+        ctx = ExecutionContext(workflow_id="wf-restore")
+
+        ctx.restore({"event_store_position": 5, "workflow_id": "wf-restore"})
+
+        assert ctx.metadata["_event_store_position"] == 5

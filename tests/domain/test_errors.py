@@ -8,6 +8,7 @@ from beddel.domain.errors import (
     AdapterError,
     AgentError,
     BeddelError,
+    DurableError,
     ExecutionError,
     ParseError,
     PrimitiveError,
@@ -24,6 +25,7 @@ _SUBCLASSES: list[tuple[type[BeddelError], str]] = [
     (AdapterError, "BEDDEL-ADAPT-001"),
     (TracingError, "BEDDEL-ADAPT-010"),
     (AgentError, "BEDDEL-AGENT-700"),
+    (DurableError, "BEDDEL-DURABLE-900"),
 ]
 
 
@@ -118,6 +120,7 @@ class TestAllExports:
             "AdapterError",
             "TracingError",
             "AgentError",
+            "DurableError",
         }
         assert set(errors.__all__) == expected
 
@@ -197,3 +200,56 @@ class TestAgentError:
         err = AgentError("BEDDEL-AGENT-703", "agent stream interrupted")
 
         assert str(err) == "BEDDEL-AGENT-703: agent stream interrupted"
+
+
+class TestDurableError:
+    """Tests for DurableError subclass."""
+
+    def test_inherits_from_beddel_error(self) -> None:
+        err = DurableError("BEDDEL-DURABLE-900", "write failed")
+
+        assert isinstance(err, BeddelError)
+
+    def test_constructor_with_code_and_message(self) -> None:
+        err = DurableError("BEDDEL-DURABLE-901", "read failed")
+
+        assert err.code == "BEDDEL-DURABLE-901"
+        assert err.message == "read failed"
+
+    def test_details_defaults_to_empty_dict(self) -> None:
+        err = DurableError("BEDDEL-DURABLE-900", "write failed")
+
+        assert err.details == {}
+
+    def test_details_preserved(self) -> None:
+        details = {"workflow_id": "wf-1", "step_id": "s-1"}
+        err = DurableError("BEDDEL-DURABLE-902", "corrupt data", details)
+
+        assert err.details == {"workflow_id": "wf-1", "step_id": "s-1"}
+
+    def test_str_representation(self) -> None:
+        err = DurableError("BEDDEL-DURABLE-900", "event store write failed")
+
+        assert str(err) == "BEDDEL-DURABLE-900: event store write failed"
+
+
+class TestDurableErrorCodes:
+    """Tests that durable error codes exist in ALL_CODES."""
+
+    def test_durable_write_failed_in_all_codes(self) -> None:
+        from beddel import error_codes
+
+        assert "DURABLE_WRITE_FAILED" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["DURABLE_WRITE_FAILED"] == "BEDDEL-DURABLE-900"
+
+    def test_durable_read_failed_in_all_codes(self) -> None:
+        from beddel import error_codes
+
+        assert "DURABLE_READ_FAILED" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["DURABLE_READ_FAILED"] == "BEDDEL-DURABLE-901"
+
+    def test_durable_corrupt_data_in_all_codes(self) -> None:
+        from beddel import error_codes
+
+        assert "DURABLE_CORRUPT_DATA" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["DURABLE_CORRUPT_DATA"] == "BEDDEL-DURABLE-902"

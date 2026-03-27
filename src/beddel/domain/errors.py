@@ -15,6 +15,7 @@ Prefix             Domain
 ``BEDDEL-PRIM-``   Primitive execution
 ``BEDDEL-ADAPT-``  Adapter errors
 ``BEDDEL-AGENT-``  Agent adapter errors
+``BEDDEL-DURABLE-``  Durable execution errors
 =================  ============================
 """
 
@@ -31,6 +32,7 @@ __all__ = [
     "AdapterError",
     "AgentError",
     "TracingError",
+    "DurableError",
 ]
 
 
@@ -167,3 +169,7 @@ class AgentError(BeddelError):
         - ``BEDDEL-AGENT-702``: Agent execution timeout
         - ``BEDDEL-AGENT-703``: Agent stream interrupted
     """
+
+
+class DurableError(BeddelError):
+    """Durable execution errors. Error code prefix: BEDDEL-DURABLE-"""

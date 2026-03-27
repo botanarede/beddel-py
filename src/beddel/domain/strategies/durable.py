@@ -76,10 +76,18 @@ class DurableExecutionStrategy:
                 return ctx.step_results[step.id]
 
             result = await step_runner(step, ctx)
+            idempotency_key = f"{ctx.workflow_id}:{step.id}:0"
             await self._event_store.append(
                 ctx.workflow_id,
                 step.id,
-                {"result": ctx.step_results.get(step.id), "timestamp": time.time()},
+                {
+                    "result": ctx.step_results.get(step.id),
+                    "timestamp": time.time(),
+                    "idempotency_key": idempotency_key,
+                },
+            )
+            ctx.metadata["_event_store_position"] = (
+                ctx.metadata.get("_event_store_position", 0) + 1
             )
             return result
 

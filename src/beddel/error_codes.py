@@ -18,6 +18,7 @@ Range       Prefix    Domain
 700 – 799   AGENT     Agent adapter errors
 800 – 849   CB        Circuit breaker errors
 850 – 899   CODEX     Codex integration errors (planned)
+900 – 949   DURABLE   Durable execution errors
 ==========  ========  ===========
 """
 
@@ -53,6 +54,9 @@ CB_RANGE: tuple[int, int] = (500, 549)
 
 CODEX_RANGE: tuple[int, int] = (800, 899)
 """Codex integration errors (planned — Epic 4.1A)."""
+
+DURABLE_RANGE: tuple[int, int] = (900, 949)
+"""Durable execution errors."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -286,6 +290,19 @@ CODEX_INVALID_JSONL: str = "BEDDEL-CODEX-805"
 """Malformed or unexpected event type in JSONL output."""
 
 # ---------------------------------------------------------------------------
+# Durable execution codes  (DURABLE prefix, 900 range)
+# ---------------------------------------------------------------------------
+
+DURABLE_WRITE_FAILED: str = "BEDDEL-DURABLE-900"
+"""Event store write failed."""
+
+DURABLE_READ_FAILED: str = "BEDDEL-DURABLE-901"
+"""Event store read failed."""
+
+DURABLE_CORRUPT_DATA: str = "BEDDEL-DURABLE-902"
+"""Event store corrupt data."""
+
+# ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
 
@@ -371,6 +388,10 @@ ALL_CODES: dict[str, str] = {
     "CB_CIRCUIT_OPEN": CB_CIRCUIT_OPEN,
     "CB_FALLBACK_FAILED": CB_FALLBACK_FAILED,
     "CB_RECOVERY_PROBE_FAILED": CB_RECOVERY_PROBE_FAILED,
+    # Durable execution
+    "DURABLE_WRITE_FAILED": DURABLE_WRITE_FAILED,
+    "DURABLE_READ_FAILED": DURABLE_READ_FAILED,
+    "DURABLE_CORRUPT_DATA": DURABLE_CORRUPT_DATA,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

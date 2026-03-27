@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -262,3 +263,48 @@ class TestSuspendedContext:
         # step_2 should not have executed because context was suspended
         assert "step_1" in ctx.step_results
         assert "step_2" not in ctx.step_results
+
+
+class TestIdempotencyKey:
+    """Tests for idempotency key generation in DurableExecutionStrategy."""
+
+    @pytest.mark.asyncio
+    async def test_idempotency_key_in_event(self) -> None:
+        """Appended event contains idempotency_key with format {workflow_id}:{step_id}:0."""
+        mock_store = AsyncMock()
+        mock_store.load = AsyncMock(return_value=[])
+        mock_strategy = _make_mock_strategy()
+        step_runner = AsyncMock(side_effect=lambda step, ctx: _set_result(ctx, step.id, "ok"))
+
+        wf = _workflow(_step("step_1"))
+        ctx = _context(workflow_id="wf-abc")
+
+        durable = DurableExecutionStrategy(wrapped=mock_strategy, event_store=mock_store)
+        await durable.execute(wf, ctx, step_runner)
+
+        mock_store.append.assert_called_once()
+        call_args = mock_store.append.call_args
+        event_dict = call_args[0][2]
+        assert "idempotency_key" in event_dict
+        assert event_dict["idempotency_key"] == "wf-abc:step_1:0"
+
+    @pytest.mark.asyncio
+    async def test_idempotency_key_format(self) -> None:
+        """Key format matches {workflow_id}:{step_id}:{attempt} pattern."""
+        mock_store = AsyncMock()
+        mock_store.load = AsyncMock(return_value=[])
+        mock_strategy = _make_mock_strategy()
+        step_runner = AsyncMock(side_effect=lambda step, ctx: _set_result(ctx, step.id, "val"))
+
+        wf = _workflow(_step("s1"), _step("s2"))
+        ctx = _context(workflow_id="wf-123")
+
+        durable = DurableExecutionStrategy(wrapped=mock_strategy, event_store=mock_store)
+        await durable.execute(wf, ctx, step_runner)
+
+        assert mock_store.append.call_count == 2
+        pattern = re.compile(r"^.+:.+:\d+$")
+        for call in mock_store.append.call_args_list:
+            event_dict = call[0][2]
+            key = event_dict["idempotency_key"]
+            assert pattern.match(key), f"Key {key!r} does not match pattern"
