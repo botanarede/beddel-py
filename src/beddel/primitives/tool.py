@@ -27,9 +27,11 @@ from beddel.error_codes import (
 )
 
 try:
-    from beddel.adapters.mcp.schema_validator import validate_tool_arguments
+    from beddel.adapters.mcp.schema_validator import (
+        validate_tool_arguments as _validate_tool_arguments,
+    )
 except ImportError:
-    validate_tool_arguments = None  # type: ignore[assignment]
+    _validate_tool_arguments = None  # type: ignore[assignment]
 
 __all__ = [
     "ToolPrimitive",
@@ -190,7 +192,7 @@ class ToolPrimitive(IPrimitive):
         # fetch the tool's inputSchema via list_tools() (cached per-server)
         # and validate arguments before calling the tool.
         if config.get("validate_schema"):
-            if validate_tool_arguments is None:
+            if _validate_tool_arguments is None:
                 raise PrimitiveError(
                     code=PRIM_TOOL_EXEC_FAILED,
                     message=(
@@ -203,7 +205,7 @@ class ToolPrimitive(IPrimitive):
                         "step_id": context.current_step_id,
                     },
                 )
-            cache = context.metadata.setdefault("_mcp_tool_schemas", {})
+            cache = context.metadata.setdefault("beddel._mcp_tool_schemas", {})
             if mcp_server not in cache:
                 tools = await client.list_tools()
                 cache[mcp_server] = {t["name"]: t["inputSchema"] for t in tools}
@@ -221,7 +223,7 @@ class ToolPrimitive(IPrimitive):
                         "step_id": context.current_step_id,
                     },
                 )
-            validate_tool_arguments(arguments, tool_schema)
+            _validate_tool_arguments(arguments, tool_schema)
 
         context.metadata["_tool_context"] = {
             "tool_name": tool_name,
