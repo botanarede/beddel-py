@@ -209,6 +209,9 @@ EXEC_REFLECTION_THRESHOLD_TYPE: str = "BEDDEL-EXEC-022"
 EXEC_PARALLEL_GROUP_FAILED: str = "BEDDEL-EXEC-030"
 """Parallel group execution failed."""
 
+EXEC_PARALLEL_COLLECT_FAILED: str = "BEDDEL-EXEC-031"
+"""Parallel group execution failed (collect-all — multiple errors)."""
+
 # ---------------------------------------------------------------------------
 # Agent codes  (AGENT prefix, 700 range)
 # ---------------------------------------------------------------------------
@@ -338,6 +341,7 @@ ALL_CODES: dict[str, str] = {
     "EXEC_REFLECTION_NO_EVALUATE": EXEC_REFLECTION_NO_EVALUATE,
     "EXEC_REFLECTION_THRESHOLD_TYPE": EXEC_REFLECTION_THRESHOLD_TYPE,
     "EXEC_PARALLEL_GROUP_FAILED": EXEC_PARALLEL_GROUP_FAILED,
+    "EXEC_PARALLEL_COLLECT_FAILED": EXEC_PARALLEL_COLLECT_FAILED,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

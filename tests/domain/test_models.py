@@ -9,9 +9,11 @@ from pydantic import ValidationError
 
 from beddel.domain.models import (
     BeddelEvent,
+    ErrorSemantics,
     EventType,
     ExecutionContext,
     ExecutionStrategy,
+    ParallelConfig,
     RetryConfig,
     Step,
     StrategyType,
@@ -705,6 +707,51 @@ class TestEventTypeEnum:
 
 
 # ---------------------------------------------------------------------------
+# ErrorSemantics & ParallelConfig (Story 4.2b)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorSemanticsEnum:
+    """Tests for the ErrorSemantics string enum."""
+
+    def test_fail_fast_value(self) -> None:
+        """FAIL_FAST maps to 'fail-fast'."""
+        assert ErrorSemantics.FAIL_FAST == "fail-fast"
+
+    def test_collect_all_value(self) -> None:
+        """COLLECT_ALL maps to 'collect-all'."""
+        assert ErrorSemantics.COLLECT_ALL == "collect-all"
+
+    def test_member_count(self) -> None:
+        """ErrorSemantics has exactly 2 members."""
+        assert len(ErrorSemantics) == 2
+
+
+class TestParallelConfig:
+    """Tests for the ParallelConfig Pydantic model."""
+
+    def test_defaults(self) -> None:
+        """ParallelConfig() uses prescribed defaults."""
+        cfg = ParallelConfig()
+
+        assert cfg.concurrency_limit == 5
+        assert cfg.error_semantics == ErrorSemantics.FAIL_FAST
+        assert cfg.isolate_context is False
+
+    def test_custom_values(self) -> None:
+        """ParallelConfig accepts custom values for all fields."""
+        cfg = ParallelConfig(
+            concurrency_limit=10,
+            error_semantics=ErrorSemantics.COLLECT_ALL,
+            isolate_context=True,
+        )
+
+        assert cfg.concurrency_limit == 10
+        assert cfg.error_semantics == ErrorSemantics.COLLECT_ALL
+        assert cfg.isolate_context is True
+
+
+# ---------------------------------------------------------------------------
 # Validation errors
 # ---------------------------------------------------------------------------
 
@@ -768,10 +815,12 @@ class TestAllExports:
             "AgentResult",
             "BeddelEvent",
             "DefaultDependencies",
+            "ErrorSemantics",
             "EventType",
             "ExecutionContext",
             "ExecutionStrategy",
             "InterruptibleContext",
+            "ParallelConfig",
             "RetryConfig",
             "SKIPPED",
             "Step",

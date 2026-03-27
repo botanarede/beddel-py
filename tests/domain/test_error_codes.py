@@ -271,7 +271,7 @@ class TestReflectionCodes:
 
 
 class TestParallelCodes:
-    """Tests for parallel execution error codes (Story 4.2a)."""
+    """Tests for parallel execution error codes (Story 4.2a/4.2b)."""
 
     def test_exec_parallel_group_failed_value(self) -> None:
         """EXEC_PARALLEL_GROUP_FAILED maps to BEDDEL-EXEC-030."""
@@ -285,3 +285,11 @@ class TestParallelCodes:
         """Parallel code matches BEDDEL-EXEC-NNN pattern."""
         pattern = re.compile(r"^BEDDEL-EXEC-\d{3}$")
         assert pattern.match(ALL_CODES["EXEC_PARALLEL_GROUP_FAILED"])
+
+    def test_exec_parallel_collect_failed_value(self) -> None:
+        """EXEC_PARALLEL_COLLECT_FAILED maps to BEDDEL-EXEC-031."""
+        assert ALL_CODES["EXEC_PARALLEL_COLLECT_FAILED"] == "BEDDEL-EXEC-031"
+
+    def test_exec_parallel_collect_failed_in_all_codes(self) -> None:
+        """Collect-all parallel error code is registered in ALL_CODES."""
+        assert "EXEC_PARALLEL_COLLECT_FAILED" in ALL_CODES

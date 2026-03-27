@@ -34,10 +34,12 @@ __all__ = [
     "AgentResult",
     "BeddelEvent",
     "DefaultDependencies",
+    "ErrorSemantics",
     "EventType",
     "ExecutionContext",
     "ExecutionStrategy",
     "InterruptibleContext",
+    "ParallelConfig",
     "RetryConfig",
     "SKIPPED",
     "Step",
@@ -131,6 +133,36 @@ class RetryConfig(BaseModel):
     backoff_base: float = 2.0
     backoff_max: float = 60.0
     jitter: bool = True
+
+
+class ErrorSemantics(StrEnum):
+    """Error handling semantics for parallel step groups.
+
+    Controls how errors are propagated when multiple steps run concurrently:
+
+    - ``FAIL_FAST``: Abort remaining branches on first failure (default).
+    - ``COLLECT_ALL``: Run all branches to completion, then aggregate errors.
+    """
+
+    FAIL_FAST = "fail-fast"
+    COLLECT_ALL = "collect-all"
+
+
+class ParallelConfig(BaseModel):
+    """Configuration for parallel step execution.
+
+    Controls concurrency limits, error propagation semantics, and context
+    isolation for steps running in a parallel group.
+
+    Attributes:
+        concurrency_limit: Maximum number of branches executing concurrently.
+        error_semantics: How errors are propagated across parallel branches.
+        isolate_context: Whether each branch receives an isolated context copy.
+    """
+
+    concurrency_limit: int = 5
+    error_semantics: ErrorSemantics = ErrorSemantics.FAIL_FAST
+    isolate_context: bool = False
 
 
 class ExecutionStrategy(BaseModel):
