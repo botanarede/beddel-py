@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "AgentResult",
+    "BackoffType",
     "BeddelEvent",
     "CircuitBreakerConfig",
     "CircuitState",
@@ -41,6 +42,7 @@ __all__ = [
     "EventType",
     "ExecutionContext",
     "ExecutionStrategy",
+    "GoalConfig",
     "InterruptibleContext",
     "ParallelConfig",
     "RetryConfig",
@@ -196,6 +198,43 @@ class CircuitBreakerConfig(BaseModel):
     failure_threshold: int = 5
     recovery_window: float = 60.0
     success_threshold: int = 2
+
+
+class BackoffType(StrEnum):
+    """Backoff strategy for goal-oriented execution loops.
+
+    Controls the delay between goal attempts:
+
+    - ``FIXED``: Constant delay equal to ``backoff_base``.
+    - ``EXPONENTIAL``: Doubling delay capped at ``backoff_max``.
+    - ``ADAPTIVE``: Delay proportional to iteration progress.
+    """
+
+    FIXED = "fixed"
+    EXPONENTIAL = "exponential"
+    ADAPTIVE = "adaptive"
+
+
+class GoalConfig(BaseModel):
+    """Configuration for goal-oriented execution loops.
+
+    Defines the goal condition, attempt limits, and backoff behaviour
+    for :class:`GoalOrientedStrategy`.
+
+    Attributes:
+        goal_condition: Expression evaluated after each iteration to
+            determine whether the goal has been met.
+        max_attempts: Maximum number of loop iterations before failure.
+        backoff_type: Backoff strategy between attempts.
+        backoff_base: Base delay in seconds for backoff calculation.
+        backoff_max: Upper bound for the backoff delay in seconds.
+    """
+
+    goal_condition: str
+    max_attempts: int = 10
+    backoff_type: BackoffType = BackoffType.EXPONENTIAL
+    backoff_base: float = 1.0
+    backoff_max: float = 30.0
 
 
 class ExecutionStrategy(BaseModel):
@@ -503,6 +542,8 @@ class EventType(StrEnum):
 
     CIRCUIT_OPEN = "circuit_open"
     CIRCUIT_CLOSE = "circuit_close"
+
+    GOAL_ATTEMPT = "goal_attempt"
 
     # --- Reserved for future epics (not yet implemented) ---
     # CHECKPOINT = "checkpoint"    # Epic 5: emitted when execution state is checkpointed

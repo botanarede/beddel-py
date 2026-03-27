@@ -22,6 +22,8 @@ from beddel.error_codes import (
     CB_FALLBACK_FAILED,
     CB_RANGE,
     CB_RECOVERY_PROBE_FAILED,
+    EXEC_GOAL_CONDITION_FAILED,
+    EXEC_GOAL_MAX_ATTEMPTS,
     EXEC_RANGE,
     GUARD_RANGE,
     PARSE_RANGE,
@@ -339,3 +341,26 @@ class TestCircuitBreakerCodes:
         assert pattern.match(ALL_CODES["CB_CIRCUIT_OPEN"])
         assert pattern.match(ALL_CODES["CB_FALLBACK_FAILED"])
         assert pattern.match(ALL_CODES["CB_RECOVERY_PROBE_FAILED"])
+
+
+class TestGoalOrientedCodes:
+    """Tests for goal-oriented execution error codes (Story 4.5)."""
+
+    def test_exec_goal_max_attempts_value(self) -> None:
+        """EXEC_GOAL_MAX_ATTEMPTS maps to BEDDEL-EXEC-040."""
+        assert EXEC_GOAL_MAX_ATTEMPTS == "BEDDEL-EXEC-040"
+
+    def test_exec_goal_condition_failed_value(self) -> None:
+        """EXEC_GOAL_CONDITION_FAILED maps to BEDDEL-EXEC-041."""
+        assert EXEC_GOAL_CONDITION_FAILED == "BEDDEL-EXEC-041"
+
+    def test_goal_codes_in_all_codes(self) -> None:
+        """Both goal error codes are registered in ALL_CODES."""
+        assert "EXEC_GOAL_MAX_ATTEMPTS" in ALL_CODES
+        assert "EXEC_GOAL_CONDITION_FAILED" in ALL_CODES
+
+    def test_goal_codes_match_exec_pattern(self) -> None:
+        """Both goal codes match BEDDEL-EXEC-NNN pattern."""
+        pattern = re.compile(r"^BEDDEL-EXEC-\d{3}$")
+        assert pattern.match(ALL_CODES["EXEC_GOAL_MAX_ATTEMPTS"])
+        assert pattern.match(ALL_CODES["EXEC_GOAL_CONDITION_FAILED"])

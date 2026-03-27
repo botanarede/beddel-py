@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from beddel.domain.models import (
+    BackoffType,
     BeddelEvent,
     CircuitBreakerConfig,
     CircuitState,
@@ -15,6 +16,7 @@ from beddel.domain.models import (
     EventType,
     ExecutionContext,
     ExecutionStrategy,
+    GoalConfig,
     ParallelConfig,
     RetryConfig,
     Step,
@@ -707,7 +709,7 @@ class TestEventTypeEnum:
         assert EventType.CIRCUIT_CLOSE == "circuit_close"
 
     def test_member_count(self) -> None:
-        assert len(EventType) == 15
+        assert len(EventType) == 16
 
 
 # ---------------------------------------------------------------------------
@@ -817,6 +819,7 @@ class TestAllExports:
 
         expected = {
             "AgentResult",
+            "BackoffType",
             "BeddelEvent",
             "CircuitBreakerConfig",
             "CircuitState",
@@ -825,6 +828,7 @@ class TestAllExports:
             "EventType",
             "ExecutionContext",
             "ExecutionStrategy",
+            "GoalConfig",
             "InterruptibleContext",
             "ParallelConfig",
             "RetryConfig",
@@ -946,3 +950,93 @@ class TestDefaultDependenciesCircuitBreaker:
         assert deps.tracer is None
         assert deps.agent_adapter is None
         assert deps.context_reducer is None
+
+
+# ---------------------------------------------------------------------------
+# BackoffType enum (Story 4.5, Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestBackoffTypeEnum:
+    """Tests for the BackoffType string enum."""
+
+    def test_fixed_value(self) -> None:
+        """FIXED maps to 'fixed'."""
+        assert BackoffType.FIXED == "fixed"
+
+    def test_exponential_value(self) -> None:
+        """EXPONENTIAL maps to 'exponential'."""
+        assert BackoffType.EXPONENTIAL == "exponential"
+
+    def test_adaptive_value(self) -> None:
+        """ADAPTIVE maps to 'adaptive'."""
+        assert BackoffType.ADAPTIVE == "adaptive"
+
+    def test_member_count(self) -> None:
+        """BackoffType has exactly 3 members."""
+        assert len(BackoffType) == 3
+
+
+# ---------------------------------------------------------------------------
+# GoalConfig model (Story 4.5, Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestGoalConfig:
+    """Tests for the GoalConfig Pydantic model."""
+
+    def test_defaults(self) -> None:
+        """GoalConfig uses prescribed defaults from architecture §4.12.3."""
+        cfg = GoalConfig(goal_condition="$ctx.done == true")
+
+        assert cfg.max_attempts == 10
+        assert cfg.backoff_type == BackoffType.EXPONENTIAL
+        assert cfg.backoff_base == 1.0
+        assert cfg.backoff_max == 30.0
+
+    def test_goal_condition_required(self) -> None:
+        """GoalConfig raises ValidationError when goal_condition is missing."""
+        with pytest.raises(ValidationError):
+            GoalConfig()  # type: ignore[call-arg]
+
+    def test_custom_values(self) -> None:
+        """GoalConfig accepts custom values for all fields."""
+        cfg = GoalConfig(
+            goal_condition="$stepResult.check == true",
+            max_attempts=5,
+            backoff_type=BackoffType.FIXED,
+            backoff_base=2.0,
+            backoff_max=60.0,
+        )
+
+        assert cfg.goal_condition == "$stepResult.check == true"
+        assert cfg.max_attempts == 5
+        assert cfg.backoff_type == BackoffType.FIXED
+        assert cfg.backoff_base == 2.0
+        assert cfg.backoff_max == 60.0
+
+    def test_adaptive_backoff_type(self) -> None:
+        """GoalConfig accepts ADAPTIVE backoff type."""
+        cfg = GoalConfig(
+            goal_condition="$ctx.done",
+            backoff_type=BackoffType.ADAPTIVE,
+        )
+
+        assert cfg.backoff_type == BackoffType.ADAPTIVE
+
+
+# ---------------------------------------------------------------------------
+# GOAL_ATTEMPT EventType (Story 4.5, Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestGoalAttemptEventType:
+    """Tests for the GOAL_ATTEMPT EventType member."""
+
+    def test_goal_attempt_value(self) -> None:
+        """EventType.GOAL_ATTEMPT maps to 'goal_attempt'."""
+        assert EventType.GOAL_ATTEMPT == "goal_attempt"
+
+    def test_goal_attempt_in_event_type(self) -> None:
+        """GOAL_ATTEMPT is a valid EventType member."""
+        assert hasattr(EventType, "GOAL_ATTEMPT")

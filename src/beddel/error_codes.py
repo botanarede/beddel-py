@@ -216,6 +216,12 @@ EXEC_PARALLEL_GROUP_FAILED: str = "BEDDEL-EXEC-030"
 EXEC_PARALLEL_COLLECT_FAILED: str = "BEDDEL-EXEC-031"
 """Parallel group execution failed (collect-all — multiple errors)."""
 
+EXEC_GOAL_MAX_ATTEMPTS: str = "BEDDEL-EXEC-040"
+"""Goal max attempts exhausted — goal condition never met."""
+
+EXEC_GOAL_CONDITION_FAILED: str = "BEDDEL-EXEC-041"
+"""Goal condition evaluation failed during resolution."""
+
 # ---------------------------------------------------------------------------
 # Circuit Breaker codes  (CB prefix, 500 range)
 # ---------------------------------------------------------------------------
@@ -359,6 +365,8 @@ ALL_CODES: dict[str, str] = {
     "EXEC_REFLECTION_THRESHOLD_TYPE": EXEC_REFLECTION_THRESHOLD_TYPE,
     "EXEC_PARALLEL_GROUP_FAILED": EXEC_PARALLEL_GROUP_FAILED,
     "EXEC_PARALLEL_COLLECT_FAILED": EXEC_PARALLEL_COLLECT_FAILED,
+    "EXEC_GOAL_MAX_ATTEMPTS": EXEC_GOAL_MAX_ATTEMPTS,
+    "EXEC_GOAL_CONDITION_FAILED": EXEC_GOAL_CONDITION_FAILED,
     # Circuit Breaker
     "CB_CIRCUIT_OPEN": CB_CIRCUIT_OPEN,
     "CB_FALLBACK_FAILED": CB_FALLBACK_FAILED,

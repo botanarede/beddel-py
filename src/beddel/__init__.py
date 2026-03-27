@@ -29,7 +29,7 @@ from beddel.domain.ports import (
     SpanT,
     StepRunner,
 )
-from beddel.domain.strategies import AgentDelegationStrategy
+from beddel.domain.strategies import AgentDelegationStrategy, GoalOrientedStrategy
 from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
@@ -79,6 +79,7 @@ __all__ = [
     "DefaultDependencies",
     "ExecutionDependencies",
     "ExecutionError",
+    "GoalOrientedStrategy",
     "IAgentAdapter",
     "ICircuitBreaker",
     "IExecutionStrategy",
