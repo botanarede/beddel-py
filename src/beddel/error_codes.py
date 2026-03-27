@@ -19,6 +19,7 @@ Range       Prefix    Domain
 800 – 849   CB        Circuit breaker errors
 850 – 899   CODEX     Codex integration errors (planned)
 900 – 949   DURABLE   Durable execution errors
+950 – 999   MCP       MCP integration errors
 ==========  ========  ===========
 """
 
@@ -57,6 +58,9 @@ CODEX_RANGE: tuple[int, int] = (800, 899)
 
 DURABLE_RANGE: tuple[int, int] = (900, 949)
 """Durable execution errors."""
+
+MCP_RANGE: tuple[int, int] = (950, 999)
+"""MCP integration errors."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -303,6 +307,22 @@ DURABLE_CORRUPT_DATA: str = "BEDDEL-DURABLE-902"
 """Event store corrupt data."""
 
 # ---------------------------------------------------------------------------
+# MCP codes  (MCP prefix, 950 range)
+# ---------------------------------------------------------------------------
+
+MCP_CONNECTION_FAILED: str = "BEDDEL-MCP-600"
+"""MCP server connection failed."""
+
+MCP_TOOL_NOT_FOUND: str = "BEDDEL-MCP-601"
+"""MCP tool not found on server."""
+
+MCP_TOOL_INVOCATION_FAILED: str = "BEDDEL-MCP-602"
+"""MCP tool invocation failed."""
+
+MCP_SERVER_TIMEOUT: str = "BEDDEL-MCP-604"
+"""MCP server operation timed out."""
+
+# ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
 
@@ -392,6 +412,11 @@ ALL_CODES: dict[str, str] = {
     "DURABLE_WRITE_FAILED": DURABLE_WRITE_FAILED,
     "DURABLE_READ_FAILED": DURABLE_READ_FAILED,
     "DURABLE_CORRUPT_DATA": DURABLE_CORRUPT_DATA,
+    # MCP
+    "MCP_CONNECTION_FAILED": MCP_CONNECTION_FAILED,
+    "MCP_TOOL_NOT_FOUND": MCP_TOOL_NOT_FOUND,
+    "MCP_TOOL_INVOCATION_FAILED": MCP_TOOL_INVOCATION_FAILED,
+    "MCP_SERVER_TIMEOUT": MCP_SERVER_TIMEOUT,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

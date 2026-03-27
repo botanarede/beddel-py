@@ -258,6 +258,7 @@ class WorkflowExecutor:
                 agent_registry=self._deps.agent_registry,
                 context_reducer=self._deps.context_reducer,
                 circuit_breaker=self._deps.circuit_breaker,
+                mcp_registry=self._deps.mcp_registry,
             )
         return DefaultDependencies(
             llm_provider=self._provider,

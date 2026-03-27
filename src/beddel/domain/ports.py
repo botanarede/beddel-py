@@ -42,6 +42,7 @@ __all__ = [
     "IHookManager",
     "ILifecycleHook",
     "ILLMProvider",
+    "IMCPClient",
     "IPrimitive",
     "ITracer",
     "NoOpTracer",
@@ -127,6 +128,11 @@ class ExecutionDependencies(Protocol):
     @property
     def event_store(self) -> IEventStore | None:
         """The event store for durable execution, or ``None`` if not configured."""
+        ...
+
+    @property
+    def mcp_registry(self) -> dict[str, IMCPClient] | None:
+        """Registry of named MCP clients, or ``None`` if not configured."""
         ...
 
 
@@ -639,6 +645,55 @@ class IEventStore(Protocol):
         Args:
             workflow_id: Identifier of the workflow execution to clear.
         """
+        ...
+
+
+class IMCPClient(Protocol):
+    """Port interface for Model Context Protocol (MCP) server clients.
+
+    Implementations bridge the tool primitive to external MCP servers,
+    enabling access to the MCP tool ecosystem without custom adapters.
+    Transport-agnostic — concrete clients handle stdio, SSE, or HTTP
+    communication.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`IEventStore`, :class:`ICircuitBreaker`, and other Epic 4 ports.
+
+    [Source: docs/architecture/6-port-interfaces.md §6.9]
+    """
+
+    async def connect(self, server_uri: str) -> None:
+        """Establish connection to an MCP server.
+
+        Args:
+            server_uri: Server URI (e.g., ``"stdio://mcp-server"`` or
+                ``"sse://localhost:8080/mcp"``).
+        """
+        ...
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        """Discover available tools on the connected server.
+
+        Returns:
+            List of tool descriptors with name, description, and
+            input schema for each available tool.
+        """
+        ...
+
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+        """Invoke a tool on the connected server.
+
+        Args:
+            name: Tool name as returned by :meth:`list_tools`.
+            arguments: Tool arguments matching the tool's input schema.
+
+        Returns:
+            Tool execution result.
+        """
+        ...
+
+    async def disconnect(self) -> None:
+        """Close the connection to the MCP server."""
         ...
 
 

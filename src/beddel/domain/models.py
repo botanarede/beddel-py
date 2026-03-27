@@ -326,6 +326,8 @@ class DefaultDependencies:
             or ``None`` if not configured.  Defaults to ``None``.
         event_store: The event store for durable execution,
             or ``None`` if not configured.  Defaults to ``None``.
+        mcp_registry: Registry of named MCP clients keyed by server name,
+            or ``None`` if not provided.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -342,6 +344,7 @@ class DefaultDependencies:
         "_context_reducer",
         "_circuit_breaker",
         "_event_store",
+        "_mcp_registry",
     )
 
     def __init__(
@@ -359,6 +362,7 @@ class DefaultDependencies:
         context_reducer: IContextReducer | None = None,
         circuit_breaker: ICircuitBreaker | None = None,
         event_store: IEventStore | None = None,
+        mcp_registry: dict[str, Any] | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -373,6 +377,7 @@ class DefaultDependencies:
         self._context_reducer = context_reducer
         self._circuit_breaker = circuit_breaker
         self._event_store = event_store
+        self._mcp_registry = mcp_registry
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -438,6 +443,11 @@ class DefaultDependencies:
     def event_store(self) -> IEventStore | None:
         """The event store for durable execution, or ``None`` if not configured."""
         return self._event_store
+
+    @property
+    def mcp_registry(self) -> dict[str, Any] | None:
+        """Registry of named MCP clients, or ``None`` if not configured."""
+        return self._mcp_registry
 
 
 _log = logging.getLogger(__name__)

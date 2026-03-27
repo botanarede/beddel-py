@@ -80,6 +80,12 @@ class ToolPrimitive(IPrimitive):
             PrimitiveError: ``BEDDEL-PRIM-301`` if tool execution fails.
         """
         self._validate_config(config, context)
+
+        # MCP delegation path — when mcp_server is present, route to MCP
+        # client instead of the local tool_registry.
+        if config.get("mcp_server"):
+            return await self._execute_mcp_tool(config, context)
+
         registry = self._get_tool_registry(context)
         tool_name: str = config["tool"]
         tool_fn = self._resolve_tool(tool_name, registry, context)
@@ -118,6 +124,108 @@ class ToolPrimitive(IPrimitive):
         duration_ms = int((time.monotonic() - start_time) * 1000)
         return {
             "tool": tool_name,
+            "result": result,
+            "arguments": arguments,
+            "duration_ms": duration_ms,
+        }
+
+    async def _execute_mcp_tool(
+        self,
+        config: dict[str, Any],
+        context: ExecutionContext,
+    ) -> dict[str, Any]:
+        """Delegate tool execution to an MCP server.
+
+        Extracts the MCP server name and tool name from config, resolves
+        the MCP client from ``context.deps.mcp_registry``, resolves
+        arguments via :class:`VariableResolver`, invokes the tool via
+        the MCP client, and returns a structured result dict.
+
+        Args:
+            config: Primitive configuration containing ``mcp_server``
+                (required), ``tool`` (required), optional ``arguments``
+                dict, and optional ``timeout`` int.
+            context: Execution context providing runtime data and
+                dependencies.
+
+        Returns:
+            A dict with ``tool`` (name), ``mcp_server`` (server name),
+            ``result`` (tool output), ``arguments`` (resolved kwargs),
+            and ``duration_ms`` (execution time in milliseconds).
+
+        Raises:
+            PrimitiveError: ``BEDDEL-PRIM-005`` if mcp_registry is not
+                configured or the server is not found.
+            PrimitiveError: ``BEDDEL-PRIM-303`` if tool execution times out.
+            PrimitiveError: ``BEDDEL-PRIM-301`` if tool execution fails.
+        """
+        mcp_server: str = config["mcp_server"]
+        tool_name: str = config["tool"]
+
+        mcp_registry = context.deps.mcp_registry
+        if mcp_registry is None or mcp_server not in mcp_registry:
+            raise PrimitiveError(
+                code=PRIM_MISSING_TOOL_REGISTRY,
+                message=(f"MCP registry not configured or server '{mcp_server}' not found"),
+                details={
+                    "primitive": "tool",
+                    "mcp_server": mcp_server,
+                    "step_id": context.current_step_id,
+                },
+            )
+
+        client = mcp_registry[mcp_server]
+
+        arguments: dict[str, Any] = {}
+        if "arguments" in config:
+            resolver = VariableResolver()
+            arguments = resolver.resolve(config["arguments"], context)
+
+        context.metadata["_tool_context"] = {
+            "tool_name": tool_name,
+            "mcp_server": mcp_server,
+            "arguments": arguments,
+        }
+
+        timeout: int | float = config.get("timeout", 60)
+        start_time = time.monotonic()
+        try:
+            result = await asyncio.wait_for(
+                client.call_tool(tool_name, arguments),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            raise PrimitiveError(
+                code=PRIM_TOOL_TIMEOUT,
+                message=(
+                    f"MCP tool '{tool_name}' on server '{mcp_server}' timed out after {timeout}s"
+                ),
+                details={
+                    "tool": tool_name,
+                    "mcp_server": mcp_server,
+                    "timeout": timeout,
+                    "step_id": context.current_step_id,
+                },
+            ) from None
+        except PrimitiveError:
+            raise
+        except Exception as exc:
+            raise PrimitiveError(
+                code=PRIM_TOOL_EXEC_FAILED,
+                message=(f"MCP tool '{tool_name}' on server '{mcp_server}' failed: {exc}"),
+                details={
+                    "primitive": "tool",
+                    "tool": tool_name,
+                    "mcp_server": mcp_server,
+                    "original_error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            ) from exc
+
+        duration_ms = int((time.monotonic() - start_time) * 1000)
+        return {
+            "tool": tool_name,
+            "mcp_server": mcp_server,
             "result": result,
             "arguments": arguments,
             "duration_ms": duration_ms,

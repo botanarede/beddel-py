@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from _helpers import make_context
@@ -609,3 +610,185 @@ class TestToolHookEnrichment:
 
         # Should be at least 50ms (the sleep duration)
         assert result["duration_ms"] >= 40  # allow small timing variance
+
+
+# ---------------------------------------------------------------------------
+# Tests: MCP delegation path (Story 4.7a — Task 5)
+# ---------------------------------------------------------------------------
+
+
+class TestMCPDelegation:
+    """Tests for MCP tool delegation via mcp_server config key."""
+
+    async def test_tool_mcp_delegation(self) -> None:
+        """Config with mcp_server delegates to mock MCP client."""
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value={"content": "mcp-result"})
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+        )
+
+        result = await ToolPrimitive().execute(
+            {
+                "tool": "remote-search",
+                "mcp_server": "test-server",
+                "arguments": {"query": "hello"},
+            },
+            ctx,
+        )
+
+        assert result["tool"] == "remote-search"
+        assert result["mcp_server"] == "test-server"
+        assert result["result"] == {"content": "mcp-result"}
+        assert result["arguments"] == {"query": "hello"}
+        assert isinstance(result["duration_ms"], int)
+        assert result["duration_ms"] >= 0
+        mock_client.call_tool.assert_awaited_once_with("remote-search", {"query": "hello"})
+
+    async def test_tool_mcp_no_registry(self) -> None:
+        """Config with mcp_server but no mcp_registry raises PRIM-005."""
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+        )
+
+        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-005") as exc_info:
+            await ToolPrimitive().execute(
+                {"tool": "remote-tool", "mcp_server": "missing-server"},
+                ctx,
+            )
+
+        assert exc_info.value.code == "BEDDEL-PRIM-005"
+        assert "missing-server" in exc_info.value.message
+
+    async def test_tool_mcp_server_not_found(self) -> None:
+        """Config with mcp_server not in registry raises PRIM-005."""
+        mock_client = AsyncMock()
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"other-server": mock_client},
+        )
+
+        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-005") as exc_info:
+            await ToolPrimitive().execute(
+                {"tool": "remote-tool", "mcp_server": "unknown-server"},
+                ctx,
+            )
+
+        assert exc_info.value.code == "BEDDEL-PRIM-005"
+        assert "unknown-server" in exc_info.value.message
+        assert exc_info.value.details["mcp_server"] == "unknown-server"
+
+    async def test_tool_mcp_call_error(self) -> None:
+        """MCP client raises, verify error wrapping as PRIM-301."""
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(side_effect=RuntimeError("connection lost"))
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+        )
+
+        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-301") as exc_info:
+            await ToolPrimitive().execute(
+                {"tool": "failing-tool", "mcp_server": "test-server"},
+                ctx,
+            )
+
+        assert exc_info.value.code == "BEDDEL-PRIM-301"
+        assert exc_info.value.details["original_error"] == "connection lost"
+        assert exc_info.value.details["mcp_server"] == "test-server"
+        assert exc_info.value.details["tool"] == "failing-tool"
+
+    async def test_tool_no_mcp_server_backward_compat(self) -> None:
+        """Config without mcp_server uses local registry (existing behavior)."""
+        registry = {"greet": _sync_greet}
+        ctx = make_context(workflow_id="wf-tool", tool_registry=registry)
+
+        result = await ToolPrimitive().execute({"tool": "greet"}, ctx)
+
+        assert result["tool"] == "greet"
+        assert result["result"] == "hello"
+        assert "mcp_server" not in result
+        assert isinstance(result["duration_ms"], int)
+
+    async def test_tool_mcp_resolves_variable_arguments(self) -> None:
+        """MCP path resolves $input refs in arguments."""
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value="resolved-result")
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            inputs={"term": "world"},
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+        )
+
+        result = await ToolPrimitive().execute(
+            {
+                "tool": "search",
+                "mcp_server": "test-server",
+                "arguments": {"query": "$input.term"},
+            },
+            ctx,
+        )
+
+        assert result["arguments"] == {"query": "world"}
+        mock_client.call_tool.assert_awaited_once_with("search", {"query": "world"})
+
+    async def test_tool_mcp_timeout(self) -> None:
+        """MCP tool exceeding timeout raises PRIM-303."""
+
+        async def _slow_mcp_call(name: str, arguments: dict[str, Any]) -> str:
+            await asyncio.sleep(10)
+            return "done"
+
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(side_effect=_slow_mcp_call)
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+            step_id="mcp-step",
+        )
+
+        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-303") as exc_info:
+            await ToolPrimitive().execute(
+                {"tool": "slow-mcp", "mcp_server": "test-server", "timeout": 0.1},
+                ctx,
+            )
+
+        assert exc_info.value.code == "BEDDEL-PRIM-303"
+        assert exc_info.value.details["mcp_server"] == "test-server"
+        assert exc_info.value.details["tool"] == "slow-mcp"
+
+    async def test_tool_mcp_sets_tool_context_metadata(self) -> None:
+        """MCP path sets _tool_context in metadata with mcp_server."""
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value="ok")
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+        )
+
+        await ToolPrimitive().execute(
+            {
+                "tool": "my-tool",
+                "mcp_server": "test-server",
+                "arguments": {"key": "val"},
+            },
+            ctx,
+        )
+
+        tool_ctx = ctx.metadata["_tool_context"]
+        assert tool_ctx["tool_name"] == "my-tool"
+        assert tool_ctx["mcp_server"] == "test-server"
+        assert tool_ctx["arguments"] == {"key": "val"}

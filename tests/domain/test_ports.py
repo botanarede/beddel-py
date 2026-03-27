@@ -317,3 +317,64 @@ class TestIEventStore:
 
         hints = ExecutionDependencies.__protocol_attrs__
         assert "event_store" in hints
+
+
+class TestIMCPClient:
+    """Tests for the IMCPClient Protocol interface."""
+
+    def test_has_connect_method(self) -> None:
+        """IMCPClient defines a connect method."""
+        from beddel.domain.ports import IMCPClient
+
+        assert hasattr(IMCPClient, "connect")
+
+    def test_has_list_tools_method(self) -> None:
+        """IMCPClient defines a list_tools method."""
+        from beddel.domain.ports import IMCPClient
+
+        assert hasattr(IMCPClient, "list_tools")
+
+    def test_has_call_tool_method(self) -> None:
+        """IMCPClient defines a call_tool method."""
+        from beddel.domain.ports import IMCPClient
+
+        assert hasattr(IMCPClient, "call_tool")
+
+    def test_has_disconnect_method(self) -> None:
+        """IMCPClient defines a disconnect method."""
+        from beddel.domain.ports import IMCPClient
+
+        assert hasattr(IMCPClient, "disconnect")
+
+    def test_in_ports_all(self) -> None:
+        """IMCPClient is in ports.py __all__."""
+        from beddel.domain import ports
+
+        assert "IMCPClient" in ports.__all__
+
+    def test_importable_from_domain(self) -> None:
+        """IMCPClient is importable from beddel.domain."""
+        from beddel.domain import IMCPClient
+        from beddel.domain.ports import IMCPClient as PortsIMCPClient
+
+        assert IMCPClient is PortsIMCPClient
+
+    def test_in_domain_all(self) -> None:
+        """IMCPClient is in domain __all__."""
+        from beddel import domain
+
+        assert "IMCPClient" in domain.__all__
+
+    def test_importable_from_top_level(self) -> None:
+        """IMCPClient is importable from the top-level beddel package."""
+        from beddel import IMCPClient
+        from beddel.domain.ports import IMCPClient as PortsIMCPClient
+
+        assert IMCPClient is PortsIMCPClient
+
+    def test_execution_dependencies_has_mcp_registry(self) -> None:
+        """ExecutionDependencies Protocol defines mcp_registry property."""
+        from beddel.domain.ports import ExecutionDependencies
+
+        hints = ExecutionDependencies.__protocol_attrs__
+        assert "mcp_registry" in hints

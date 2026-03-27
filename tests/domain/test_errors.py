@@ -10,6 +10,7 @@ from beddel.domain.errors import (
     BeddelError,
     DurableError,
     ExecutionError,
+    MCPError,
     ParseError,
     PrimitiveError,
     ResolveError,
@@ -26,6 +27,7 @@ _SUBCLASSES: list[tuple[type[BeddelError], str]] = [
     (TracingError, "BEDDEL-ADAPT-010"),
     (AgentError, "BEDDEL-AGENT-700"),
     (DurableError, "BEDDEL-DURABLE-900"),
+    (MCPError, "BEDDEL-MCP-600"),
 ]
 
 
@@ -121,6 +123,7 @@ class TestAllExports:
             "TracingError",
             "AgentError",
             "DurableError",
+            "MCPError",
         }
         assert set(errors.__all__) == expected
 
@@ -253,3 +256,62 @@ class TestDurableErrorCodes:
 
         assert "DURABLE_CORRUPT_DATA" in error_codes.ALL_CODES
         assert error_codes.ALL_CODES["DURABLE_CORRUPT_DATA"] == "BEDDEL-DURABLE-902"
+
+
+class TestMCPError:
+    """Tests for MCPError subclass."""
+
+    def test_inherits_from_beddel_error(self) -> None:
+        err = MCPError("BEDDEL-MCP-600", "connection failed")
+
+        assert isinstance(err, BeddelError)
+
+    def test_constructor_with_code_and_message(self) -> None:
+        err = MCPError("BEDDEL-MCP-601", "tool not found")
+
+        assert err.code == "BEDDEL-MCP-601"
+        assert err.message == "tool not found"
+
+    def test_details_defaults_to_empty_dict(self) -> None:
+        err = MCPError("BEDDEL-MCP-600", "connection failed")
+
+        assert err.details == {}
+
+    def test_details_preserved(self) -> None:
+        details = {"server": "test-server", "timeout": 30}
+        err = MCPError("BEDDEL-MCP-604", "server timeout", details)
+
+        assert err.details == {"server": "test-server", "timeout": 30}
+
+    def test_str_representation(self) -> None:
+        err = MCPError("BEDDEL-MCP-602", "tool invocation failed")
+
+        assert str(err) == "BEDDEL-MCP-602: tool invocation failed"
+
+
+class TestMCPErrorCodes:
+    """Tests that MCP error codes exist in ALL_CODES."""
+
+    def test_mcp_connection_failed_in_all_codes(self) -> None:
+        from beddel import error_codes
+
+        assert "MCP_CONNECTION_FAILED" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["MCP_CONNECTION_FAILED"] == "BEDDEL-MCP-600"
+
+    def test_mcp_tool_not_found_in_all_codes(self) -> None:
+        from beddel import error_codes
+
+        assert "MCP_TOOL_NOT_FOUND" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["MCP_TOOL_NOT_FOUND"] == "BEDDEL-MCP-601"
+
+    def test_mcp_tool_invocation_failed_in_all_codes(self) -> None:
+        from beddel import error_codes
+
+        assert "MCP_TOOL_INVOCATION_FAILED" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["MCP_TOOL_INVOCATION_FAILED"] == "BEDDEL-MCP-602"
+
+    def test_mcp_server_timeout_in_all_codes(self) -> None:
+        from beddel import error_codes
+
+        assert "MCP_SERVER_TIMEOUT" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["MCP_SERVER_TIMEOUT"] == "BEDDEL-MCP-604"

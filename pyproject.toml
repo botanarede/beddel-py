@@ -57,6 +57,9 @@ adapters = [
     "opentelemetry-api>=1.0",
     "httpx>=0.27",
 ]
+mcp = [
+    "mcp>=1.0",
+]
 lite = []  # Alias for core-only install (explicit marker)
 cli = [
     "click>=8.0",
@@ -65,11 +68,13 @@ cli = [
 all = [
     "beddel[adapters]",
     "beddel[cli]",
+    "beddel[mcp]",
 ]
 dev = [
     "beddel[adapters]",
     "beddel[cli]",
     "beddel[fastapi]",
+    "beddel[mcp]",
     "httpx",
     "opentelemetry-sdk>=1.0",
     "pytest",

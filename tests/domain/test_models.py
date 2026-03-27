@@ -1124,3 +1124,66 @@ class TestInterruptibleContextEventStorePosition:
         ctx.restore({"event_store_position": 5, "workflow_id": "wf-restore"})
 
         assert ctx.metadata["_event_store_position"] == 5
+
+
+# ---------------------------------------------------------------------------
+# DefaultDependencies — mcp_registry (Story 4.7a, Task 2)
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultDependenciesMCPRegistry:
+    """Tests for DefaultDependencies.mcp_registry property."""
+
+    def test_mcp_registry_defaults_to_none(self) -> None:
+        """DefaultDependencies().mcp_registry is None by default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+        assert deps.mcp_registry is None
+
+    def test_mcp_registry_stores_and_returns_dict(self) -> None:
+        """DefaultDependencies(mcp_registry={...}) stores and returns the dict."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_client = AsyncMock()
+        registry = {"test": mock_client}
+        deps = DefaultDependencies(mcp_registry=registry)
+        assert deps.mcp_registry is registry
+        assert deps.mcp_registry["test"] is mock_client
+
+    def test_mcp_registry_explicit_none(self) -> None:
+        """Passing mcp_registry=None explicitly is same as default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies(mcp_registry=None)
+        assert deps.mcp_registry is None
+
+    def test_mcp_registry_does_not_affect_other_properties(self) -> None:
+        """Setting mcp_registry leaves other deps at their defaults."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies(mcp_registry={"srv": AsyncMock()})
+        assert deps.llm_provider is None
+        assert deps.lifecycle_hooks is None
+        assert deps.tracer is None
+        assert deps.agent_adapter is None
+        assert deps.context_reducer is None
+        assert deps.circuit_breaker is None
+        assert deps.event_store is None
+
+    def test_mcp_registry_backward_compatible(self) -> None:
+        """Existing DefaultDependencies() calls without mcp_registry still work."""
+        from beddel.domain.models import DefaultDependencies
+        from beddel.domain.ports import NoOpTracer
+
+        deps = DefaultDependencies(
+            delegate_model="gpt-4o",
+            tracer=NoOpTracer(),
+        )
+        assert deps.delegate_model == "gpt-4o"
+        assert deps.tracer is not None
+        assert deps.mcp_registry is None

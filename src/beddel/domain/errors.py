@@ -16,6 +16,7 @@ Prefix             Domain
 ``BEDDEL-ADAPT-``  Adapter errors
 ``BEDDEL-AGENT-``  Agent adapter errors
 ``BEDDEL-DURABLE-``  Durable execution errors
+``BEDDEL-MCP-``  MCP integration errors
 =================  ============================
 """
 
@@ -33,6 +34,7 @@ __all__ = [
     "AgentError",
     "TracingError",
     "DurableError",
+    "MCPError",
 ]
 
 
@@ -173,3 +175,7 @@ class AgentError(BeddelError):
 
 class DurableError(BeddelError):
     """Durable execution errors. Error code prefix: BEDDEL-DURABLE-"""
+
+
+class MCPError(BeddelError):
+    """MCP integration errors. Error code prefix: BEDDEL-MCP-"""

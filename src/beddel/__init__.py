@@ -12,6 +12,7 @@ from beddel.domain.errors import (
     BeddelError,
     DurableError,
     ExecutionError,
+    MCPError,
     ParseError,
     PrimitiveError,
     ResolveError,
@@ -26,6 +27,7 @@ from beddel.domain.ports import (
     IEventStore,
     IExecutionStrategy,
     ILifecycleHook,
+    IMCPClient,
     ITracer,
     NoOpTracer,
     SpanT,
@@ -42,6 +44,7 @@ if TYPE_CHECKING:
     from beddel.adapters.event_store import SQLiteEventStore as SQLiteEventStore
     from beddel.adapters.hooks import LifecycleHookManager as LifecycleHookManager
     from beddel.adapters.kiro_cli import KiroCLIAgentAdapter as KiroCLIAgentAdapter
+    from beddel.adapters.mcp import StdioMCPClient as StdioMCPClient
     from beddel.integrations.fastapi import (
         create_beddel_handler as create_beddel_handler,
     )
@@ -56,6 +59,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "KiroCLIAgentAdapter": ("beddel.adapters.kiro_cli", "KiroCLIAgentAdapter"),
     "LifecycleHookManager": ("beddel.adapters.hooks", "LifecycleHookManager"),
     "SQLiteEventStore": ("beddel.adapters.event_store", "SQLiteEventStore"),
+    "StdioMCPClient": ("beddel.adapters.mcp", "StdioMCPClient"),
     "create_beddel_handler": (
         "beddel.integrations.fastapi",
         "create_beddel_handler",
@@ -95,10 +99,12 @@ __all__ = [
     "IEventStore",
     "IExecutionStrategy",
     "ILifecycleHook",
+    "IMCPClient",
     "ITracer",
     "InterruptibleContext",
     "KiroCLIAgentAdapter",
     "LifecycleHookManager",
+    "MCPError",
     "NoOpTracer",
     "ParseError",
     "PrimitiveError",
@@ -106,6 +112,7 @@ __all__ = [
     "SequentialStrategy",
     "SpanT",
     "SQLiteEventStore",
+    "StdioMCPClient",
     "StepRunner",
     "TracingError",
     "create_beddel_handler",

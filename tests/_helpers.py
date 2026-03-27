@@ -27,6 +27,7 @@ def make_context(
     workflow_loader: Callable[[str], Any] | None = None,
     registry: PrimitiveRegistry | None = None,
     context_reducer: Any | None = None,
+    mcp_registry: dict[str, Any] | None = None,
 ) -> ExecutionContext:
     """Build an ``ExecutionContext`` for primitive unit tests.
 
@@ -45,13 +46,22 @@ def make_context(
         workflow_loader: Optional callable that loads a ``Workflow`` by id.
         registry: Optional ``PrimitiveRegistry`` instance.
         context_reducer: Optional context reducer (or mock).
+        mcp_registry: Optional MCP client registry mapping server names
+            to ``IMCPClient`` instances (or mocks).
 
     Returns:
         A configured ``ExecutionContext`` instance.
     """
     has_deps = any(
         arg is not None
-        for arg in (llm_provider, tool_registry, workflow_loader, registry, context_reducer)
+        for arg in (
+            llm_provider,
+            tool_registry,
+            workflow_loader,
+            registry,
+            context_reducer,
+            mcp_registry,
+        )
     )
 
     ctx = ExecutionContext(
@@ -69,6 +79,7 @@ def make_context(
             workflow_loader=workflow_loader,
             registry=registry,
             context_reducer=context_reducer,
+            mcp_registry=mcp_registry,
         )
 
     return ctx
