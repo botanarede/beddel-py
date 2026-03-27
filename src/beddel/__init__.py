@@ -22,6 +22,7 @@ from beddel.domain.ports import (
     ExecutionDependencies,
     IAgentAdapter,
     ICircuitBreaker,
+    IEventStore,
     IExecutionStrategy,
     ILifecycleHook,
     ITracer,
@@ -29,7 +30,11 @@ from beddel.domain.ports import (
     SpanT,
     StepRunner,
 )
-from beddel.domain.strategies import AgentDelegationStrategy, GoalOrientedStrategy
+from beddel.domain.strategies import (
+    AgentDelegationStrategy,
+    DurableExecutionStrategy,
+    GoalOrientedStrategy,
+)
 from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
@@ -77,11 +82,13 @@ __all__ = [
     "BeddelError",
     "BeddelSSEAdapter",
     "DefaultDependencies",
+    "DurableExecutionStrategy",
     "ExecutionDependencies",
     "ExecutionError",
     "GoalOrientedStrategy",
     "IAgentAdapter",
     "ICircuitBreaker",
+    "IEventStore",
     "IExecutionStrategy",
     "ILifecycleHook",
     "ITracer",

@@ -709,7 +709,7 @@ class TestEventTypeEnum:
         assert EventType.CIRCUIT_CLOSE == "circuit_close"
 
     def test_member_count(self) -> None:
-        assert len(EventType) == 16
+        assert len(EventType) == 17
 
 
 # ---------------------------------------------------------------------------
@@ -1040,3 +1040,53 @@ class TestGoalAttemptEventType:
     def test_goal_attempt_in_event_type(self) -> None:
         """GOAL_ATTEMPT is a valid EventType member."""
         assert hasattr(EventType, "GOAL_ATTEMPT")
+
+
+# ---------------------------------------------------------------------------
+# CHECKPOINT EventType (Story 4.6a, Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckpointEventType:
+    """Tests for the CHECKPOINT EventType member."""
+
+    def test_checkpoint_value(self) -> None:
+        """EventType.CHECKPOINT maps to 'checkpoint'."""
+        assert EventType.CHECKPOINT == "checkpoint"
+
+    def test_checkpoint_in_event_type(self) -> None:
+        """CHECKPOINT is a valid EventType member."""
+        assert hasattr(EventType, "CHECKPOINT")
+
+
+# ---------------------------------------------------------------------------
+# DefaultDependencies — event_store (Story 4.6a, Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultDependenciesEventStore:
+    """Tests for DefaultDependencies.event_store property."""
+
+    def test_event_store_defaults_to_none(self) -> None:
+        """DefaultDependencies().event_store is None by default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+        assert deps.event_store is None
+
+    def test_event_store_stores_and_returns_instance(self) -> None:
+        """DefaultDependencies(event_store=mock) stores and returns it."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_store = AsyncMock()
+        deps = DefaultDependencies(event_store=mock_store)
+        assert deps.event_store is mock_store
+
+    def test_event_store_explicit_none(self) -> None:
+        """Passing event_store=None explicitly is same as default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies(event_store=None)
+        assert deps.event_store is None

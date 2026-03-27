@@ -37,6 +37,7 @@ __all__ = [
     "IAgentAdapter",
     "ICircuitBreaker",
     "IContextReducer",
+    "IEventStore",
     "IExecutionStrategy",
     "IHookManager",
     "ILifecycleHook",
@@ -121,6 +122,11 @@ class ExecutionDependencies(Protocol):
     @property
     def circuit_breaker(self) -> ICircuitBreaker | None:
         """The circuit breaker for provider fault tolerance, or ``None`` if not configured."""
+        ...
+
+    @property
+    def event_store(self) -> IEventStore | None:
+        """The event store for durable execution, or ``None`` if not configured."""
         ...
 
 
@@ -591,6 +597,47 @@ class ICircuitBreaker(Protocol):
 
         Returns:
             One of ``"closed"``, ``"open"``, or ``"half-open"``.
+        """
+        ...
+
+
+class IEventStore(Protocol):
+    """Contract for durable event store implementations.
+
+    Provides append-only event logging per workflow, with load and truncate
+    operations for checkpoint-based replay.  Implementations MUST be
+    thread-safe — the event store may be shared across concurrent async
+    tasks.
+
+    [Source: docs/architecture/6-port-interfaces.md §6.8]
+    """
+
+    async def append(self, workflow_id: str, step_id: str, event: dict[str, Any]) -> None:
+        """Append an event for a workflow step.
+
+        Args:
+            workflow_id: Identifier of the workflow execution.
+            step_id: Identifier of the step that produced the event.
+            event: Arbitrary event payload to store.
+        """
+        ...
+
+    async def load(self, workflow_id: str) -> list[dict[str, Any]]:
+        """Load all events for a workflow in insertion order.
+
+        Args:
+            workflow_id: Identifier of the workflow execution.
+
+        Returns:
+            List of stored event dicts, in insertion order.
+        """
+        ...
+
+    async def truncate(self, workflow_id: str) -> None:
+        """Remove all events for a workflow.
+
+        Args:
+            workflow_id: Identifier of the workflow execution to clear.
         """
         ...
 

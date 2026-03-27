@@ -22,6 +22,7 @@ if TYPE_CHECKING:
         IAgentAdapter,
         ICircuitBreaker,
         IContextReducer,
+        IEventStore,
         IExecutionStrategy,
         IHookManager,
         ILLMProvider,
@@ -323,6 +324,8 @@ class DefaultDependencies:
             or ``None`` for FIFO fallback.  Defaults to ``None``.
         circuit_breaker: The circuit breaker for provider fault tolerance,
             or ``None`` if not configured.  Defaults to ``None``.
+        event_store: The event store for durable execution,
+            or ``None`` if not configured.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -338,6 +341,7 @@ class DefaultDependencies:
         "_agent_registry",
         "_context_reducer",
         "_circuit_breaker",
+        "_event_store",
     )
 
     def __init__(
@@ -354,6 +358,7 @@ class DefaultDependencies:
         agent_registry: dict[str, IAgentAdapter] | None = None,
         context_reducer: IContextReducer | None = None,
         circuit_breaker: ICircuitBreaker | None = None,
+        event_store: IEventStore | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -367,6 +372,7 @@ class DefaultDependencies:
         self._agent_registry = agent_registry
         self._context_reducer = context_reducer
         self._circuit_breaker = circuit_breaker
+        self._event_store = event_store
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -427,6 +433,11 @@ class DefaultDependencies:
     def circuit_breaker(self) -> ICircuitBreaker | None:
         """The circuit breaker for provider fault tolerance, or ``None`` if not configured."""
         return self._circuit_breaker
+
+    @property
+    def event_store(self) -> IEventStore | None:
+        """The event store for durable execution, or ``None`` if not configured."""
+        return self._event_store
 
 
 _log = logging.getLogger(__name__)
@@ -545,8 +556,9 @@ class EventType(StrEnum):
 
     GOAL_ATTEMPT = "goal_attempt"
 
+    CHECKPOINT = "checkpoint"
+
     # --- Reserved for future epics (not yet implemented) ---
-    # CHECKPOINT = "checkpoint"    # Epic 5: emitted when execution state is checkpointed
     # SUSPENDED = "suspended"      # Epic 5: emitted when execution is suspended for HITL
     # MEMORY_READ = "memory_read"  # Epic 6: emitted when episodic memory is accessed
 

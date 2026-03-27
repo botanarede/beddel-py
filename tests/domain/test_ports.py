@@ -282,3 +282,38 @@ class TestICircuitBreaker:
 
         hints = ExecutionDependencies.__protocol_attrs__
         assert "circuit_breaker" in hints
+
+
+class TestIEventStore:
+    """Tests for the IEventStore Protocol interface."""
+
+    def test_has_append_method(self) -> None:
+        """IEventStore defines an append method."""
+        from beddel.domain.ports import IEventStore
+
+        assert hasattr(IEventStore, "append")
+
+    def test_has_load_method(self) -> None:
+        """IEventStore defines a load method."""
+        from beddel.domain.ports import IEventStore
+
+        assert hasattr(IEventStore, "load")
+
+    def test_has_truncate_method(self) -> None:
+        """IEventStore defines a truncate method."""
+        from beddel.domain.ports import IEventStore
+
+        assert hasattr(IEventStore, "truncate")
+
+    def test_in_ports_all(self) -> None:
+        """IEventStore is in ports.py __all__."""
+        from beddel.domain import ports
+
+        assert "IEventStore" in ports.__all__
+
+    def test_execution_dependencies_has_event_store(self) -> None:
+        """ExecutionDependencies Protocol defines event_store property."""
+        from beddel.domain.ports import ExecutionDependencies
+
+        hints = ExecutionDependencies.__protocol_attrs__
+        assert "event_store" in hints
