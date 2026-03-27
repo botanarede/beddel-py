@@ -136,6 +136,14 @@ class ParallelExecutionStrategy:
                     return await step_runner(step, ctx)
             return await step_runner(step, ctx)
 
+        # Emit PARALLEL_START event
+        hooks = context.deps.lifecycle_hooks
+        if hooks:
+            try:
+                await hooks.on_step_start("parallel_group", "parallel")
+            except Exception:
+                _log.warning("parallel start hook failed", exc_info=True)
+
         try:
             if self._parallel_config.error_semantics == ErrorSemantics.FAIL_FAST:
                 await self._run_fail_fast(
@@ -156,6 +164,20 @@ class ParallelExecutionStrategy:
                     for step_id, result in bc.step_results.items():
                         if step_id not in context.step_results:
                             context.step_results[step_id] = result
+
+            # Emit PARALLEL_END event (always, even on error)
+            if hooks:
+                try:
+                    await hooks.on_step_end(
+                        "parallel_group",
+                        {
+                            "step_count": len(steps),
+                            "step_ids": [s.id for s in steps],
+                            "error_semantics": self._parallel_config.error_semantics.value,
+                        },
+                    )
+                except Exception:
+                    _log.warning("parallel end hook failed", exc_info=True)
 
     async def _run_fail_fast(
         self,

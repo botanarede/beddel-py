@@ -8,7 +8,13 @@ from typing import Any
 import pytest
 
 from beddel.domain.errors import ExecutionError, PrimitiveError
-from beddel.domain.models import ErrorSemantics, ExecutionContext, Step, Workflow
+from beddel.domain.models import (
+    DefaultDependencies,
+    ErrorSemantics,
+    ExecutionContext,
+    Step,
+    Workflow,
+)
 from beddel.domain.strategies.parallel import ParallelExecutionStrategy
 
 
@@ -559,3 +565,113 @@ class TestIsolateContextMergeAfterCollectAllErrors:
         assert exc_info.value.code == "BEDDEL-EXEC-031"
         # Successful result should be merged to parent
         assert ctx.step_results["p_ok"] == "result-p_ok"
+
+
+# ---------------------------------------------------------------------------
+# Story 4.2b Task 4 — PARALLEL_START / PARALLEL_END lifecycle events
+# ---------------------------------------------------------------------------
+
+
+class _MockHooks:
+    """Mock lifecycle hooks that records calls."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Any]] = []
+
+    async def on_step_start(self, step_id: str, primitive: str) -> None:
+        self.calls.append(("start", {"step_id": step_id, "primitive": primitive}))
+
+    async def on_step_end(self, step_id: str, result: Any) -> None:
+        self.calls.append(("end", {"step_id": step_id, "result": result}))
+
+    async def on_workflow_start(self, workflow_id: str, inputs: dict[str, Any]) -> None:
+        pass
+
+    async def on_workflow_end(self, workflow_id: str, result: dict[str, Any]) -> None:
+        pass
+
+    async def on_error(self, step_id: str, error: Exception) -> None:
+        pass
+
+    async def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:
+        pass
+
+    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+        pass
+
+    async def add_hook(self, hook: Any) -> None:
+        pass
+
+    async def remove_hook(self, hook: Any) -> None:
+        pass
+
+
+class TestParallelStartEndEventsEmitted:
+    @pytest.mark.asyncio
+    async def test_parallel_start_end_events_emitted(self) -> None:
+        """Mock lifecycle_hooks — PARALLEL_START before gather, PARALLEL_END after."""
+        mock_hooks = _MockHooks()
+        deps = DefaultDependencies(lifecycle_hooks=mock_hooks)  # type: ignore[arg-type]
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        wf = _workflow(p1, p2)
+        ctx = ExecutionContext(workflow_id="wf-test", deps=deps)
+        runner = _MockStepRunner()
+        strategy = ParallelExecutionStrategy()
+
+        await strategy.execute(wf, ctx, runner)
+
+        # Filter for parallel_group events only
+        pg_calls = [c for c in mock_hooks.calls if c[1].get("step_id") == "parallel_group"]
+        assert len(pg_calls) == 2
+        assert pg_calls[0][0] == "start"
+        assert pg_calls[0][1]["primitive"] == "parallel"
+        assert pg_calls[1][0] == "end"
+        end_result = pg_calls[1][1]["result"]
+        assert end_result["step_count"] == 2
+        assert set(end_result["step_ids"]) == {"p1", "p2"}
+        assert end_result["error_semantics"] == "fail-fast"
+
+
+class TestParallelEventsNotEmittedWithoutHooks:
+    @pytest.mark.asyncio
+    async def test_parallel_events_not_emitted_without_hooks(self) -> None:
+        """No lifecycle_hooks in deps — no error (graceful no-op)."""
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        wf = _workflow(p1, p2)
+        ctx = _context()  # No hooks in default deps
+        runner = _MockStepRunner()
+        strategy = ParallelExecutionStrategy()
+
+        # Should not raise
+        await strategy.execute(wf, ctx, runner)
+
+        assert ctx.step_results["p1"] == "result-p1"
+        assert ctx.step_results["p2"] == "result-p2"
+
+
+class TestParallelEndEmittedOnError:
+    @pytest.mark.asyncio
+    async def test_parallel_end_emitted_on_error(self) -> None:
+        """Parallel group fails — PARALLEL_END still emitted (finally block)."""
+        mock_hooks = _MockHooks()
+        deps = DefaultDependencies(lifecycle_hooks=mock_hooks)  # type: ignore[arg-type]
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        wf = _workflow(p1, p2)
+        ctx = ExecutionContext(workflow_id="wf-test", deps=deps)
+        runner = _ErrorStepRunner(error_step_id="p2")
+        strategy = ParallelExecutionStrategy()
+
+        with pytest.raises(ExecutionError):
+            await strategy.execute(wf, ctx, runner)
+
+        # PARALLEL_END should still have been emitted
+        pg_end_calls = [
+            c
+            for c in mock_hooks.calls
+            if c[0] == "end" and c[1].get("step_id") == "parallel_group"
+        ]
+        assert len(pg_end_calls) == 1
+        assert pg_end_calls[0][1]["result"]["step_count"] == 2
