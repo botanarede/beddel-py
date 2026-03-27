@@ -433,3 +433,65 @@ class TestExecuteStreamE2E:
         assert ws_event.event_type == EventType.WORKFLOW_START
         assert ws_event.data["workflow_id"] == "multi-step-workflow"
         assert ws_event.data["inputs"] == expected["sample_inputs"]
+
+
+# ---------------------------------------------------------------------------
+# Parallel execution strategy integration
+# ---------------------------------------------------------------------------
+
+
+class TestParallelStrategyIntegration:
+    """Verify ParallelExecutionStrategy works with WorkflowExecutor.execute()."""
+
+    async def test_parallel_strategy_integration(self) -> None:
+        """Mixed sequential + parallel steps execute correctly via ParallelExecutionStrategy."""
+        from beddel.domain.strategies.parallel import ParallelExecutionStrategy
+
+        # Build a workflow with mixed sequential and parallel steps.
+        # Steps: seq_start → (par_a ∥ par_b) → seq_end
+        yaml_str = """\
+id: parallel-integration-test
+name: Parallel Integration Test
+steps:
+  - id: seq_start
+    primitive: llm
+    config:
+      prompt: "start"
+  - id: par_a
+    primitive: llm
+    parallel: true
+    config:
+      prompt: "parallel a"
+  - id: par_b
+    primitive: llm
+    parallel: true
+    config:
+      prompt: "parallel b"
+  - id: seq_end
+    primitive: llm
+    config:
+      prompt: "end"
+"""
+        workflow = WorkflowParser.parse(yaml_str)
+
+        step_results: dict[str, Any] = {
+            "seq_start": {"out": "started"},
+            "par_a": {"out": "a_done"},
+            "par_b": {"out": "b_done"},
+            "seq_end": {"out": "finished"},
+        }
+        executor = _build_executor(step_results)
+
+        result = await executor.execute(
+            workflow,
+            inputs={"topic": "test"},
+            execution_strategy=ParallelExecutionStrategy(),
+        )
+
+        sr = result["step_results"]
+
+        # All four steps produced results
+        assert sr["seq_start"] == {"out": "started"}
+        assert sr["par_a"] == {"out": "a_done"}
+        assert sr["par_b"] == {"out": "b_done"}
+        assert sr["seq_end"] == {"out": "finished"}
