@@ -59,6 +59,7 @@ adapters = [
 ]
 mcp = [
     "mcp>=1.0",
+    "jsonschema>=4.0",
 ]
 lite = []  # Alias for core-only install (explicit marker)
 cli = [
@@ -83,6 +84,7 @@ dev = [
     "pytest-timeout",
     "ruff",
     "mypy",
+    "types-jsonschema",
 ]
 fastapi = [
     "fastapi",

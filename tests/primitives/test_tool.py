@@ -792,3 +792,210 @@ class TestMCPDelegation:
         assert tool_ctx["tool_name"] == "my-tool"
         assert tool_ctx["mcp_server"] == "test-server"
         assert tool_ctx["arguments"] == {"key": "val"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: MCP schema validation (Story 4.7b — Task 5)
+# ---------------------------------------------------------------------------
+
+
+class TestMCPSchemaValidation:
+    """Tests for optional schema validation in MCP tool execution path."""
+
+    async def test_tool_mcp_schema_validation_pass(self) -> None:
+        """validate_schema: true with matching schema executes successfully."""
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value={"content": "ok"})
+        mock_client.list_tools = AsyncMock(
+            return_value=[
+                {
+                    "name": "search",
+                    "description": "Search tool",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                }
+            ]
+        )
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+        )
+
+        result = await ToolPrimitive().execute(
+            {
+                "tool": "search",
+                "mcp_server": "test-server",
+                "validate_schema": True,
+                "arguments": {"query": "hello"},
+            },
+            ctx,
+        )
+
+        assert result["tool"] == "search"
+        assert result["result"] == {"content": "ok"}
+        mock_client.list_tools.assert_awaited_once()
+        mock_client.call_tool.assert_awaited_once_with("search", {"query": "hello"})
+
+    async def test_tool_mcp_schema_validation_fail(self) -> None:
+        """validate_schema: true with mismatched arguments raises error."""
+        from beddel.domain.errors import MCPError
+
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value={"content": "ok"})
+        mock_client.list_tools = AsyncMock(
+            return_value=[
+                {
+                    "name": "search",
+                    "description": "Search tool",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                }
+            ]
+        )
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+        )
+
+        with pytest.raises(MCPError, match="BEDDEL-MCP-603"):
+            await ToolPrimitive().execute(
+                {
+                    "tool": "search",
+                    "mcp_server": "test-server",
+                    "validate_schema": True,
+                    "arguments": {"query": 12345},  # wrong type: int instead of string
+                },
+                ctx,
+            )
+
+        # call_tool should NOT have been called — validation fails first
+        mock_client.call_tool.assert_not_awaited()
+
+    async def test_tool_mcp_no_validate_schema_backward_compat(self) -> None:
+        """Config without validate_schema skips validation (backward-compat)."""
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value="result")
+        mock_client.list_tools = AsyncMock()
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+        )
+
+        result = await ToolPrimitive().execute(
+            {
+                "tool": "search",
+                "mcp_server": "test-server",
+                "arguments": {"query": "hello"},
+            },
+            ctx,
+        )
+
+        assert result["result"] == "result"
+        # list_tools should never be called when validate_schema is absent
+        mock_client.list_tools.assert_not_awaited()
+
+    async def test_tool_mcp_schema_cache_reuse(self) -> None:
+        """Two tool calls to same server call list_tools() only once (cache hit)."""
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value="ok")
+        mock_client.list_tools = AsyncMock(
+            return_value=[
+                {
+                    "name": "search",
+                    "description": "Search",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"q": {"type": "string"}},
+                    },
+                },
+                {
+                    "name": "fetch",
+                    "description": "Fetch",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"url": {"type": "string"}},
+                    },
+                },
+            ]
+        )
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+        )
+
+        # First call — triggers list_tools
+        await ToolPrimitive().execute(
+            {
+                "tool": "search",
+                "mcp_server": "test-server",
+                "validate_schema": True,
+                "arguments": {"q": "hello"},
+            },
+            ctx,
+        )
+
+        # Second call — should use cache
+        await ToolPrimitive().execute(
+            {
+                "tool": "fetch",
+                "mcp_server": "test-server",
+                "validate_schema": True,
+                "arguments": {"url": "https://example.com"},
+            },
+            ctx,
+        )
+
+        # list_tools called only once despite two tool invocations
+        mock_client.list_tools.assert_awaited_once()
+        assert mock_client.call_tool.await_count == 2
+
+    async def test_tool_mcp_schema_tool_not_found(self) -> None:
+        """validate_schema: true but tool not in server's tool list raises error."""
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value="ok")
+        mock_client.list_tools = AsyncMock(
+            return_value=[
+                {
+                    "name": "other-tool",
+                    "description": "Other",
+                    "inputSchema": {"type": "object"},
+                }
+            ]
+        )
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"local": _sync_greet},
+            mcp_registry={"test-server": mock_client},
+        )
+
+        with pytest.raises(PrimitiveError, match="BEDDEL-PRIM-301") as exc_info:
+            await ToolPrimitive().execute(
+                {
+                    "tool": "missing-tool",
+                    "mcp_server": "test-server",
+                    "validate_schema": True,
+                    "arguments": {"key": "val"},
+                },
+                ctx,
+            )
+
+        assert exc_info.value.code == "BEDDEL-PRIM-301"
+        assert "missing-tool" in exc_info.value.message
+        assert "test-server" in exc_info.value.message
+        assert "schema discovery" in exc_info.value.message
+        mock_client.call_tool.assert_not_awaited()

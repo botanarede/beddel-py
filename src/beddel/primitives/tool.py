@@ -26,6 +26,11 @@ from beddel.error_codes import (
     PRIM_TOOL_TIMEOUT,
 )
 
+try:
+    from beddel.adapters.mcp.schema_validator import validate_tool_arguments
+except ImportError:
+    validate_tool_arguments = None  # type: ignore[assignment]
+
 __all__ = [
     "ToolPrimitive",
 ]
@@ -180,6 +185,43 @@ class ToolPrimitive(IPrimitive):
         if "arguments" in config:
             resolver = VariableResolver()
             arguments = resolver.resolve(config["arguments"], context)
+
+        # Optional schema validation — when validate_schema is truthy,
+        # fetch the tool's inputSchema via list_tools() (cached per-server)
+        # and validate arguments before calling the tool.
+        if config.get("validate_schema"):
+            if validate_tool_arguments is None:
+                raise PrimitiveError(
+                    code=PRIM_TOOL_EXEC_FAILED,
+                    message=(
+                        "Schema validation requested but jsonschema is not installed. "
+                        "Install with: pip install beddel[mcp]"
+                    ),
+                    details={
+                        "tool": tool_name,
+                        "mcp_server": mcp_server,
+                        "step_id": context.current_step_id,
+                    },
+                )
+            cache = context.metadata.setdefault("_mcp_tool_schemas", {})
+            if mcp_server not in cache:
+                tools = await client.list_tools()
+                cache[mcp_server] = {t["name"]: t["inputSchema"] for t in tools}
+            tool_schema = cache[mcp_server].get(tool_name)
+            if tool_schema is None:
+                raise PrimitiveError(
+                    code=PRIM_TOOL_EXEC_FAILED,
+                    message=(
+                        f"Tool '{tool_name}' not found on MCP server "
+                        f"'{mcp_server}' during schema discovery"
+                    ),
+                    details={
+                        "tool": tool_name,
+                        "mcp_server": mcp_server,
+                        "step_id": context.current_step_id,
+                    },
+                )
+            validate_tool_arguments(arguments, tool_schema)
 
         context.metadata["_tool_context"] = {
             "tool_name": tool_name,

@@ -256,6 +256,18 @@ class TestToolUseLoopCodes:
             assert pattern.match(code), f"{code!r} does not match BEDDEL-PRIM-3XX"
 
 
+class TestMcpSchemaValidationCode:
+    """MCP_SCHEMA_VALIDATION_FAILED code is registered correctly."""
+
+    def test_mcp_schema_validation_failed_in_all_codes(self) -> None:
+        """MCP_SCHEMA_VALIDATION_FAILED must be registered in ALL_CODES."""
+        assert "MCP_SCHEMA_VALIDATION_FAILED" in ALL_CODES
+
+    def test_mcp_schema_validation_failed_code_value(self) -> None:
+        """MCP_SCHEMA_VALIDATION_FAILED maps to BEDDEL-MCP-603."""
+        assert ALL_CODES["MCP_SCHEMA_VALIDATION_FAILED"] == "BEDDEL-MCP-603"
+
+
 class TestReflectionCodes:
     """Tests for reflection loop error codes (Story 4.1)."""
 
