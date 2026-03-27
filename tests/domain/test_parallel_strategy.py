@@ -8,13 +8,18 @@ from typing import Any
 import pytest
 
 from beddel.domain.errors import ExecutionError, PrimitiveError
+from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
+    BeddelEvent,
     DefaultDependencies,
     ErrorSemantics,
+    EventType,
     ExecutionContext,
     Step,
     Workflow,
 )
+from beddel.domain.ports import IPrimitive
+from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.strategies.parallel import ParallelExecutionStrategy
 
 
@@ -675,3 +680,131 @@ class TestParallelEndEmittedOnError:
         ]
         assert len(pg_end_calls) == 1
         assert pg_end_calls[0][1]["result"]["step_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Story 4.2b Task 5 — Integration tests and backward compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestParallelAdvancedIntegration:
+    @pytest.mark.asyncio
+    async def test_parallel_advanced_integration(self) -> None:
+        """Full workflow: mixed seq/par, concurrency=2, collect-all, isolate=True."""
+        execution_order: list[str] = []
+        metadata_writes: dict[str, bool] = {}
+
+        async def tracking_runner(step: Step, ctx: ExecutionContext) -> Any:
+            execution_order.append(step.id)
+            # Write metadata to test isolation
+            ctx.metadata[f"visited_{step.id}"] = True
+            metadata_writes[step.id] = True
+            await asyncio.sleep(0.01)
+            ctx.step_results[step.id] = f"result-{step.id}"
+            return f"result-{step.id}"
+
+        # Mixed workflow: seq, par, par, par, seq
+        s1 = _step("s1", parallel=False)
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        p3 = _step("p3", parallel=True)
+        s2 = _step("s2", parallel=False)
+        wf = _workflow(s1, p1, p2, p3, s2)
+        ctx = _context()
+        strategy = ParallelExecutionStrategy(
+            {
+                "concurrency_limit": 2,
+                "error_semantics": "collect-all",
+                "isolate_context": True,
+            }
+        )
+
+        await strategy.execute(wf, ctx, tracking_runner)
+
+        # All 5 steps executed
+        assert set(execution_order) == {"s1", "p1", "p2", "p3", "s2"}
+        # s1 must be first (sequential), s2 must be last (sequential)
+        assert execution_order[0] == "s1"
+        assert execution_order[-1] == "s2"
+        # All results merged to parent
+        for sid in ["s1", "p1", "p2", "p3", "s2"]:
+            assert ctx.step_results[sid] == f"result-{sid}"
+        # Context isolation: parallel branch metadata NOT in parent
+        # (s1 and s2 are sequential — they share the parent context directly)
+        assert ctx.metadata.get("visited_s1") is True  # sequential = shared
+        assert ctx.metadata.get("visited_s2") is True  # sequential = shared
+        assert "visited_p1" not in ctx.metadata  # parallel + isolated = discarded
+        assert "visited_p2" not in ctx.metadata
+        assert "visited_p3" not in ctx.metadata
+
+
+class _StubPrimitive(IPrimitive):
+    """Stub primitive for integration testing with WorkflowExecutor."""
+
+    async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
+        """Return a result based on the current step id."""
+        return f"result-{context.current_step_id}"
+
+
+class TestExecuteStreamWithParallelStrategy:
+    @pytest.mark.asyncio
+    async def test_execute_stream_with_parallel_strategy(self) -> None:
+        """execute_stream() works with ParallelExecutionStrategy (addresses F1 from 4.2a)."""
+        from beddel.adapters.hooks import LifecycleHookManager
+
+        # Create a registry with a stub primitive
+        registry = PrimitiveRegistry()
+        registry.register("llm", _StubPrimitive())
+
+        strategy = ParallelExecutionStrategy(
+            {
+                "concurrency_limit": 2,
+                "error_semantics": "fail-fast",
+            }
+        )
+
+        # Workflow with parallel steps
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        s1 = _step("s1", parallel=False)
+        wf = _workflow(s1, p1, p2)
+
+        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf, execution_strategy=strategy):
+            events.append(event)
+
+        # Should have WORKFLOW_START, step events, WORKFLOW_END
+        event_types = [e.event_type for e in events]
+        assert EventType.WORKFLOW_START in event_types
+        assert EventType.WORKFLOW_END in event_types
+        # At least 3 STEP_START events (s1, p1, p2 + parallel_group)
+        step_starts = [e for e in events if e.event_type == EventType.STEP_START]
+        assert len(step_starts) >= 3
+
+
+class TestBackwardCompatibility:
+    @pytest.mark.asyncio
+    async def test_no_config_backward_compatible(self) -> None:
+        """No config → same behavior as 4.2a (fail-fast, shared context, default limit)."""
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        s1 = _step("s1", parallel=False)
+        wf = _workflow(s1, p1, p2)
+        ctx = _context()
+        runner = _MockStepRunner()
+        strategy = ParallelExecutionStrategy()  # No config
+
+        await strategy.execute(wf, ctx, runner)
+
+        # All steps executed
+        assert set(runner.calls) == {"s1", "p1", "p2"}
+        # Results stored
+        assert ctx.step_results["s1"] == "result-s1"
+        assert ctx.step_results["p1"] == "result-p1"
+        assert ctx.step_results["p2"] == "result-p2"
+        # Default config values
+        assert strategy._parallel_config.concurrency_limit == 5
+        assert strategy._parallel_config.error_semantics.value == "fail-fast"
+        assert strategy._parallel_config.isolate_context is False
