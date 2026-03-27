@@ -41,7 +41,10 @@ class ParallelExecutionStrategy:
       Set to 0 for unbounded concurrency.
     - ``error_semantics`` (str): ``"fail-fast"`` or ``"collect-all"``
       (default: ``"fail-fast"``).
-    - ``isolate_context`` (bool): Reserved (default: ``False``).
+    - ``isolate_context`` (bool): When ``True``, each parallel branch
+      receives a shallow-cloned context so branches have independent
+      ``step_results`` and ``metadata``.  Results are merged back to the
+      parent after all branches complete (default: ``False``).
 
     Args:
         config: Optional configuration dict parsed into ParallelConfig.
@@ -120,6 +123,12 @@ class ParallelExecutionStrategy:
         """
         limit = self._parallel_config.concurrency_limit
         semaphore: asyncio.Semaphore | None = asyncio.Semaphore(limit) if limit > 0 else None
+        isolate = self._parallel_config.isolate_context
+
+        # Create per-branch contexts if isolation is enabled
+        branch_contexts: list[ExecutionContext] = []
+        if isolate:
+            branch_contexts = [self._clone_context(context) for _ in steps]
 
         async def limited_runner(step: Step, ctx: ExecutionContext) -> Any:
             if semaphore is not None:
@@ -127,19 +136,37 @@ class ParallelExecutionStrategy:
                     return await step_runner(step, ctx)
             return await step_runner(step, ctx)
 
-        if self._parallel_config.error_semantics == ErrorSemantics.FAIL_FAST:
-            await self._run_fail_fast(steps, context, limited_runner)
-        else:
-            await self._run_collect_all(steps, context, limited_runner)
+        try:
+            if self._parallel_config.error_semantics == ErrorSemantics.FAIL_FAST:
+                await self._run_fail_fast(
+                    steps,
+                    branch_contexts if isolate else [context] * len(steps),
+                    limited_runner,
+                )
+            else:
+                await self._run_collect_all(
+                    steps,
+                    branch_contexts if isolate else [context] * len(steps),
+                    limited_runner,
+                )
+        finally:
+            # Merge step_results from branch contexts back to parent
+            if isolate:
+                for bc in branch_contexts:
+                    for step_id, result in bc.step_results.items():
+                        if step_id not in context.step_results:
+                            context.step_results[step_id] = result
 
     async def _run_fail_fast(
         self,
         steps: list[Step],
-        context: ExecutionContext,
+        contexts: list[ExecutionContext],
         runner: Any,
     ) -> None:
         """Fail-fast: cancel siblings on first error."""
-        tasks = [asyncio.create_task(runner(s, context)) for s in steps]
+        tasks = [
+            asyncio.create_task(runner(s, ctx)) for s, ctx in zip(steps, contexts, strict=True)
+        ]
         try:
             await asyncio.gather(*tasks)
         except Exception as exc:
@@ -160,16 +187,16 @@ class ParallelExecutionStrategy:
     async def _run_collect_all(
         self,
         steps: list[Step],
-        context: ExecutionContext,
+        contexts: list[ExecutionContext],
         runner: Any,
     ) -> None:
         """Collect-all: run all steps, aggregate errors."""
         results = await asyncio.gather(
-            *[runner(s, context) for s in steps],
+            *[runner(s, ctx) for s, ctx in zip(steps, contexts, strict=True)],
             return_exceptions=True,
         )
         errors: list[dict[str, str]] = []
-        for step, result in zip(steps, results, strict=True):
+        for step, ctx, result in zip(steps, contexts, results, strict=True):
             if isinstance(result, Exception):
                 errors.append(
                     {
@@ -179,13 +206,36 @@ class ParallelExecutionStrategy:
                     }
                 )
             else:
-                context.step_results[step.id] = result
+                ctx.step_results[step.id] = result
         if errors:
             raise ExecutionError(
                 EXEC_PARALLEL_COLLECT_FAILED,
                 f"Parallel group had {len(errors)} error(s)",
                 details={"errors": errors},
             )
+
+    @staticmethod
+    def _clone_context(context: ExecutionContext) -> ExecutionContext:
+        """Create a shallow clone of the execution context for branch isolation.
+
+        Shares ``workflow_id``, ``inputs`` (read-only by convention), and
+        ``deps`` (singleton services).  Copies ``step_results`` and
+        ``metadata`` dicts so branches have independent state.
+
+        Args:
+            context: The parent execution context to clone.
+
+        Returns:
+            A new ExecutionContext with independent step_results and metadata.
+        """
+        return ExecutionContext(
+            workflow_id=context.workflow_id,
+            inputs=context.inputs,
+            step_results=dict(context.step_results),
+            metadata=dict(context.metadata),
+            current_step_id=context.current_step_id,
+            deps=context.deps,
+        )
 
     @staticmethod
     def _group_steps(

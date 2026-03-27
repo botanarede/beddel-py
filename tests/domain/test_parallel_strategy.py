@@ -444,3 +444,118 @@ class TestConfigFromDict:
         )
         assert strategy._parallel_config.concurrency_limit == 3
         assert strategy._parallel_config.error_semantics == ErrorSemantics.COLLECT_ALL
+
+
+# ---------------------------------------------------------------------------
+# Story 4.2b Task 3 — Context isolation per parallel branch
+# ---------------------------------------------------------------------------
+
+
+class TestIsolateContextIndependentStepResults:
+    @pytest.mark.asyncio
+    async def test_isolate_context_independent_step_results(self) -> None:
+        """isolate_context=True — branches don't see each other's results during execution."""
+        seen_results: dict[str, dict[str, Any]] = {}
+
+        async def inspecting_runner(step: Step, ctx: ExecutionContext) -> Any:
+            # Record what step_results this branch can see at execution time
+            seen_results[step.id] = dict(ctx.step_results)
+            await asyncio.sleep(0.01)  # Ensure overlap
+            ctx.step_results[step.id] = f"result-{step.id}"
+            return f"result-{step.id}"
+
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        wf = _workflow(p1, p2)
+        ctx = _context()
+        strategy = ParallelExecutionStrategy({"isolate_context": True})
+
+        await strategy.execute(wf, ctx, inspecting_runner)
+
+        # During execution, neither branch should have seen the other's result
+        assert "p2" not in seen_results["p1"]
+        assert "p1" not in seen_results["p2"]
+        # After merge, parent has both
+        assert ctx.step_results["p1"] == "result-p1"
+        assert ctx.step_results["p2"] == "result-p2"
+
+
+class TestIsolateContextIndependentMetadata:
+    @pytest.mark.asyncio
+    async def test_isolate_context_independent_metadata(self) -> None:
+        """isolate_context=True — branch metadata writes don't pollute parent."""
+
+        async def metadata_writer(step: Step, ctx: ExecutionContext) -> Any:
+            ctx.metadata[f"branch_{step.id}"] = True
+            ctx.step_results[step.id] = f"result-{step.id}"
+            return f"result-{step.id}"
+
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        wf = _workflow(p1, p2)
+        ctx = _context()
+        strategy = ParallelExecutionStrategy({"isolate_context": True})
+
+        await strategy.execute(wf, ctx, metadata_writer)
+
+        # Parent metadata should NOT have branch writes
+        assert "branch_p1" not in ctx.metadata
+        assert "branch_p2" not in ctx.metadata
+        # But step_results ARE merged
+        assert ctx.step_results["p1"] == "result-p1"
+        assert ctx.step_results["p2"] == "result-p2"
+
+
+class TestIsolateContextFalseShared:
+    @pytest.mark.asyncio
+    async def test_isolate_context_false_shared(self) -> None:
+        """isolate_context=False — branches share context (4.2a behavior)."""
+
+        async def metadata_writer(step: Step, ctx: ExecutionContext) -> Any:
+            ctx.metadata[f"branch_{step.id}"] = True
+            ctx.step_results[step.id] = f"result-{step.id}"
+            return f"result-{step.id}"
+
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        wf = _workflow(p1, p2)
+        ctx = _context()
+        strategy = ParallelExecutionStrategy({"isolate_context": False})
+
+        await strategy.execute(wf, ctx, metadata_writer)
+
+        # Shared context — metadata IS visible
+        assert ctx.metadata.get("branch_p1") is True
+        assert ctx.metadata.get("branch_p2") is True
+        assert ctx.step_results["p1"] == "result-p1"
+        assert ctx.step_results["p2"] == "result-p2"
+
+
+class TestIsolateContextMergeAfterCollectAllErrors:
+    @pytest.mark.asyncio
+    async def test_isolate_context_merge_after_collect_all_errors(self) -> None:
+        """isolate_context=True + collect-all — successful results merged despite errors."""
+
+        async def mixed_runner(step: Step, ctx: ExecutionContext) -> Any:
+            if step.id == "p_fail":
+                raise PrimitiveError("BEDDEL-PRIM-001", "intentional")
+            ctx.step_results[step.id] = f"result-{step.id}"
+            return f"result-{step.id}"
+
+        p_ok = _step("p_ok", parallel=True)
+        p_fail = _step("p_fail", parallel=True)
+        wf = _workflow(p_ok, p_fail)
+        ctx = _context()
+        strategy = ParallelExecutionStrategy(
+            {
+                "isolate_context": True,
+                "error_semantics": "collect-all",
+            }
+        )
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await strategy.execute(wf, ctx, mixed_runner)
+
+        assert exc_info.value.code == "BEDDEL-EXEC-031"
+        # Successful result should be merged to parent
+        assert ctx.step_results["p_ok"] == "result-p_ok"
