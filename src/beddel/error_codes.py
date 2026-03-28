@@ -345,6 +345,15 @@ AUTH_TOKEN_EXCHANGE_FAILED: str = "BEDDEL-AUTH-903"
 AUTH_CREDENTIALS_FILE_ERROR: str = "BEDDEL-AUTH-904"
 """Cannot read/write credentials file."""
 
+AUTH_MISSING_HEADER: str = "BEDDEL-AUTH-905"
+"""Missing authorization header."""
+
+AUTH_INVALID_TOKEN: str = "BEDDEL-AUTH-906"
+"""Invalid token — GitHub API rejected."""
+
+AUTH_USER_NOT_ALLOWED: str = "BEDDEL-AUTH-907"
+"""Valid token but user not in allowed list."""
+
 # ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
@@ -446,6 +455,9 @@ ALL_CODES: dict[str, str] = {
     "AUTH_DEVICE_FLOW_TIMEOUT": AUTH_DEVICE_FLOW_TIMEOUT,
     "AUTH_TOKEN_EXCHANGE_FAILED": AUTH_TOKEN_EXCHANGE_FAILED,
     "AUTH_CREDENTIALS_FILE_ERROR": AUTH_CREDENTIALS_FILE_ERROR,
+    "AUTH_MISSING_HEADER": AUTH_MISSING_HEADER,
+    "AUTH_INVALID_TOKEN": AUTH_INVALID_TOKEN,
+    "AUTH_USER_NOT_ALLOWED": AUTH_USER_NOT_ALLOWED,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

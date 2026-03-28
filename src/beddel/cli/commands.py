@@ -353,6 +353,24 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
     default=False,
     help="Mount Dashboard Server Protocol endpoints at /api.",
 )
+@click.option(
+    "--remote",
+    is_flag=True,
+    default=False,
+    help="Enable token validation middleware for remote access.",
+)
+@click.option(
+    "--allowed-users",
+    type=str,
+    default=None,
+    help="Comma-separated list of allowed GitHub usernames.",
+)
+@click.option(
+    "--tunnel-domain",
+    type=str,
+    default=None,
+    help="Cloudflare tunnel domain for CORS.",
+)
 def serve(
     host: str,
     port: int,
@@ -360,6 +378,9 @@ def serve(
     tools: tuple[str, ...],
     *,
     dashboard: bool,
+    remote: bool,
+    allowed_users: str | None,
+    tunnel_domain: str | None,
 ) -> None:
     """Start a FastAPI server exposing workflows as SSE endpoints."""
     try:
@@ -383,13 +404,36 @@ def serve(
     from beddel.integrations.fastapi import create_beddel_handler
     from beddel.primitives import register_builtins
 
+    if allowed_users and not remote:
+        click.echo("Warning: --allowed-users ignored without --remote.", err=True)
+
     app = FastAPI(title="Beddel", version=__version__)
+
+    # Determine CORS origins based on mode
+    if remote:
+        cors_origins = [f"https://{tunnel_domain}"] if tunnel_domain else ["*"]
+    else:
+        cors_origins = ["http://localhost:3000"]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=cors_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Add auth middleware AFTER CORS (Starlette LIFO: auth runs first)
+    if remote:
+        from beddel.integrations.dashboard.auth_middleware import (
+            create_auth_middleware,
+        )
+
+        parsed_users: list[str] | None = None
+        if allowed_users:
+            parsed_users = [u.strip() for u in allowed_users.split(",") if u.strip()]
+        middleware_cls = create_auth_middleware(allowed_users=parsed_users)
+        app.add_middleware(middleware_cls)
+        click.echo("Remote mode enabled — token validation active")
 
     registry = PrimitiveRegistry()
     register_builtins(registry)

@@ -21,8 +21,11 @@ from beddel.error_codes import (
     AUTH_CREDENTIALS_FILE_ERROR,
     AUTH_DEVICE_FLOW_FAILED,
     AUTH_DEVICE_FLOW_TIMEOUT,
+    AUTH_INVALID_TOKEN,
+    AUTH_MISSING_HEADER,
     AUTH_RANGE,
     AUTH_TOKEN_EXCHANGE_FAILED,
+    AUTH_USER_NOT_ALLOWED,
     CB_CIRCUIT_OPEN,
     CB_FALLBACK_FAILED,
     CB_RANGE,
@@ -402,17 +405,32 @@ class TestAuthCodes:
         """AUTH_CREDENTIALS_FILE_ERROR maps to BEDDEL-AUTH-904."""
         assert AUTH_CREDENTIALS_FILE_ERROR == "BEDDEL-AUTH-904"
 
+    def test_auth_missing_header_value(self) -> None:
+        """AUTH_MISSING_HEADER maps to BEDDEL-AUTH-905."""
+        assert AUTH_MISSING_HEADER == "BEDDEL-AUTH-905"
+
+    def test_auth_invalid_token_value(self) -> None:
+        """AUTH_INVALID_TOKEN maps to BEDDEL-AUTH-906."""
+        assert AUTH_INVALID_TOKEN == "BEDDEL-AUTH-906"
+
+    def test_auth_user_not_allowed_value(self) -> None:
+        """AUTH_USER_NOT_ALLOWED maps to BEDDEL-AUTH-907."""
+        assert AUTH_USER_NOT_ALLOWED == "BEDDEL-AUTH-907"
+
     def test_auth_range_value(self) -> None:
         """AUTH_RANGE is (1000, 1049)."""
         assert AUTH_RANGE == (1000, 1049)
 
     def test_all_auth_codes_in_all_codes(self) -> None:
-        """All 4 AUTH codes are registered in ALL_CODES."""
+        """All 7 AUTH codes are registered in ALL_CODES."""
         auth_keys = [
             "AUTH_DEVICE_FLOW_FAILED",
             "AUTH_DEVICE_FLOW_TIMEOUT",
             "AUTH_TOKEN_EXCHANGE_FAILED",
             "AUTH_CREDENTIALS_FILE_ERROR",
+            "AUTH_MISSING_HEADER",
+            "AUTH_INVALID_TOKEN",
+            "AUTH_USER_NOT_ALLOWED",
         ]
         for key in auth_keys:
             assert key in ALL_CODES, f"{key} missing from ALL_CODES"
@@ -424,8 +442,11 @@ class TestAuthCodes:
         assert pattern.match(ALL_CODES["AUTH_DEVICE_FLOW_TIMEOUT"])
         assert pattern.match(ALL_CODES["AUTH_TOKEN_EXCHANGE_FAILED"])
         assert pattern.match(ALL_CODES["AUTH_CREDENTIALS_FILE_ERROR"])
+        assert pattern.match(ALL_CODES["AUTH_MISSING_HEADER"])
+        assert pattern.match(ALL_CODES["AUTH_INVALID_TOKEN"])
+        assert pattern.match(ALL_CODES["AUTH_USER_NOT_ALLOWED"])
 
     def test_auth_codes_count(self) -> None:
-        """Exactly 4 AUTH codes exist in ALL_CODES."""
+        """Exactly 7 AUTH codes exist in ALL_CODES."""
         auth_codes = {k: v for k, v in ALL_CODES.items() if k.startswith("AUTH_")}
-        assert len(auth_codes) == 4
+        assert len(auth_codes) == 7
