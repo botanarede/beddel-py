@@ -345,6 +345,12 @@ KIT_MANIFEST_INVALID: str = "BEDDEL-KIT-650"
 KIT_MANIFEST_NOT_FOUND: str = "BEDDEL-KIT-651"
 """Kit manifest file not found."""
 
+KIT_LOAD_FAILED: str = "BEDDEL-KIT-652"
+"""Tool import from kit manifest failed."""
+
+KIT_DISCOVERY_PATH_INVALID: str = "BEDDEL-KIT-653"
+"""Configured kit discovery path does not exist."""
+
 # ---------------------------------------------------------------------------
 # Auth codes  (AUTH prefix, 1000 range)
 # NOTE: String codes use BEDDEL-AUTH-9xx per PRD §8.2. The internal range
@@ -480,6 +486,8 @@ ALL_CODES: dict[str, str] = {
     # Kit
     "KIT_MANIFEST_INVALID": KIT_MANIFEST_INVALID,
     "KIT_MANIFEST_NOT_FOUND": KIT_MANIFEST_NOT_FOUND,
+    "KIT_LOAD_FAILED": KIT_LOAD_FAILED,
+    "KIT_DISCOVERY_PATH_INVALID": KIT_DISCOVERY_PATH_INVALID,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

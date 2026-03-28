@@ -12,21 +12,29 @@ from typing import Any
 
 import click
 
+logger = logging.getLogger(__name__)
+
 
 def _build_tool_registry(
     workflow: Any,
     parsed_tools: dict[str, Callable[..., Any]],
+    *,
+    kit_paths: list[Path] | None = None,
+    no_kits: bool = False,
 ) -> dict[str, Callable[..., Any]]:
-    """Build a merged tool registry using the 3-layer override pattern.
+    """Build a merged tool registry using the 4-layer override pattern.
 
     Merge order (later layers override earlier ones):
       1. ``discover_builtin_tools()`` — built-in tools from ``beddel.tools.*``
-      2. ``workflow.metadata["_inline_tools"]`` — inline YAML ``tools:`` section
-      3. ``parsed_tools`` — CLI ``--tool`` flags
+      2. Kit tools — discovered via ``discover_kits()`` / ``load_kit()``
+      3. ``workflow.metadata["_inline_tools"]`` — inline YAML ``tools:`` section
+      4. ``parsed_tools`` — CLI ``--tool`` flags
 
     Args:
         workflow: Parsed :class:`~beddel.domain.models.Workflow` instance.
         parsed_tools: Dict of tools resolved from ``--tool`` CLI flags.
+        kit_paths: Directories to scan for kits. *None* uses defaults.
+        no_kits: When *True*, skip kit discovery entirely.
 
     Returns:
         Merged dict mapping tool names to callables.
@@ -34,6 +42,20 @@ def _build_tool_registry(
     from beddel.tools import discover_builtin_tools
 
     merged = discover_builtin_tools()
+
+    # Layer 2: kit tools (between builtins and inline YAML)
+    if not no_kits:
+        from beddel.domain.errors import KitManifestError
+        from beddel.tools.kits import discover_kits, load_kit
+
+        for manifest in discover_kits(kit_paths):
+            try:
+                kit_tools = load_kit(manifest)
+            except KitManifestError as exc:
+                logger.warning("Skipping kit '%s': %s", manifest.kit.name, exc.message)
+                continue
+            merged.update(kit_tools)
+
     merged.update(workflow.metadata.get("_inline_tools", {}))
     merged.update(parsed_tools)
     return merged
@@ -149,12 +171,21 @@ def list_primitives() -> None:
     multiple=True,
     help="Register tool as name=module:function.",
 )
+@click.option(
+    "--kit",
+    multiple=True,
+    type=click.Path(exists=False, path_type=Path),
+    help="Load kit from path.",
+)
+@click.option("--no-kits", is_flag=True, default=False, help="Disable kit discovery.")
 def run(
     workflow_path: Path,
     inputs: tuple[str, ...],
     tools: tuple[str, ...],
+    kit: tuple[Path, ...],
     *,
     as_json: bool,
+    no_kits: bool,
 ) -> None:
     """Execute a workflow and print results."""
     from beddel.adapters.kiro_cli import KiroCLIAgentAdapter
@@ -205,7 +236,12 @@ def run(
         return WorkflowParser.parse(target.read_text())
 
     parsed_tools = _parse_tool_flags(tools)
-    merged_tools = _build_tool_registry(workflow, parsed_tools)
+    merged_tools = _build_tool_registry(
+        workflow,
+        parsed_tools,
+        kit_paths=list(kit) if kit else None,
+        no_kits=no_kits,
+    )
     deps = DefaultDependencies(
         llm_provider=adapter,
         agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
@@ -369,6 +405,13 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
     help="Register tool as name=module:function.",
 )
 @click.option(
+    "--kit",
+    multiple=True,
+    type=click.Path(exists=False, path_type=Path),
+    help="Load kit from path.",
+)
+@click.option("--no-kits", is_flag=True, default=False, help="Disable kit discovery.")
+@click.option(
     "--dashboard",
     is_flag=True,
     default=False,
@@ -397,9 +440,11 @@ def serve(
     port: int,
     workflow_paths: tuple[Path, ...],
     tools: tuple[str, ...],
+    kit: tuple[Path, ...],
     *,
     dashboard: bool,
     remote: bool,
+    no_kits: bool,
     allowed_users: str | None,
     tunnel_domain: str | None,
 ) -> None:
@@ -495,7 +540,12 @@ def serve(
         deps = DefaultDependencies(
             llm_provider=adapter,
             agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
-            tool_registry=_build_tool_registry(workflow, parsed_tools),
+            tool_registry=_build_tool_registry(
+                workflow,
+                parsed_tools,
+                kit_paths=list(kit) if kit else None,
+                no_kits=no_kits,
+            ),
             workflow_loader=_make_workflow_loader(wf_parent),
             registry=registry,
         )
