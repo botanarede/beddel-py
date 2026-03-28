@@ -64,7 +64,7 @@ MCP_RANGE: tuple[int, int] = (950, 999)
 """MCP integration errors."""
 
 AUTH_RANGE: tuple[int, int] = (1000, 1049)
-"""Remote authentication errors."""
+"""Remote authentication errors (string codes use BEDDEL-AUTH-9xx per PRD)."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -331,6 +331,9 @@ MCP_SERVER_TIMEOUT: str = "BEDDEL-MCP-604"
 
 # ---------------------------------------------------------------------------
 # Auth codes  (AUTH prefix, 1000 range)
+# NOTE: String codes use BEDDEL-AUTH-9xx per PRD §8.2. The internal range
+# constant AUTH_RANGE=(1000,1049) is for allocation tracking only — same
+# pattern as MCP_RANGE=(950,999) with BEDDEL-MCP-6xx string codes.
 # ---------------------------------------------------------------------------
 
 AUTH_DEVICE_FLOW_FAILED: str = "BEDDEL-AUTH-901"

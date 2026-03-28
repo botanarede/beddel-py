@@ -141,11 +141,11 @@ async def poll_for_token(
     poll_interval = interval
     elapsed = 0
 
-    while elapsed < expires_in:
-        await asyncio.sleep(poll_interval)
-        elapsed += poll_interval
+    async with httpx.AsyncClient() as client:
+        while elapsed < expires_in:
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
 
-        async with httpx.AsyncClient() as client:
             resp = await client.post(
                 GITHUB_TOKEN_URL,
                 data={
@@ -156,27 +156,27 @@ async def poll_for_token(
                 headers={"Accept": "application/json"},
             )
 
-        body: dict[str, Any] = resp.json()
-        error = body.get("error")
+            body: dict[str, Any] = resp.json()
+            error = body.get("error")
 
-        if error is None and "access_token" in body:
-            return body["access_token"]
+            if error is None and "access_token" in body:
+                return body["access_token"]
 
-        if error == "authorization_pending":
-            continue
-        if error == "slow_down":
-            poll_interval += 5
-            continue
-        if error == "expired_token":
-            raise BeddelError(
-                code=AUTH_DEVICE_FLOW_TIMEOUT,
-                message="User did not complete browser auth in time",
-            )
-        if error == "access_denied":
-            raise BeddelError(
-                code=AUTH_TOKEN_EXCHANGE_FAILED,
-                message="User denied the authorization request",
-            )
+            if error == "authorization_pending":
+                continue
+            if error == "slow_down":
+                poll_interval += 5
+                continue
+            if error == "expired_token":
+                raise BeddelError(
+                    code=AUTH_DEVICE_FLOW_TIMEOUT,
+                    message="User did not complete browser auth in time",
+                )
+            if error == "access_denied":
+                raise BeddelError(
+                    code=AUTH_TOKEN_EXCHANGE_FAILED,
+                    message="User denied the authorization request",
+                )
 
     raise BeddelError(
         code=AUTH_DEVICE_FLOW_TIMEOUT,

@@ -428,13 +428,17 @@ def serve(
     if allowed_users and not remote:
         click.echo("Warning: --allowed-users ignored without --remote.", err=True)
 
+    if remote and not tunnel_domain:
+        click.echo(
+            "Error: --tunnel-domain is required when --remote is set.",
+            err=True,
+        )
+        raise SystemExit(1)
+
     app = FastAPI(title="Beddel", version=__version__)
 
     # Determine CORS origins based on mode
-    if remote:
-        cors_origins = [f"https://{tunnel_domain}"] if tunnel_domain else ["*"]
-    else:
-        cors_origins = ["http://localhost:3000"]
+    cors_origins = [f"https://{tunnel_domain}"] if remote else ["http://localhost:3000"]
 
     app.add_middleware(
         CORSMiddleware,

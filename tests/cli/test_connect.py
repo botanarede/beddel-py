@@ -177,7 +177,7 @@ class TestServeRemoteFlagAccepted:
     def test_serve_remote_flag_accepted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("uvicorn.run", lambda *a, **kw: None)
         runner = CliRunner()
-        result = runner.invoke(cli, ["serve", "--remote"])
+        result = runner.invoke(cli, ["serve", "--remote", "--tunnel-domain", "dash.example.com"])
         assert result.exit_code == 0
         assert "Remote mode enabled" in result.output
 
