@@ -18,6 +18,11 @@ from beddel.error_codes import (
     AGENT_STREAM_INTERRUPTED,
     AGENT_TIMEOUT,
     ALL_CODES,
+    AUTH_CREDENTIALS_FILE_ERROR,
+    AUTH_DEVICE_FLOW_FAILED,
+    AUTH_DEVICE_FLOW_TIMEOUT,
+    AUTH_RANGE,
+    AUTH_TOKEN_EXCHANGE_FAILED,
     CB_CIRCUIT_OPEN,
     CB_FALLBACK_FAILED,
     CB_RANGE,
@@ -376,3 +381,51 @@ class TestGoalOrientedCodes:
         pattern = re.compile(r"^BEDDEL-EXEC-\d{3}$")
         assert pattern.match(ALL_CODES["EXEC_GOAL_MAX_ATTEMPTS"])
         assert pattern.match(ALL_CODES["EXEC_GOAL_CONDITION_FAILED"])
+
+
+class TestAuthCodes:
+    """Tests for AUTH error codes (Story 4.0A.1)."""
+
+    def test_auth_device_flow_failed_value(self) -> None:
+        """AUTH_DEVICE_FLOW_FAILED maps to BEDDEL-AUTH-901."""
+        assert AUTH_DEVICE_FLOW_FAILED == "BEDDEL-AUTH-901"
+
+    def test_auth_device_flow_timeout_value(self) -> None:
+        """AUTH_DEVICE_FLOW_TIMEOUT maps to BEDDEL-AUTH-902."""
+        assert AUTH_DEVICE_FLOW_TIMEOUT == "BEDDEL-AUTH-902"
+
+    def test_auth_token_exchange_failed_value(self) -> None:
+        """AUTH_TOKEN_EXCHANGE_FAILED maps to BEDDEL-AUTH-903."""
+        assert AUTH_TOKEN_EXCHANGE_FAILED == "BEDDEL-AUTH-903"
+
+    def test_auth_credentials_file_error_value(self) -> None:
+        """AUTH_CREDENTIALS_FILE_ERROR maps to BEDDEL-AUTH-904."""
+        assert AUTH_CREDENTIALS_FILE_ERROR == "BEDDEL-AUTH-904"
+
+    def test_auth_range_value(self) -> None:
+        """AUTH_RANGE is (1000, 1049)."""
+        assert AUTH_RANGE == (1000, 1049)
+
+    def test_all_auth_codes_in_all_codes(self) -> None:
+        """All 4 AUTH codes are registered in ALL_CODES."""
+        auth_keys = [
+            "AUTH_DEVICE_FLOW_FAILED",
+            "AUTH_DEVICE_FLOW_TIMEOUT",
+            "AUTH_TOKEN_EXCHANGE_FAILED",
+            "AUTH_CREDENTIALS_FILE_ERROR",
+        ]
+        for key in auth_keys:
+            assert key in ALL_CODES, f"{key} missing from ALL_CODES"
+
+    def test_auth_codes_match_pattern(self) -> None:
+        """All AUTH codes match BEDDEL-AUTH-9XX pattern."""
+        pattern = re.compile(r"^BEDDEL-AUTH-9\d{2}$")
+        assert pattern.match(ALL_CODES["AUTH_DEVICE_FLOW_FAILED"])
+        assert pattern.match(ALL_CODES["AUTH_DEVICE_FLOW_TIMEOUT"])
+        assert pattern.match(ALL_CODES["AUTH_TOKEN_EXCHANGE_FAILED"])
+        assert pattern.match(ALL_CODES["AUTH_CREDENTIALS_FILE_ERROR"])
+
+    def test_auth_codes_count(self) -> None:
+        """Exactly 4 AUTH codes exist in ALL_CODES."""
+        auth_codes = {k: v for k, v in ALL_CODES.items() if k.startswith("AUTH_")}
+        assert len(auth_codes) == 4

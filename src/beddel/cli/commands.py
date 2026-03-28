@@ -243,6 +243,93 @@ def run(
 
 
 @cli.command()
+@click.option("--status", "show_status", is_flag=True, help="Show auth status.")
+@click.option("--logout", is_flag=True, help="Remove stored credentials.")
+@click.option("--server", type=str, default=None, help="Set dashboard server URL.")
+def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
+    """Authenticate with GitHub for remote dashboard access."""
+    import datetime
+    import os
+
+    from beddel.adapters.github_auth import (
+        CredentialData,
+        delete_credentials,
+        get_github_user,
+        initiate_device_flow,
+        load_credentials,
+        poll_for_token,
+        save_credentials,
+    )
+    from beddel.domain.errors import BeddelError
+
+    if show_status:
+        creds = load_credentials()
+        if creds is None:
+            click.echo("Not authenticated. Run `beddel connect` to authenticate.")
+            return
+        click.echo(f"User: {creds['github_user']}")
+        click.echo(f"Server: {creds.get('server_url') or '(not set)'}")
+        click.echo(f"Created: {creds['created_at']}")
+        return
+
+    if logout:
+        removed = delete_credentials()
+        if removed:
+            click.echo("Credentials removed.")
+        else:
+            click.echo("No credentials found.")
+        return
+
+    if server is not None:
+        creds = load_credentials()
+        if creds is None:
+            click.echo("Not authenticated. Run `beddel connect` first.", err=True)
+            raise SystemExit(1)
+        creds["server_url"] = server
+        save_credentials(creds)
+        click.echo(f"Server URL updated to {server}")
+        return
+
+    # Default: full Device Flow
+    client_id = os.environ.get("BEDDEL_GITHUB_CLIENT_ID")
+    if not client_id:
+        click.echo(
+            "BEDDEL_GITHUB_CLIENT_ID environment variable is required.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    try:
+        flow = asyncio.run(initiate_device_flow(client_id))
+        click.echo(f"Enter code: {flow['user_code']}")
+        click.echo(f"Open: {flow['verification_uri']}")
+
+        token = asyncio.run(
+            poll_for_token(
+                client_id,
+                flow["device_code"],
+                interval=flow["interval"],
+                expires_in=flow["expires_in"],
+            )
+        )
+
+        user = asyncio.run(get_github_user(token))
+
+        save_credentials(
+            CredentialData(
+                access_token=token,
+                github_user=user,
+                server_url=None,
+                created_at=datetime.datetime.now(datetime.UTC).isoformat(),
+            )
+        )
+        click.echo(f"Authenticated as {user}.")
+    except BeddelError as exc:
+        click.echo(f"Error [{exc.code}]: {exc.message}", err=True)
+        raise SystemExit(1) from None
+
+
+@cli.command()
 @click.option("--host", default="127.0.0.1", help="Bind host.")
 @click.option("--port", default=8000, type=int, help="Bind port.")
 @click.option(

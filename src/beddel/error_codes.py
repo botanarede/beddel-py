@@ -20,6 +20,7 @@ Range       Prefix    Domain
 850 – 899   CODEX     Codex integration errors (planned)
 900 – 949   DURABLE   Durable execution errors
 950 – 999   MCP       MCP integration errors
+1000 – 1049  AUTH     Remote authentication errors
 ==========  ========  ===========
 """
 
@@ -61,6 +62,9 @@ DURABLE_RANGE: tuple[int, int] = (900, 949)
 
 MCP_RANGE: tuple[int, int] = (950, 999)
 """MCP integration errors."""
+
+AUTH_RANGE: tuple[int, int] = (1000, 1049)
+"""Remote authentication errors."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -326,6 +330,22 @@ MCP_SERVER_TIMEOUT: str = "BEDDEL-MCP-604"
 """MCP server operation timed out."""
 
 # ---------------------------------------------------------------------------
+# Auth codes  (AUTH prefix, 1000 range)
+# ---------------------------------------------------------------------------
+
+AUTH_DEVICE_FLOW_FAILED: str = "BEDDEL-AUTH-901"
+"""GitHub Device Flow initiation failed."""
+
+AUTH_DEVICE_FLOW_TIMEOUT: str = "BEDDEL-AUTH-902"
+"""User did not complete browser auth within expires_in window."""
+
+AUTH_TOKEN_EXCHANGE_FAILED: str = "BEDDEL-AUTH-903"
+"""GitHub token exchange failed."""
+
+AUTH_CREDENTIALS_FILE_ERROR: str = "BEDDEL-AUTH-904"
+"""Cannot read/write credentials file."""
+
+# ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
 
@@ -421,6 +441,11 @@ ALL_CODES: dict[str, str] = {
     "MCP_TOOL_INVOCATION_FAILED": MCP_TOOL_INVOCATION_FAILED,
     "MCP_SCHEMA_VALIDATION_FAILED": MCP_SCHEMA_VALIDATION_FAILED,
     "MCP_SERVER_TIMEOUT": MCP_SERVER_TIMEOUT,
+    # Auth
+    "AUTH_DEVICE_FLOW_FAILED": AUTH_DEVICE_FLOW_FAILED,
+    "AUTH_DEVICE_FLOW_TIMEOUT": AUTH_DEVICE_FLOW_TIMEOUT,
+    "AUTH_TOKEN_EXCHANGE_FAILED": AUTH_TOKEN_EXCHANGE_FAILED,
+    "AUTH_CREDENTIALS_FILE_ERROR": AUTH_CREDENTIALS_FILE_ERROR,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

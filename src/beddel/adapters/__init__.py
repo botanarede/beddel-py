@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from beddel.adapters.circuit_breaker import InMemoryCircuitBreaker
 from beddel.adapters.event_store import InMemoryEventStore, SQLiteEventStore
+from beddel.adapters.github_auth import (
+    delete_credentials,
+    load_credentials,
+    save_credentials,
+)
 from beddel.adapters.hooks import LifecycleHookManager
 from beddel.adapters.kiro_cli import KiroCLIAgentAdapter
 from beddel.adapters.litellm_adapter import LiteLLMAdapter
@@ -20,4 +25,7 @@ __all__ = [
     "SSEMCPClient",
     "SQLiteEventStore",
     "StdioMCPClient",
+    "delete_credentials",
+    "load_credentials",
+    "save_credentials",
 ]
