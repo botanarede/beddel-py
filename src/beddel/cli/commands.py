@@ -46,15 +46,34 @@ def _build_tool_registry(
     # Layer 2: kit tools (between builtins and inline YAML)
     if not no_kits:
         from beddel.domain.errors import KitManifestError
+        from beddel.domain.kit import KitDiscoveryResult
         from beddel.tools.kits import discover_kits, load_kit
 
-        for manifest in discover_kits(kit_paths):
+        discovery_result: KitDiscoveryResult = discover_kits(kit_paths)
+
+        # Build set of collided tool names and log warnings
+        collided_names: set[str] = set()
+        for collision in discovery_result.collisions:
+            collided_names.add(collision.tool_name)
+            logger.warning(
+                "Kit tool collision: '%s' declared by %s. Use namespaced form.",
+                collision.tool_name,
+                collision.kit_names,
+            )
+
+        for manifest in discovery_result.manifests:
+            kit_name = manifest.kit.name
             try:
                 kit_tools = load_kit(manifest)
             except KitManifestError as exc:
-                logger.warning("Skipping kit '%s': %s", manifest.kit.name, exc.message)
+                logger.warning("Skipping kit '%s': %s", kit_name, exc.message)
                 continue
-            merged.update(kit_tools)
+            for tool_name, tool_fn in kit_tools.items():
+                # Always register namespaced form
+                merged[f"{kit_name}:{tool_name}"] = tool_fn
+                # Register unnamespaced form only when no collision
+                if tool_name not in collided_names:
+                    merged[tool_name] = tool_fn
 
     merged.update(workflow.metadata.get("_inline_tools", {}))
     merged.update(parsed_tools)

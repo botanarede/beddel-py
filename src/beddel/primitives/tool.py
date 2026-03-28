@@ -343,7 +343,11 @@ class ToolPrimitive(IPrimitive):
         Raises:
             PrimitiveError: ``BEDDEL-PRIM-304`` if tool not in allowlist.
         """
-        if allowed_tools is not None and tool_name not in allowed_tools:
+        if (
+            allowed_tools is not None
+            and tool_name not in allowed_tools
+            and (":" not in tool_name or tool_name.split(":", 1)[1] not in allowed_tools)
+        ):
             raise PrimitiveError(
                 code=PRIM_TOOL_NOT_ALLOWED,
                 message=f"Tool '{tool_name}' is not in the workflow allowed_tools list",

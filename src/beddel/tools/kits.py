@@ -10,12 +10,13 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from beddel.domain.errors import KitManifestError
-from beddel.domain.kit import KitManifest, parse_kit_manifest
+from beddel.domain.kit import KitCollision, KitDiscoveryResult, KitManifest, parse_kit_manifest
 from beddel.error_codes import KIT_LOAD_FAILED
 
 __all__ = ["discover_kits", "load_kit"]
@@ -23,7 +24,7 @@ __all__ = ["discover_kits", "load_kit"]
 logger = logging.getLogger(__name__)
 
 
-def discover_kits(paths: list[Path] | None = None) -> list[KitManifest]:
+def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
     """Scan directories for ``kit.yaml`` files and return validated manifests.
 
     Args:
@@ -32,7 +33,8 @@ def discover_kits(paths: list[Path] | None = None) -> list[KitManifest]:
             ``~/.beddel/kits/``.
 
     Returns:
-        Alphabetically sorted list of :class:`KitManifest` instances.
+        A :class:`KitDiscoveryResult` with alphabetically sorted manifests
+        and any detected tool name collisions.
     """
     if paths is None:
         env_val = os.environ.get("BEDDEL_KIT_PATHS")
@@ -59,7 +61,20 @@ def discover_kits(paths: list[Path] | None = None) -> list[KitManifest]:
             manifests.append(manifest)
 
     manifests.sort(key=lambda m: m.kit.name)
-    return manifests
+
+    # Detect collisions: tool names declared by 2+ kits
+    tool_to_kits: dict[str, list[str]] = defaultdict(list)
+    for m in manifests:
+        for tool_decl in m.kit.tools:
+            tool_to_kits[tool_decl.name].append(m.kit.name)
+
+    collisions = [
+        KitCollision(tool_name=name, kit_names=kits)
+        for name, kits in sorted(tool_to_kits.items())
+        if len(kits) > 1
+    ]
+
+    return KitDiscoveryResult(manifests=manifests, collisions=collisions)
 
 
 def load_kit(manifest: KitManifest) -> dict[str, Callable[..., Any]]:

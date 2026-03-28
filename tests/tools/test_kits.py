@@ -11,7 +11,7 @@ import pytest
 import yaml
 
 from beddel.domain.errors import KitManifestError
-from beddel.domain.kit import KitManifest, KitToolDeclaration, SolutionKit
+from beddel.domain.kit import KitDiscoveryResult, KitManifest, KitToolDeclaration, SolutionKit
 from beddel.error_codes import KIT_LOAD_FAILED
 from beddel.tools.kits import discover_kits, load_kit
 
@@ -73,8 +73,9 @@ class TestDiscoverKitsValid:
 
         result = discover_kits([tmp_path])
 
-        assert len(result) == 2
-        names = [m.kit.name for m in result]
+        assert isinstance(result, KitDiscoveryResult)
+        assert len(result.manifests) == 2
+        names = [m.kit.name for m in result.manifests]
         assert "alpha-kit" in names
         assert "beta-kit" in names
 
@@ -85,7 +86,7 @@ class TestDiscoverKitsValid:
 
         result = discover_kits([tmp_path])
 
-        names = [m.kit.name for m in result]
+        names = [m.kit.name for m in result.manifests]
         assert names == ["alpha-kit", "mike-kit", "zulu-kit"]
 
     def test_project_local_before_user_global(self, tmp_path: Path) -> None:
@@ -96,7 +97,7 @@ class TestDiscoverKitsValid:
 
         result = discover_kits([local, global_])
 
-        names = [m.kit.name for m in result]
+        names = [m.kit.name for m in result.manifests]
         # Alphabetical sort: aaa < bbb, and local is scanned first
         assert names == ["aaa-kit", "bbb-kit"]
 
@@ -108,7 +109,7 @@ class TestDiscoverKitsValid:
 
         result = discover_kits([path_a, path_b])
 
-        assert len(result) == 2
+        assert len(result.manifests) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -125,12 +126,14 @@ class TestDiscoverKitsEmpty:
 
         result = discover_kits([empty])
 
-        assert result == []
+        assert result.manifests == []
+        assert result.collisions == []
 
     def test_missing_directory_returns_empty_list(self, tmp_path: Path) -> None:
         result = discover_kits([tmp_path / "nonexistent"])
 
-        assert result == []
+        assert result.manifests == []
+        assert result.collisions == []
 
     def test_no_kit_yaml_in_subdirs_returns_empty(self, tmp_path: Path) -> None:
         (tmp_path / "some-dir").mkdir()
@@ -138,7 +141,8 @@ class TestDiscoverKitsEmpty:
 
         result = discover_kits([tmp_path])
 
-        assert result == []
+        assert result.manifests == []
+        assert result.collisions == []
 
 
 # ---------------------------------------------------------------------------
@@ -158,8 +162,8 @@ class TestDiscoverKitsEnvVar:
 
         result = discover_kits()  # paths=None → reads env var
 
-        assert len(result) == 1
-        assert result[0].kit.name == "env-kit"
+        assert len(result.manifests) == 1
+        assert result.manifests[0].kit.name == "env-kit"
 
     def test_env_var_colon_separated(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -172,7 +176,7 @@ class TestDiscoverKitsEnvVar:
 
         result = discover_kits()
 
-        assert len(result) == 2
+        assert len(result.manifests) == 2
 
     def test_env_var_empty_string_uses_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("BEDDEL_KIT_PATHS", "")
@@ -180,7 +184,7 @@ class TestDiscoverKitsEnvVar:
         # Empty env var → falls through to defaults (which likely don't exist)
         result = discover_kits()
 
-        assert isinstance(result, list)
+        assert isinstance(result, KitDiscoveryResult)
 
 
 # ---------------------------------------------------------------------------
@@ -201,8 +205,8 @@ class TestDiscoverKitsFailOpen:
 
         result = discover_kits([tmp_path])
 
-        assert len(result) == 1
-        assert result[0].kit.name == "good-kit"
+        assert len(result.manifests) == 1
+        assert result.manifests[0].kit.name == "good-kit"
 
     def test_all_invalid_returns_empty(self, tmp_path: Path) -> None:
         bad_dir = tmp_path / "bad-kit"
@@ -211,7 +215,7 @@ class TestDiscoverKitsFailOpen:
 
         result = discover_kits([tmp_path])
 
-        assert result == []
+        assert result.manifests == []
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +357,7 @@ class TestBuildToolRegistry:
             name="test-kit",
             tools=[KitToolDeclaration(name="shared", target="json:dumps")],
         )
+        discovery_result = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
 
         with (
             patch(
@@ -361,7 +366,7 @@ class TestBuildToolRegistry:
             ),
             patch(
                 "beddel.tools.kits.discover_kits",
-                return_value=[kit_manifest],
+                return_value=discovery_result,
             ),
             patch(
                 "beddel.tools.kits.load_kit",
@@ -389,6 +394,7 @@ class TestBuildToolRegistry:
         kit_manifest = _make_manifest(
             tools=[KitToolDeclaration(name="tool-x", target="json:dumps")],
         )
+        discovery_result = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
 
         with (
             patch(
@@ -397,7 +403,7 @@ class TestBuildToolRegistry:
             ),
             patch(
                 "beddel.tools.kits.discover_kits",
-                return_value=[kit_manifest],
+                return_value=discovery_result,
             ),
             patch(
                 "beddel.tools.kits.load_kit",
@@ -417,6 +423,7 @@ class TestBuildToolRegistry:
         kit_manifest = _make_manifest(
             tools=[KitToolDeclaration(name="tool-x", target="json:dumps")],
         )
+        discovery_result = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
 
         with (
             patch(
@@ -425,7 +432,7 @@ class TestBuildToolRegistry:
             ),
             patch(
                 "beddel.tools.kits.discover_kits",
-                return_value=[kit_manifest],
+                return_value=discovery_result,
             ),
             patch(
                 "beddel.tools.kits.load_kit",

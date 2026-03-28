@@ -351,6 +351,12 @@ KIT_LOAD_FAILED: str = "BEDDEL-KIT-652"
 KIT_DISCOVERY_PATH_INVALID: str = "BEDDEL-KIT-653"
 """Configured kit discovery path does not exist."""
 
+KIT_TOOL_COLLISION: str = "BEDDEL-KIT-654"
+"""Multiple kits declare the same unnamespaced tool name."""
+
+KIT_TOOL_NOT_FOUND: str = "BEDDEL-KIT-655"
+"""Namespaced tool reference not found in registry."""
+
 # ---------------------------------------------------------------------------
 # Auth codes  (AUTH prefix, 1000 range)
 # NOTE: String codes use BEDDEL-AUTH-9xx per PRD §8.2. The internal range
@@ -488,6 +494,8 @@ ALL_CODES: dict[str, str] = {
     "KIT_MANIFEST_NOT_FOUND": KIT_MANIFEST_NOT_FOUND,
     "KIT_LOAD_FAILED": KIT_LOAD_FAILED,
     "KIT_DISCOVERY_PATH_INVALID": KIT_DISCOVERY_PATH_INVALID,
+    "KIT_TOOL_COLLISION": KIT_TOOL_COLLISION,
+    "KIT_TOOL_NOT_FOUND": KIT_TOOL_NOT_FOUND,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

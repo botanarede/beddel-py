@@ -27,7 +27,9 @@ from beddel.error_codes import KIT_MANIFEST_INVALID, KIT_MANIFEST_NOT_FOUND
 
 __all__ = [
     "KitAdapterDeclaration",
+    "KitCollision",
     "KitContractDeclaration",
+    "KitDiscoveryResult",
     "KitManifest",
     "KitToolDeclaration",
     "KitWorkflowDeclaration",
@@ -163,6 +165,32 @@ class KitManifest:
     kit: SolutionKit
     root_path: Path
     loaded_at: datetime
+
+
+@dataclass(frozen=True)
+class KitCollision:
+    """A tool name declared by multiple kits (collision).
+
+    Attributes:
+        tool_name: The unnamespaced tool name that appears in 2+ kits.
+        kit_names: Names of the kits that declare this tool.
+    """
+
+    tool_name: str
+    kit_names: list[str]
+
+
+@dataclass(frozen=True)
+class KitDiscoveryResult:
+    """Result of kit discovery including collision information.
+
+    Attributes:
+        manifests: Alphabetically sorted list of validated kit manifests.
+        collisions: Tool names declared by multiple kits.
+    """
+
+    manifests: list[KitManifest]
+    collisions: list[KitCollision]
 
 
 def parse_kit_manifest(path: Path) -> KitManifest:
