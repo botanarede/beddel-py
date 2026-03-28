@@ -45,10 +45,15 @@ def _build_tool_registry(
 
     # Layer 2: kit tools (between builtins and inline YAML)
     if not no_kits:
+        import os
+        import warnings
+
         from beddel.domain.errors import KitManifestError
         from beddel.domain.kit import KitDiscoveryResult
+        from beddel.error_codes import KIT_RESOLUTION_AMBIGUOUS
         from beddel.tools.kits import discover_kits, load_kit
 
+        strict = os.environ.get("BEDDEL_KIT_STRICT", "").lower() == "true"
         discovery_result: KitDiscoveryResult = discover_kits(kit_paths)
 
         # Build set of collided tool names and log warnings
@@ -61,6 +66,9 @@ def _build_tool_registry(
                 collision.kit_names,
             )
 
+        # Track which builtin names exist before kit merging
+        builtin_names: set[str] = set(merged.keys())
+
         for manifest in discovery_result.manifests:
             kit_name = manifest.kit.name
             try:
@@ -71,9 +79,29 @@ def _build_tool_registry(
             for tool_name, tool_fn in kit_tools.items():
                 # Always register namespaced form
                 merged[f"{kit_name}:{tool_name}"] = tool_fn
+                # Emit deprecation warning when kit tool shadows a builtin
+                if tool_name in builtin_names:
+                    warnings.warn(
+                        f"Kit tool '{kit_name}:{tool_name}' shadows builtin"
+                        f" tool '{tool_name}'. Use namespaced form.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
                 # Register unnamespaced form only when no collision
                 if tool_name not in collided_names:
                     merged[tool_name] = tool_fn
+
+        # Strict mode: raise on ambiguous unnamespaced references
+        if strict and collided_names:
+            raise KitManifestError(
+                code=KIT_RESOLUTION_AMBIGUOUS,
+                message=(
+                    f"Ambiguous unnamespaced tool name(s): "
+                    f"{', '.join(sorted(collided_names))}. "
+                    f"Use namespaced form or disable strict mode."
+                ),
+                details={"collided_names": sorted(collided_names)},
+            )
 
     merged.update(workflow.metadata.get("_inline_tools", {}))
     merged.update(parsed_tools)

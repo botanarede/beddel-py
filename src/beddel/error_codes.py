@@ -357,6 +357,12 @@ KIT_TOOL_COLLISION: str = "BEDDEL-KIT-654"
 KIT_TOOL_NOT_FOUND: str = "BEDDEL-KIT-655"
 """Namespaced tool reference not found in registry."""
 
+KIT_RESOLUTION_AMBIGUOUS: str = "BEDDEL-KIT-656"
+"""Unnamespaced tool name matches multiple kits (strict mode)."""
+
+KIT_SHADOWS_BUILTIN: str = "BEDDEL-KIT-657"
+"""Kit tool has same name as a builtin tool."""
+
 # ---------------------------------------------------------------------------
 # Auth codes  (AUTH prefix, 1000 range)
 # NOTE: String codes use BEDDEL-AUTH-9xx per PRD §8.2. The internal range
@@ -496,6 +502,8 @@ ALL_CODES: dict[str, str] = {
     "KIT_DISCOVERY_PATH_INVALID": KIT_DISCOVERY_PATH_INVALID,
     "KIT_TOOL_COLLISION": KIT_TOOL_COLLISION,
     "KIT_TOOL_NOT_FOUND": KIT_TOOL_NOT_FOUND,
+    "KIT_RESOLUTION_AMBIGUOUS": KIT_RESOLUTION_AMBIGUOUS,
+    "KIT_SHADOWS_BUILTIN": KIT_SHADOWS_BUILTIN,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }
