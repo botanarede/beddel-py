@@ -180,3 +180,56 @@ class TestServeRemoteFlagAccepted:
         result = runner.invoke(cli, ["serve", "--remote"])
         assert result.exit_code == 0
         assert "Remote mode enabled" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Tests for ``beddel status`` command (Story 4.0A.4, Task 2)
+# ---------------------------------------------------------------------------
+
+
+class TestStatusNoCredentials:
+    """``beddel status`` when no credentials exist."""
+
+    def test_status_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("beddel.adapters.github_auth.load_credentials", lambda: None)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["status"])
+        assert result.exit_code == 0
+        assert "Not connected" in result.output
+
+
+class TestStatusWithValidToken:
+    """``beddel status`` with valid token."""
+
+    def test_status_with_valid_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "beddel.adapters.github_auth.load_credentials", lambda: _sample_creds()
+        )
+        monkeypatch.setattr(
+            "beddel.adapters.github_auth.check_token_validity",
+            AsyncMock(return_value=True),
+        )
+        runner = CliRunner()
+        result = runner.invoke(cli, ["status"])
+        assert result.exit_code == 0
+        assert "testuser" in result.output
+        assert "dash.example.com" in result.output
+        assert "Token: valid" in result.output
+
+
+class TestStatusWithExpiredToken:
+    """``beddel status`` with expired token."""
+
+    def test_status_with_expired_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "beddel.adapters.github_auth.load_credentials", lambda: _sample_creds()
+        )
+        monkeypatch.setattr(
+            "beddel.adapters.github_auth.check_token_validity",
+            AsyncMock(return_value=False),
+        )
+        runner = CliRunner()
+        result = runner.invoke(cli, ["status"])
+        assert result.exit_code == 0
+        assert "expired" in result.output
+        assert "beddel connect" in result.output

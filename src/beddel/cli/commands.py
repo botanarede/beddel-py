@@ -243,6 +243,27 @@ def run(
 
 
 @cli.command()
+def status() -> None:
+    """Show connection status for the remote dashboard."""
+    from beddel.adapters.github_auth import check_token_validity, load_credentials
+
+    creds = load_credentials()
+    if creds is None:
+        click.echo("Not connected to any remote server.")
+        return
+
+    click.echo(f"Server: {creds.get('server_url') or '(not set)'}")
+    click.echo(f"User: {creds['github_user']}")
+    click.echo(f"Created: {creds['created_at']}")
+
+    valid = asyncio.run(check_token_validity(creds["access_token"]))
+    if valid:
+        click.echo("Token: valid")
+    else:
+        click.echo("Token: expired. Run `beddel connect` to re-authenticate.")
+
+
+@cli.command()
 @click.option("--status", "show_status", is_flag=True, help="Show auth status.")
 @click.option("--logout", is_flag=True, help="Remove stored credentials.")
 @click.option("--server", type=str, default=None, help="Set dashboard server URL.")

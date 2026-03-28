@@ -184,6 +184,43 @@ async def poll_for_token(
     )
 
 
+def get_auth_headers() -> dict[str, str] | None:
+    """Return Authorization headers from stored credentials.
+
+    Loads credentials from disk.  If a token **and** ``server_url`` are
+    present, returns ``{"Authorization": "Bearer <token>"}``.  Returns
+    ``None`` when no credentials exist or when ``server_url`` is not set
+    (i.e. the user has not connected to a remote server).
+    """
+    creds = load_credentials()
+    if creds is None:
+        return None
+    if not creds.get("server_url"):
+        return None
+    return {"Authorization": f"Bearer {creds['access_token']}"}
+
+
+async def check_token_validity(token: str) -> bool:
+    """Check whether a GitHub token is still valid.
+
+    Performs a ``GET`` to the GitHub ``/user`` endpoint with the given
+    token.  Returns ``True`` on HTTP 200, ``False`` otherwise (including
+    network errors).
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                GITHUB_USER_URL,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
+            )
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
 async def get_github_user(token: str) -> str:
     """Fetch the authenticated GitHub username.
 

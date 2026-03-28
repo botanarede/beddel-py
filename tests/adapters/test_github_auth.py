@@ -12,7 +12,9 @@ import pytest
 
 from beddel.adapters.github_auth import (
     CredentialData,
+    check_token_validity,
     delete_credentials,
+    get_auth_headers,
     get_github_user,
     initiate_device_flow,
     load_credentials,
@@ -306,3 +308,88 @@ class TestGetGithubUserFailure:
         with pytest.raises(BeddelError) as exc_info:
             await get_github_user("bad_token")
         assert "BEDDEL-AUTH-903" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# get_auth_headers / check_token_validity tests (Story 4.0A.4, Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestGetAuthHeadersWithCredentials:
+    """get_auth_headers returns Bearer header when credentials have server_url."""
+
+    def test_get_auth_headers_with_credentials(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        creds = tmp_path / "credentials.json"
+        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        save_credentials(
+            CredentialData(
+                access_token="gho_abc123",
+                github_user="testuser",
+                server_url="https://dash.example.com",
+                created_at="2026-03-27T00:00:00Z",
+            )
+        )
+
+        headers = get_auth_headers()
+        assert headers is not None
+        assert headers == {"Authorization": "Bearer gho_abc123"}
+
+
+class TestGetAuthHeadersNoCredentials:
+    """get_auth_headers returns None when no credentials file exists."""
+
+    def test_get_auth_headers_no_credentials(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        creds = tmp_path / "credentials.json"
+        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+
+        assert get_auth_headers() is None
+
+
+class TestGetAuthHeadersNoServerUrl:
+    """get_auth_headers returns None when credentials lack server_url."""
+
+    def test_get_auth_headers_no_server_url(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        creds = tmp_path / "credentials.json"
+        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        save_credentials(
+            CredentialData(
+                access_token="gho_abc123",
+                github_user="testuser",
+                server_url=None,
+                created_at="2026-03-27T00:00:00Z",
+            )
+        )
+
+        assert get_auth_headers() is None
+
+
+class TestCheckTokenValidityValid:
+    """check_token_validity returns True on HTTP 200."""
+
+    @pytest.mark.asyncio
+    async def test_check_token_validity_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"login": "octocat"})
+
+        monkeypatch.setattr(httpx, "AsyncClient", _mock_client(handler))
+
+        assert await check_token_validity("gho_valid") is True
+
+
+class TestCheckTokenValidityInvalid:
+    """check_token_validity returns False on HTTP 401."""
+
+    @pytest.mark.asyncio
+    async def test_check_token_validity_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(401, json={"message": "Bad credentials"})
+
+        monkeypatch.setattr(httpx, "AsyncClient", _mock_client(handler))
+
+        assert await check_token_validity("gho_expired") is False
