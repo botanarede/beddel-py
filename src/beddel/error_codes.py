@@ -21,6 +21,7 @@ Range       Prefix    Domain
 900 – 949   DURABLE   Durable execution errors
 950 – 999   MCP       MCP integration errors
 1000 – 1049  AUTH     Remote authentication errors
+650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
 ==========  ========  ===========
 """
 
@@ -62,6 +63,11 @@ DURABLE_RANGE: tuple[int, int] = (900, 949)
 
 MCP_RANGE: tuple[int, int] = (950, 999)
 """MCP integration errors."""
+
+KIT_RANGE: tuple[int, int] = (650, 699)
+"""Kit manifest errors — sub-range within the 600-699 numeric band.
+RESOLVE_RANGE covers 600-699 for allocation tracking; KIT uses a distinct
+string prefix BEDDEL-KIT- to avoid collision."""
 
 AUTH_RANGE: tuple[int, int] = (1000, 1049)
 """Remote authentication errors (string codes use BEDDEL-AUTH-9xx per PRD)."""
@@ -330,6 +336,16 @@ MCP_SERVER_TIMEOUT: str = "BEDDEL-MCP-604"
 """MCP server operation timed out."""
 
 # ---------------------------------------------------------------------------
+# Kit codes  (KIT prefix, 650 sub-range)
+# ---------------------------------------------------------------------------
+
+KIT_MANIFEST_INVALID: str = "BEDDEL-KIT-650"
+"""Kit manifest validation failed."""
+
+KIT_MANIFEST_NOT_FOUND: str = "BEDDEL-KIT-651"
+"""Kit manifest file not found."""
+
+# ---------------------------------------------------------------------------
 # Auth codes  (AUTH prefix, 1000 range)
 # NOTE: String codes use BEDDEL-AUTH-9xx per PRD §8.2. The internal range
 # constant AUTH_RANGE=(1000,1049) is for allocation tracking only — same
@@ -461,6 +477,9 @@ ALL_CODES: dict[str, str] = {
     "AUTH_MISSING_HEADER": AUTH_MISSING_HEADER,
     "AUTH_INVALID_TOKEN": AUTH_INVALID_TOKEN,
     "AUTH_USER_NOT_ALLOWED": AUTH_USER_NOT_ALLOWED,
+    # Kit
+    "KIT_MANIFEST_INVALID": KIT_MANIFEST_INVALID,
+    "KIT_MANIFEST_NOT_FOUND": KIT_MANIFEST_NOT_FOUND,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }

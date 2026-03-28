@@ -124,6 +124,7 @@ class TestAllExports:
             "AgentError",
             "DurableError",
             "MCPError",
+            "KitManifestError",
         }
         assert set(errors.__all__) == expected
 
