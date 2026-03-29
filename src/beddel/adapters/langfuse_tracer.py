@@ -6,6 +6,12 @@ execution.  Unlike :class:`~beddel.adapters.otel_adapter.OpenTelemetryAdapter`,
 this adapter **never raises** — if the Langfuse server is unavailable or any
 SDK call fails, it logs a warning and operates as a no-op.
 
+This differs from :class:`~beddel.adapters.otel_adapter.OpenTelemetryAdapter`,
+which raises ``TracingError(fail_silent=True)`` and lets callers decide.
+The never-raise policy here reflects Langfuse's role as an optional,
+self-hosted observability backend — tracing failures must never block
+workflow execution (PRD AC #8).
+
 .. _Langfuse: https://langfuse.com/
 """
 

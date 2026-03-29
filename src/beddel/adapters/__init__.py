@@ -43,5 +43,5 @@ __all__ = [
 ]
 
 # Conditionally add LangfuseTracerAdapter only when langfuse is installed.
-if "LangfuseTracerAdapter" in dir():
+if "LangfuseTracerAdapter" in globals():
     __all__.append("LangfuseTracerAdapter")
