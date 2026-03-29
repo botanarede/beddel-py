@@ -19,6 +19,7 @@ from beddel.adapters.litellm_adapter import LiteLLMAdapter
 from beddel.adapters.mcp import SSEMCPClient, StdioMCPClient
 from beddel.adapters.openclaw_adapter import OpenClawAgentAdapter
 from beddel.adapters.otel_adapter import OpenTelemetryAdapter
+from beddel.adapters.tier_router import StaticTierRouter
 
 # Optional: langfuse is not a core dependency.
 with contextlib.suppress(ImportError):
@@ -36,6 +37,7 @@ __all__ = [
     "OpenTelemetryAdapter",
     "SSEMCPClient",
     "SQLiteEventStore",
+    "StaticTierRouter",
     "StdioMCPClient",
     "delete_credentials",
     "load_credentials",
