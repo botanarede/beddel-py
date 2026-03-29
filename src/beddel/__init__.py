@@ -42,6 +42,7 @@ from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
     from beddel.adapters.claude_adapter import ClaudeAgentAdapter as ClaudeAgentAdapter
+    from beddel.adapters.codex_adapter import CodexAgentAdapter as CodexAgentAdapter
     from beddel.adapters.event_store import SQLiteEventStore as SQLiteEventStore
     from beddel.adapters.hooks import LifecycleHookManager as LifecycleHookManager
     from beddel.adapters.kiro_cli import KiroCLIAgentAdapter as KiroCLIAgentAdapter
@@ -60,6 +61,7 @@ __version__ = "0.1.3"
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
     "ClaudeAgentAdapter": ("beddel.adapters.claude_adapter", "ClaudeAgentAdapter"),
+    "CodexAgentAdapter": ("beddel.adapters.codex_adapter", "CodexAgentAdapter"),
     "KiroCLIAgentAdapter": ("beddel.adapters.kiro_cli", "KiroCLIAgentAdapter"),
     "LifecycleHookManager": ("beddel.adapters.hooks", "LifecycleHookManager"),
     "OpenClawAgentAdapter": ("beddel.adapters.openclaw_adapter", "OpenClawAgentAdapter"),
@@ -95,6 +97,7 @@ __all__ = [
     "BeddelError",
     "BeddelSSEAdapter",
     "ClaudeAgentAdapter",
+    "CodexAgentAdapter",
     "DefaultDependencies",
     "DurableError",
     "DurableExecutionStrategy",

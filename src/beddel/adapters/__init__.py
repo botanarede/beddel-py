@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from beddel.adapters.circuit_breaker import InMemoryCircuitBreaker
 from beddel.adapters.claude_adapter import ClaudeAgentAdapter
+from beddel.adapters.codex_adapter import CodexAgentAdapter
 from beddel.adapters.event_store import InMemoryEventStore, SQLiteEventStore
 from beddel.adapters.github_auth import (
     delete_credentials,
@@ -19,6 +20,7 @@ from beddel.adapters.otel_adapter import OpenTelemetryAdapter
 
 __all__ = [
     "ClaudeAgentAdapter",
+    "CodexAgentAdapter",
     "InMemoryCircuitBreaker",
     "InMemoryEventStore",
     "KiroCLIAgentAdapter",

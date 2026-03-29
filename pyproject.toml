@@ -72,12 +72,14 @@ openclaw = [
 claude = [
     "claude-agent-sdk",
 ]
+codex = []
 all = [
     "beddel[adapters]",
     "beddel[cli]",
     "beddel[mcp]",
     "beddel[openclaw]",
     "beddel[claude]",
+    "beddel[codex]",
 ]
 dev = [
     "beddel[adapters]",
@@ -86,6 +88,7 @@ dev = [
     "beddel[mcp]",
     "beddel[openclaw]",
     "beddel[claude]",
+    "beddel[codex]",
     "httpx",
     "opentelemetry-sdk>=1.0",
     "pytest",
