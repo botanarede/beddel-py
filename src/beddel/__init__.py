@@ -48,6 +48,7 @@ from beddel.domain.strategies import (
 from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
+    from beddel.adapters.budget_enforcer import InMemoryBudgetEnforcer as InMemoryBudgetEnforcer
     from beddel.adapters.claude_adapter import ClaudeAgentAdapter as ClaudeAgentAdapter
     from beddel.adapters.codex_adapter import CodexAgentAdapter as CodexAgentAdapter
     from beddel.adapters.event_store import SQLiteEventStore as SQLiteEventStore
@@ -71,6 +72,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
     "ClaudeAgentAdapter": ("beddel.adapters.claude_adapter", "ClaudeAgentAdapter"),
     "CodexAgentAdapter": ("beddel.adapters.codex_adapter", "CodexAgentAdapter"),
+    "InMemoryBudgetEnforcer": ("beddel.adapters.budget_enforcer", "InMemoryBudgetEnforcer"),
     "KiroCLIAgentAdapter": ("beddel.adapters.kiro_cli", "KiroCLIAgentAdapter"),
     "LangfuseTracerAdapter": ("beddel.adapters.langfuse_tracer", "LangfuseTracerAdapter"),
     "LifecycleHookManager": ("beddel.adapters.hooks", "LifecycleHookManager"),
@@ -125,6 +127,7 @@ __all__ = [
     "ILifecycleHook",
     "IMCPClient",
     "ITracer",
+    "InMemoryBudgetEnforcer",
     "InterruptibleContext",
     "KiroCLIAgentAdapter",
     "LangfuseTracerAdapter",

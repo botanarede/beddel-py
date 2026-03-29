@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 
+from beddel.adapters.budget_enforcer import InMemoryBudgetEnforcer
 from beddel.adapters.circuit_breaker import InMemoryCircuitBreaker
 from beddel.adapters.claude_adapter import ClaudeAgentAdapter
 from beddel.adapters.codex_adapter import CodexAgentAdapter
@@ -28,6 +29,7 @@ with contextlib.suppress(ImportError):
 __all__ = [
     "ClaudeAgentAdapter",
     "CodexAgentAdapter",
+    "InMemoryBudgetEnforcer",
     "InMemoryCircuitBreaker",
     "InMemoryEventStore",
     "KiroCLIAgentAdapter",
