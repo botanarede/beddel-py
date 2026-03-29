@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from beddel.adapters.event_store import SQLiteEventStore as SQLiteEventStore
     from beddel.adapters.hooks import LifecycleHookManager as LifecycleHookManager
     from beddel.adapters.kiro_cli import KiroCLIAgentAdapter as KiroCLIAgentAdapter
+    from beddel.adapters.langfuse_tracer import LangfuseTracerAdapter as LangfuseTracerAdapter
     from beddel.adapters.mcp import SSEMCPClient as SSEMCPClient
     from beddel.adapters.mcp import StdioMCPClient as StdioMCPClient
     from beddel.adapters.openclaw_adapter import OpenClawAgentAdapter as OpenClawAgentAdapter
@@ -63,6 +64,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "ClaudeAgentAdapter": ("beddel.adapters.claude_adapter", "ClaudeAgentAdapter"),
     "CodexAgentAdapter": ("beddel.adapters.codex_adapter", "CodexAgentAdapter"),
     "KiroCLIAgentAdapter": ("beddel.adapters.kiro_cli", "KiroCLIAgentAdapter"),
+    "LangfuseTracerAdapter": ("beddel.adapters.langfuse_tracer", "LangfuseTracerAdapter"),
     "LifecycleHookManager": ("beddel.adapters.hooks", "LifecycleHookManager"),
     "OpenClawAgentAdapter": ("beddel.adapters.openclaw_adapter", "OpenClawAgentAdapter"),
     "SQLiteEventStore": ("beddel.adapters.event_store", "SQLiteEventStore"),
@@ -113,6 +115,7 @@ __all__ = [
     "ITracer",
     "InterruptibleContext",
     "KiroCLIAgentAdapter",
+    "LangfuseTracerAdapter",
     "LifecycleHookManager",
     "MCPError",
     "NoOpTracer",

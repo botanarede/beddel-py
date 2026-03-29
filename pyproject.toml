@@ -62,6 +62,9 @@ mcp = [
     "jsonschema>=4.0",
 ]
 lite = []  # Alias for core-only install (explicit marker)
+langfuse = [
+    "langfuse",
+]
 cli = [
     "click>=8.0",
     "beddel[fastapi]",
@@ -76,6 +79,7 @@ codex = []
 all = [
     "beddel[adapters]",
     "beddel[cli]",
+    "beddel[langfuse]",
     "beddel[mcp]",
     "beddel[openclaw]",
     "beddel[claude]",
@@ -85,6 +89,7 @@ dev = [
     "beddel[adapters]",
     "beddel[cli]",
     "beddel[fastapi]",
+    "beddel[langfuse]",
     "beddel[mcp]",
     "beddel[openclaw]",
     "beddel[claude]",
