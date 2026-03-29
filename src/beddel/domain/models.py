@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         IExecutionStrategy,
         IHookManager,
         ILLMProvider,
+        ITierRouter,
         ITracer,
     )
     from beddel.domain.registry import PrimitiveRegistry
@@ -50,6 +51,7 @@ __all__ = [
     "SKIPPED",
     "Step",
     "StrategyType",
+    "TierConfig",
     "ToolDeclaration",
     "Workflow",
 ]
@@ -201,6 +203,19 @@ class CircuitBreakerConfig(BaseModel):
     success_threshold: int = 2
 
 
+class TierConfig(BaseModel):
+    """Configuration for model tier-to-identifier mapping.
+
+    Maps logical tier names (e.g. ``"fast"``, ``"balanced"``, ``"powerful"``)
+    to concrete model identifiers used by LLM providers.
+
+    Attributes:
+        tiers: Mapping of tier names to model identifier strings.
+    """
+
+    tiers: dict[str, str]
+
+
 class BackoffType(StrEnum):
     """Backoff strategy for goal-oriented execution loops.
 
@@ -328,6 +343,8 @@ class DefaultDependencies:
             or ``None`` if not configured.  Defaults to ``None``.
         mcp_registry: Registry of named MCP clients keyed by server name,
             or ``None`` if not provided.  Defaults to ``None``.
+        tier_router: The tier router for model tier resolution,
+            or ``None`` if not configured.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -345,6 +362,7 @@ class DefaultDependencies:
         "_circuit_breaker",
         "_event_store",
         "_mcp_registry",
+        "_tier_router",
     )
 
     def __init__(
@@ -363,6 +381,7 @@ class DefaultDependencies:
         circuit_breaker: ICircuitBreaker | None = None,
         event_store: IEventStore | None = None,
         mcp_registry: dict[str, Any] | None = None,
+        tier_router: ITierRouter | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -378,6 +397,7 @@ class DefaultDependencies:
         self._circuit_breaker = circuit_breaker
         self._event_store = event_store
         self._mcp_registry = mcp_registry
+        self._tier_router = tier_router
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -448,6 +468,11 @@ class DefaultDependencies:
     def mcp_registry(self) -> dict[str, Any] | None:
         """Registry of named MCP clients, or ``None`` if not configured."""
         return self._mcp_registry
+
+    @property
+    def tier_router(self) -> ITierRouter | None:
+        """The tier router for model tier resolution, or ``None`` if not configured."""
+        return self._tier_router
 
 
 _log = logging.getLogger(__name__)

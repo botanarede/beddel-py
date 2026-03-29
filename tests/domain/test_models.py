@@ -835,6 +835,7 @@ class TestAllExports:
             "SKIPPED",
             "Step",
             "StrategyType",
+            "TierConfig",
             "ToolDeclaration",
             "Workflow",
         }

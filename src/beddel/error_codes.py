@@ -178,6 +178,9 @@ PRIM_TOOL_USE_NOT_FOUND: str = "BEDDEL-PRIM-311"
 PRIM_TOOL_USE_EXEC_FAILED: str = "BEDDEL-PRIM-312"
 """Tool invocation within function calling loop failed."""
 
+TIER_UNKNOWN: str = "BEDDEL-PRIM-320"
+"""Unknown model tier name — not found in tier-to-model mapping."""
+
 # ---------------------------------------------------------------------------
 # Adapter codes  (ADAPT prefix, 400 range)
 # ---------------------------------------------------------------------------
@@ -437,6 +440,7 @@ ALL_CODES: dict[str, str] = {
     "PRIM_TOOL_USE_MAX_ITERATIONS": PRIM_TOOL_USE_MAX_ITERATIONS,
     "PRIM_TOOL_USE_NOT_FOUND": PRIM_TOOL_USE_NOT_FOUND,
     "PRIM_TOOL_USE_EXEC_FAILED": PRIM_TOOL_USE_EXEC_FAILED,
+    "TIER_UNKNOWN": TIER_UNKNOWN,
     # Adapter
     "ADAPT_AUTH_FAILURE": ADAPT_AUTH_FAILURE,
     "ADAPT_PROVIDER_ERROR": ADAPT_PROVIDER_ERROR,

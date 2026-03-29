@@ -13,6 +13,7 @@ Ports defined here:
 - :class:`ILifecycleHook` — contract for workflow lifecycle hooks.
 - :class:`IHookManager` — contract for hook management (extends ILifecycleHook).
 - :class:`IContextReducer` — contract for pluggable context reduction strategies.
+- :class:`ITierRouter` — contract for model tier routing strategies.
 - :class:`ITracer` — contract for observability tracing.
 - :class:`NoOpTracer` — no-op tracer for testing and explicit opt-out.
 """
@@ -44,6 +45,7 @@ __all__ = [
     "ILLMProvider",
     "IMCPClient",
     "IPrimitive",
+    "ITierRouter",
     "ITracer",
     "NoOpTracer",
     "StepRunner",
@@ -133,6 +135,47 @@ class ExecutionDependencies(Protocol):
     @property
     def mcp_registry(self) -> dict[str, IMCPClient] | None:
         """Registry of named MCP clients, or ``None`` if not configured."""
+        ...
+
+    @property
+    def tier_router(self) -> ITierRouter | None:
+        """The tier router for model tier resolution, or ``None`` if not configured."""
+        ...
+
+
+class ITierRouter(Protocol):
+    """Contract for model tier routing strategies.
+
+    Maps logical tier names (e.g. ``"fast"``, ``"balanced"``, ``"powerful"``)
+    to concrete model identifiers.  The default implementation performs a
+    static dict lookup; future implementations can use bandit-based adaptive
+    routing that learns optimal tier-to-model assignments based on prompt
+    complexity and observed quality.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`IExecutionStrategy`, :class:`IContextReducer`, and
+    :class:`ICircuitBreaker`.
+
+    [Source: docs/stories/epic-5/story-5.5.md — AC 5]
+    """
+
+    def route(self, tier: str, prompt_complexity: float | None = None) -> str:
+        """Resolve a tier name to a concrete model identifier.
+
+        Args:
+            tier: Logical tier name (e.g. ``"fast"``, ``"balanced"``,
+                ``"powerful"``).
+            prompt_complexity: Optional complexity score for adaptive routing.
+                Ignored by static implementations; reserved for future
+                bandit-based routers.
+
+        Returns:
+            A concrete model identifier string (e.g. ``"gpt-4o-mini"``).
+
+        Raises:
+            PrimitiveError: When the tier name is not recognised
+                (error code ``BEDDEL-PRIM-320``).
+        """
         ...
 
 
