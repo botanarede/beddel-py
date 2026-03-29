@@ -17,6 +17,9 @@ __all__ = [
     "AgentHealthStatus",
     "AgentPipelineAdapter",
     "AgentPipelineEvent",
+    "ClaudePipelineAdapter",
+    "CodexPipelineAdapter",
+    "OpenClawPipelineAdapter",
     "create_agent_pipeline_router",
 ]
 
@@ -46,4 +49,22 @@ def __getattr__(name: str) -> object:
         from beddel.integrations.dashboard.pipeline import models
 
         return getattr(models, name)
+    if name == "OpenClawPipelineAdapter":
+        from beddel.integrations.dashboard.pipeline.openclaw_pipeline import (
+            OpenClawPipelineAdapter,
+        )
+
+        return OpenClawPipelineAdapter
+    if name == "ClaudePipelineAdapter":
+        from beddel.integrations.dashboard.pipeline.claude_pipeline import (
+            ClaudePipelineAdapter,
+        )
+
+        return ClaudePipelineAdapter
+    if name == "CodexPipelineAdapter":
+        from beddel.integrations.dashboard.pipeline.codex_pipeline import (
+            CodexPipelineAdapter,
+        )
+
+        return CodexPipelineAdapter
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
