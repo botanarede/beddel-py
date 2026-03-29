@@ -71,7 +71,13 @@ class InMemoryBudgetEnforcer:
 
     @property
     def degradation_model(self) -> str:
-        """Model identifier used when budget is degraded."""
+        """Model identifier used when budget is degraded.
+
+        Must be a concrete model identifier (e.g. ``"gpt-4o-mini"``),
+        not a tier alias.  Budget degradation bypasses tier resolution
+        in ``get_model()`` to guarantee the cheapest model is used
+        regardless of tier configuration.
+        """
         return self._degradation_model
 
     @property

@@ -17,7 +17,7 @@ Range       Prefix    Domain
 600 – 699   RESOLVE   Variable resolution
 700 – 799   AGENT     Agent adapter errors
 800 – 849   CB        Circuit breaker errors
-850 – 899   CODEX     Codex integration errors (planned)
+800 – 849   CODEX     Codex integration errors (planned)
 850 – 899   BUDGET    Budget enforcement errors
 900 – 949   DURABLE   Durable execution errors
 950 – 999   MCP       MCP integration errors
@@ -56,8 +56,8 @@ AGENT_RANGE: tuple[int, int] = (700, 799)
 CB_RANGE: tuple[int, int] = (500, 549)
 """Circuit breaker errors."""
 
-CODEX_RANGE: tuple[int, int] = (800, 899)
-"""Codex integration errors (planned — Epic 4.1A)."""
+CODEX_RANGE: tuple[int, int] = (800, 849)
+"""Codex integration errors (planned — Epic 4.1A). Codes 800–805."""
 
 BUDGET_RANGE: tuple[int, int] = (850, 899)
 """Budget enforcement errors."""

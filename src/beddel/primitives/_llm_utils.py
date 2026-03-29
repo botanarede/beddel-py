@@ -93,7 +93,10 @@ def get_model(config: dict[str, Any], context: ExecutionContext, primitive_type:
             },
         )
 
-    # Budget degradation override (highest priority)
+    # Budget degradation override (highest priority).
+    # degradation_model MUST be a concrete model identifier (e.g. "gpt-4o-mini"),
+    # not a tier alias — intentionally bypasses tier resolution to guarantee
+    # the cheapest model is used when budget is degraded.
     if context.metadata.get("_budget_degraded"):
         return context.metadata["_degradation_model"]
 
