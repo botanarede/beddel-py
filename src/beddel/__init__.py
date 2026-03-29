@@ -10,6 +10,7 @@ from beddel.domain.errors import (
     AdapterError,
     AgentError,
     BeddelError,
+    BudgetError,
     DurableError,
     ExecutionError,
     MCPError,
@@ -19,10 +20,16 @@ from beddel.domain.errors import (
     TracingError,
 )
 from beddel.domain.executor import SequentialStrategy
-from beddel.domain.models import AgentResult, DefaultDependencies, InterruptibleContext
+from beddel.domain.models import (
+    AgentResult,
+    BudgetStatus,
+    DefaultDependencies,
+    InterruptibleContext,
+)
 from beddel.domain.ports import (
     ExecutionDependencies,
     IAgentAdapter,
+    IBudgetEnforcer,
     ICircuitBreaker,
     IEventStore,
     IExecutionStrategy,
@@ -100,6 +107,8 @@ __all__ = [
     "AgentResult",
     "BeddelError",
     "BeddelSSEAdapter",
+    "BudgetError",
+    "BudgetStatus",
     "ClaudeAgentAdapter",
     "CodexAgentAdapter",
     "DefaultDependencies",
@@ -109,6 +118,7 @@ __all__ = [
     "ExecutionError",
     "GoalOrientedStrategy",
     "IAgentAdapter",
+    "IBudgetEnforcer",
     "ICircuitBreaker",
     "IEventStore",
     "IExecutionStrategy",

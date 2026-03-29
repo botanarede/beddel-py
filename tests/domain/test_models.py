@@ -821,6 +821,7 @@ class TestAllExports:
             "AgentResult",
             "BackoffType",
             "BeddelEvent",
+            "BudgetStatus",
             "CircuitBreakerConfig",
             "CircuitState",
             "DefaultDependencies",

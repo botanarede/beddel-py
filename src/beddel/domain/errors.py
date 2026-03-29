@@ -37,6 +37,7 @@ __all__ = [
     "DurableError",
     "MCPError",
     "KitManifestError",
+    "BudgetError",
 ]
 
 
@@ -185,3 +186,7 @@ class MCPError(BeddelError):
 
 class KitManifestError(BeddelError):
     """Kit manifest errors. Error code prefix: BEDDEL-KIT-"""
+
+
+class BudgetError(BeddelError):
+    """Budget enforcement errors. Error code prefix: BEDDEL-BUDGET-"""

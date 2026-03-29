@@ -14,6 +14,7 @@ Ports defined here:
 - :class:`IHookManager` — contract for hook management (extends ILifecycleHook).
 - :class:`IContextReducer` — contract for pluggable context reduction strategies.
 - :class:`ITierRouter` — contract for model tier routing strategies.
+- :class:`IBudgetEnforcer` — contract for per-workflow budget enforcement.
 - :class:`ITracer` — contract for observability tracing.
 - :class:`NoOpTracer` — no-op tracer for testing and explicit opt-out.
 """
@@ -30,12 +31,14 @@ SpanT = TypeVar("SpanT")
 """Type variable for the opaque span handle used by :class:`ITracer` implementations."""
 
 if TYPE_CHECKING:
+    from beddel.domain.models import BudgetStatus
     from beddel.domain.registry import PrimitiveRegistry
 
 __all__ = [
     "SpanT",
     "ExecutionDependencies",
     "IAgentAdapter",
+    "IBudgetEnforcer",
     "ICircuitBreaker",
     "IContextReducer",
     "IEventStore",
@@ -140,6 +143,54 @@ class ExecutionDependencies(Protocol):
     @property
     def tier_router(self) -> ITierRouter | None:
         """The tier router for model tier resolution, or ``None`` if not configured."""
+        ...
+
+    @property
+    def budget_enforcer(self) -> IBudgetEnforcer | None:
+        """The budget enforcer for cost controls, or ``None`` if not configured."""
+        ...
+
+
+class IBudgetEnforcer(Protocol):
+    """Contract for per-workflow budget enforcement implementations.
+
+    Tracks cumulative token/cost usage across workflow steps and reports
+    the current budget state.  The executor checks the budget after each
+    step and triggers degradation or hard-stop behaviour accordingly.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`ITierRouter`, :class:`ICircuitBreaker`, and other Epic 5 ports.
+
+    [Source: docs/stories/epic-5/story-5.6.md — AC 1]
+    """
+
+    def track_usage(self, step_id: str, usage: dict[str, Any]) -> None:
+        """Record token/cost usage for a completed step.
+
+        Args:
+            step_id: Identifier of the step that produced the usage data.
+            usage: Usage dict from the LLM provider response, typically
+                containing ``prompt_tokens``, ``completion_tokens``, and
+                ``total_cost`` keys.
+        """
+        ...
+
+    def check_budget(self) -> BudgetStatus:
+        """Return the current budget state.
+
+        Returns:
+            :class:`~beddel.domain.models.BudgetStatus` indicating whether
+            the workflow is within budget, degraded, or exceeded.
+        """
+        ...
+
+    def get_remaining(self) -> float:
+        """Return the remaining budget in USD.
+
+        Returns:
+            Non-negative float representing the remaining budget.
+            Returns ``0.0`` when the budget is fully consumed.
+        """
         ...
 
 

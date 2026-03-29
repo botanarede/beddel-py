@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from beddel.domain.ports import (
         IAgentAdapter,
+        IBudgetEnforcer,
         ICircuitBreaker,
         IContextReducer,
         IEventStore,
@@ -37,6 +38,7 @@ __all__ = [
     "AgentResult",
     "BackoffType",
     "BeddelEvent",
+    "BudgetStatus",
     "CircuitBreakerConfig",
     "CircuitState",
     "DefaultDependencies",
@@ -216,6 +218,21 @@ class TierConfig(BaseModel):
     tiers: dict[str, str]
 
 
+class BudgetStatus(StrEnum):
+    """Current budget state returned by :meth:`IBudgetEnforcer.check_budget`.
+
+    - ``WITHIN_BUDGET``: Cumulative cost is below the degradation threshold.
+    - ``DEGRADED``: Cumulative cost has reached the degradation threshold;
+      subsequent steps should use the degradation model.
+    - ``EXCEEDED``: Cumulative cost has exceeded ``max_cost_usd``; the
+      workflow should be stopped.
+    """
+
+    WITHIN_BUDGET = "within_budget"
+    DEGRADED = "degraded"
+    EXCEEDED = "exceeded"
+
+
 class BackoffType(StrEnum):
     """Backoff strategy for goal-oriented execution loops.
 
@@ -345,6 +362,8 @@ class DefaultDependencies:
             or ``None`` if not provided.  Defaults to ``None``.
         tier_router: The tier router for model tier resolution,
             or ``None`` if not configured.  Defaults to ``None``.
+        budget_enforcer: The budget enforcer for cost controls,
+            or ``None`` if not configured.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -363,6 +382,7 @@ class DefaultDependencies:
         "_event_store",
         "_mcp_registry",
         "_tier_router",
+        "_budget_enforcer",
     )
 
     def __init__(
@@ -382,6 +402,7 @@ class DefaultDependencies:
         event_store: IEventStore | None = None,
         mcp_registry: dict[str, Any] | None = None,
         tier_router: ITierRouter | None = None,
+        budget_enforcer: IBudgetEnforcer | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -398,6 +419,7 @@ class DefaultDependencies:
         self._event_store = event_store
         self._mcp_registry = mcp_registry
         self._tier_router = tier_router
+        self._budget_enforcer = budget_enforcer
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -473,6 +495,11 @@ class DefaultDependencies:
     def tier_router(self) -> ITierRouter | None:
         """The tier router for model tier resolution, or ``None`` if not configured."""
         return self._tier_router
+
+    @property
+    def budget_enforcer(self) -> IBudgetEnforcer | None:
+        """The budget enforcer for cost controls, or ``None`` if not configured."""
+        return self._budget_enforcer
 
 
 _log = logging.getLogger(__name__)

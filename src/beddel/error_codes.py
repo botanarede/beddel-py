@@ -18,6 +18,7 @@ Range       Prefix    Domain
 700 – 799   AGENT     Agent adapter errors
 800 – 849   CB        Circuit breaker errors
 850 – 899   CODEX     Codex integration errors (planned)
+850 – 899   BUDGET    Budget enforcement errors
 900 – 949   DURABLE   Durable execution errors
 950 – 999   MCP       MCP integration errors
 1000 – 1049  AUTH     Remote authentication errors
@@ -57,6 +58,9 @@ CB_RANGE: tuple[int, int] = (500, 549)
 
 CODEX_RANGE: tuple[int, int] = (800, 899)
 """Codex integration errors (planned — Epic 4.1A)."""
+
+BUDGET_RANGE: tuple[int, int] = (850, 899)
+"""Budget enforcement errors."""
 
 DURABLE_RANGE: tuple[int, int] = (900, 949)
 """Durable execution errors."""
@@ -307,6 +311,19 @@ CODEX_INVALID_JSONL: str = "BEDDEL-CODEX-805"
 """Malformed or unexpected event type in JSONL output."""
 
 # ---------------------------------------------------------------------------
+# Budget codes  (BUDGET prefix, 850 range)
+# ---------------------------------------------------------------------------
+
+BUDGET_THRESHOLD_REACHED: str = "BEDDEL-BUDGET-850"
+"""Cumulative cost reached degradation threshold — model downgrade triggered."""
+
+BUDGET_EXCEEDED: str = "BEDDEL-BUDGET-851"
+"""Cumulative cost exceeded max_cost_usd — hard stop."""
+
+BUDGET_TRACKING_FAILED: str = "BEDDEL-BUDGET-852"
+"""Budget usage tracking failed."""
+
+# ---------------------------------------------------------------------------
 # Durable execution codes  (DURABLE prefix, 900 range)
 # ---------------------------------------------------------------------------
 
@@ -462,6 +479,10 @@ ALL_CODES: dict[str, str] = {
     "CODEX_DOCKER_UNAVAILABLE": CODEX_DOCKER_UNAVAILABLE,
     "CODEX_CONNECTION_REFUSED": CODEX_CONNECTION_REFUSED,
     "CODEX_INVALID_JSONL": CODEX_INVALID_JSONL,
+    # Budget
+    "BUDGET_THRESHOLD_REACHED": BUDGET_THRESHOLD_REACHED,
+    "BUDGET_EXCEEDED": BUDGET_EXCEEDED,
+    "BUDGET_TRACKING_FAILED": BUDGET_TRACKING_FAILED,
     # Execution
     "EXEC_STEP_FAILED": EXEC_STEP_FAILED,
     "EXEC_RETRIES_EXHAUSTED": EXEC_RETRIES_EXHAUSTED,
