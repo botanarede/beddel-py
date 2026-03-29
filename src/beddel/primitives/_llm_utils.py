@@ -60,16 +60,23 @@ def get_provider(context: ExecutionContext, primitive_type: str) -> ILLMProvider
 
 
 def get_model(config: dict[str, Any], context: ExecutionContext, primitive_type: str) -> str:
-    """Extract and validate the model identifier from config.
+    """Extract, validate, and resolve the model identifier from config.
+
+    If a :class:`~beddel.domain.ports.ITierRouter` is available in
+    ``context.deps``, the model value is first attempted as a tier name
+    (e.g. ``"fast"``, ``"balanced"``, ``"powerful"``).  If the router
+    recognises it, the resolved concrete model is returned; otherwise the
+    value is used as-is, preserving backward compatibility with concrete
+    model names like ``"gpt-4o"``.
 
     Args:
         config: Primitive configuration dict.
-        context: The current execution context (for error details).
+        context: The current execution context (for error details and deps).
         primitive_type: Identifier for the calling primitive (e.g. ``"llm"``,
             ``"chat"``), included in error details.
 
     Returns:
-        The model identifier string.
+        The concrete model identifier string.
 
     Raises:
         PrimitiveError: ``BEDDEL-PRIM-004`` if ``model`` is missing.
@@ -85,13 +92,22 @@ def get_model(config: dict[str, Any], context: ExecutionContext, primitive_type:
                 "missing_key": "model",
             },
         )
+
+    # Tier resolution: if tier_router is available, try to resolve
+    tier_router = context.deps.tier_router
+    if tier_router is not None:
+        try:
+            return tier_router.route(model)
+        except PrimitiveError:
+            pass  # Not a tier name — fall through to use as concrete model
+
     return model
 
 
 def build_kwargs(config: dict[str, Any]) -> dict[str, Any]:
     """Extract optional provider kwargs from config.
 
-    Picks ``temperature`` and ``max_tokens`` if present.
+    Picks ``temperature``, ``max_tokens``, and ``effort`` if present.
 
     Args:
         config: Primitive configuration dict.
@@ -104,4 +120,6 @@ def build_kwargs(config: dict[str, Any]) -> dict[str, Any]:
         kwargs["temperature"] = config["temperature"]
     if "max_tokens" in config:
         kwargs["max_tokens"] = config["max_tokens"]
+    if "effort" in config:
+        kwargs["effort"] = config["effort"]
     return kwargs
