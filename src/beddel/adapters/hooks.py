@@ -224,3 +224,28 @@ class LifecycleHookManager(IHookManager):
                     type(hook).__name__,
                     exc_info=True,
                 )
+
+    async def on_budget_threshold(
+        self, workflow_id: str, cumulative_cost: float, threshold: float
+    ) -> None:
+        """Dispatch budget-threshold event to all registered hooks.
+
+        Args:
+            workflow_id: Identifier of the workflow being executed.
+            cumulative_cost: The cumulative cost in USD at threshold breach.
+            threshold: The degradation threshold value.
+        """
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
+            try:
+                if asyncio.iscoroutinefunction(hook.on_budget_threshold):
+                    await hook.on_budget_threshold(workflow_id, cumulative_cost, threshold)
+                else:
+                    hook.on_budget_threshold(workflow_id, cumulative_cost, threshold)  # type: ignore[unused-coroutine]
+            except Exception:
+                logger.warning(
+                    "Lifecycle hook %s.on_budget_threshold raised (ignored)",
+                    type(hook).__name__,
+                    exc_info=True,
+                )

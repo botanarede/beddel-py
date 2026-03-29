@@ -18,10 +18,11 @@ import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from beddel.domain.errors import ExecutionError, TracingError
+from beddel.domain.errors import BudgetError, ExecutionError, TracingError
 from beddel.domain.models import (
     SKIPPED,
     BeddelEvent,
+    BudgetStatus,
     DefaultDependencies,
     EventType,
     ExecutionContext,
@@ -43,6 +44,7 @@ from beddel.domain.registry import PrimitiveRegistry
 from beddel.domain.resolver import VariableResolver
 from beddel.domain.tracing_utils import extract_token_usage
 from beddel.error_codes import (
+    BUDGET_EXCEEDED,
     CB_CIRCUIT_OPEN,
     EXEC_CONDITION_TYPE_ERROR,
     EXEC_DELEGATE_FAILED,
@@ -667,6 +669,34 @@ class WorkflowExecutor:
                 result = await self._run_with_timeout(step, context)
 
             await self._dispatch_hook("on_step_end", step.id, result)
+
+            # --- Budget enforcement ---
+            be = context.deps.budget_enforcer
+            if be is not None and isinstance(result, dict) and "usage" in result:
+                be.track_usage(step.id, result["usage"])
+                budget_status = be.check_budget()
+                if budget_status == BudgetStatus.EXCEEDED:
+                    raise BudgetError(
+                        BUDGET_EXCEEDED,
+                        f"Budget exceeded after step '{step.id}'",
+                        {
+                            "step_id": step.id,
+                            "cumulative_cost": be.cumulative_cost,
+                            "max_cost_usd": be.max_cost_usd,
+                        },
+                    )
+                if budget_status == BudgetStatus.DEGRADED and not context.metadata.get(
+                    "_budget_degraded"
+                ):
+                    context.metadata["_budget_degraded"] = True
+                    context.metadata["_degradation_model"] = be.degradation_model
+                    await self._dispatch_hook(
+                        "on_budget_threshold",
+                        context.workflow_id,
+                        be.cumulative_cost,
+                        be.degradation_threshold,
+                    )
+
             # --- Circuit breaker: record success ---
             if _cb_active and _cb_provider:
                 assert cb is not None

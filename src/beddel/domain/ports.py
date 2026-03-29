@@ -193,6 +193,26 @@ class IBudgetEnforcer(Protocol):
         """
         ...
 
+    @property
+    def cumulative_cost(self) -> float:
+        """Total cost accumulated so far."""
+        ...
+
+    @property
+    def max_cost_usd(self) -> float:
+        """Hard budget limit in USD."""
+        ...
+
+    @property
+    def degradation_model(self) -> str:
+        """Model identifier used when budget is degraded."""
+        ...
+
+    @property
+    def degradation_threshold(self) -> float:
+        """Fraction of ``max_cost_usd`` that triggers degradation."""
+        ...
+
 
 class ITierRouter(Protocol):
     """Contract for model tier routing strategies.
@@ -451,6 +471,21 @@ class ILifecycleHook:
             decision: The decision that was made.
             alternatives: Alternative options that were considered.
             rationale: Explanation for why this decision was chosen.
+        """
+
+    async def on_budget_threshold(
+        self, workflow_id: str, cumulative_cost: float, threshold: float
+    ) -> None:
+        """Called when cumulative cost reaches the degradation threshold.
+
+        Fires once per workflow execution when the budget enforcer detects
+        that cumulative cost has reached ``degradation_threshold × max_cost_usd``,
+        triggering automatic model degradation for remaining steps.
+
+        Args:
+            workflow_id: Identifier of the workflow being executed.
+            cumulative_cost: The cumulative cost in USD at the time of threshold breach.
+            threshold: The degradation threshold value (fraction of ``max_cost_usd``).
         """
 
 

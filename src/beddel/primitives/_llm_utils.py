@@ -93,6 +93,10 @@ def get_model(config: dict[str, Any], context: ExecutionContext, primitive_type:
             },
         )
 
+    # Budget degradation override (highest priority)
+    if context.metadata.get("_budget_degraded"):
+        return context.metadata["_degradation_model"]
+
     # Tier resolution: if tier_router is available, try to resolve
     tier_router = context.deps.tier_router
     if tier_router is not None:
