@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from fastapi import APIRouter
 
+    from beddel.integrations.dashboard.pipeline.router import RegisterAdapterFn
+
 __all__ = [
     "AgentHealthStatus",
     "AgentPipelineAdapter",
@@ -24,11 +26,11 @@ __all__ = [
 ]
 
 
-def create_agent_pipeline_router() -> APIRouter:
+def create_agent_pipeline_router() -> tuple[APIRouter, RegisterAdapterFn]:
     """Create a FastAPI router for agent pipeline endpoints.
 
     Returns:
-        A FastAPI APIRouter with agent pipeline endpoints.
+        A 2-tuple of ``(APIRouter, register_adapter)`` callable.
     """
     from beddel.integrations.dashboard.pipeline.router import (
         create_agent_pipeline_router as _create_router,
