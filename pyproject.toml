@@ -66,16 +66,21 @@ cli = [
     "click>=8.0",
     "beddel[fastapi]",
 ]
+openclaw = [
+    "httpx>=0.27",
+]
 all = [
     "beddel[adapters]",
     "beddel[cli]",
     "beddel[mcp]",
+    "beddel[openclaw]",
 ]
 dev = [
     "beddel[adapters]",
     "beddel[cli]",
     "beddel[fastapi]",
     "beddel[mcp]",
+    "beddel[openclaw]",
     "httpx",
     "opentelemetry-sdk>=1.0",
     "pytest",

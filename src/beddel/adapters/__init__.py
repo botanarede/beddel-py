@@ -13,6 +13,7 @@ from beddel.adapters.hooks import LifecycleHookManager
 from beddel.adapters.kiro_cli import KiroCLIAgentAdapter
 from beddel.adapters.litellm_adapter import LiteLLMAdapter
 from beddel.adapters.mcp import SSEMCPClient, StdioMCPClient
+from beddel.adapters.openclaw_adapter import OpenClawAgentAdapter
 from beddel.adapters.otel_adapter import OpenTelemetryAdapter
 
 __all__ = [
@@ -21,6 +22,7 @@ __all__ = [
     "KiroCLIAgentAdapter",
     "LifecycleHookManager",
     "LiteLLMAdapter",
+    "OpenClawAgentAdapter",
     "OpenTelemetryAdapter",
     "SSEMCPClient",
     "SQLiteEventStore",
