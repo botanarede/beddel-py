@@ -2,6 +2,9 @@
 
 Provides :func:`http_request`, a builtin tool that performs HTTP requests
 using ``httpx.Client`` (synchronous) and returns status code, body, and headers.
+
+``httpx`` is an optional dependency — install it with ``pip install httpx``
+or ``pip install beddel[openclaw]``.
 """
 
 from __future__ import annotations
@@ -9,7 +12,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx
+try:
+    import httpx
+except ImportError:
+    httpx = None  # type: ignore[assignment]
 
 from beddel.tools import beddel_tool
 
@@ -35,9 +41,15 @@ def http_request(
         ``headers`` (dict).
 
     Raises:
+        ImportError: When ``httpx`` is not installed.
         RuntimeError: When an ``httpx.HTTPError`` occurs (e.g. connection
             failure, timeout).
     """
+    if httpx is None:
+        raise ImportError(
+            "httpx is required for http_request tool. Install it with: pip install httpx"
+        )
+
     content: str | None = None
     if isinstance(body, dict):
         content = json.dumps(body)
