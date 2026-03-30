@@ -48,17 +48,11 @@ from beddel.domain.strategies import (
 from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
-    from beddel.adapters.budget_enforcer import InMemoryBudgetEnforcer as InMemoryBudgetEnforcer
-    from beddel.adapters.claude_adapter import ClaudeAgentAdapter as ClaudeAgentAdapter
-    from beddel.adapters.codex_adapter import CodexAgentAdapter as CodexAgentAdapter
-    from beddel.adapters.event_store import SQLiteEventStore as SQLiteEventStore
-    from beddel.adapters.hooks import LifecycleHookManager as LifecycleHookManager
-    from beddel.adapters.kiro_cli import KiroCLIAgentAdapter as KiroCLIAgentAdapter
-    from beddel.adapters.langfuse_tracer import LangfuseTracerAdapter as LangfuseTracerAdapter
-    from beddel.adapters.mcp import SSEMCPClient as SSEMCPClient
-    from beddel.adapters.mcp import StdioMCPClient as StdioMCPClient
-    from beddel.adapters.openclaw_adapter import OpenClawAgentAdapter as OpenClawAgentAdapter
-    from beddel.adapters.tier_router import StaticTierRouter as StaticTierRouter
+    from beddel.adapters import InMemoryBudgetEnforcer as InMemoryBudgetEnforcer
+    from beddel.adapters import InMemoryCircuitBreaker as InMemoryCircuitBreaker
+    from beddel.adapters import LifecycleHookManager as LifecycleHookManager
+    from beddel.adapters import SQLiteEventStore as SQLiteEventStore
+    from beddel.adapters import StaticTierRouter as StaticTierRouter
     from beddel.integrations.fastapi import (
         create_beddel_handler as create_beddel_handler,
     )
@@ -70,17 +64,17 @@ __version__ = "0.1.3"
 # beddel → beddel.adapters → otel_adapter → beddel.__version__
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
-    "ClaudeAgentAdapter": ("beddel.adapters.claude_adapter", "ClaudeAgentAdapter"),
-    "CodexAgentAdapter": ("beddel.adapters.codex_adapter", "CodexAgentAdapter"),
-    "InMemoryBudgetEnforcer": ("beddel.adapters.budget_enforcer", "InMemoryBudgetEnforcer"),
-    "KiroCLIAgentAdapter": ("beddel.adapters.kiro_cli", "KiroCLIAgentAdapter"),
-    "LangfuseTracerAdapter": ("beddel.adapters.langfuse_tracer", "LangfuseTracerAdapter"),
-    "LifecycleHookManager": ("beddel.adapters.hooks", "LifecycleHookManager"),
-    "OpenClawAgentAdapter": ("beddel.adapters.openclaw_adapter", "OpenClawAgentAdapter"),
-    "SQLiteEventStore": ("beddel.adapters.event_store", "SQLiteEventStore"),
-    "SSEMCPClient": ("beddel.adapters.mcp", "SSEMCPClient"),
-    "StaticTierRouter": ("beddel.adapters.tier_router", "StaticTierRouter"),
-    "StdioMCPClient": ("beddel.adapters.mcp", "StdioMCPClient"),
+    "ClaudeAgentAdapter": ("beddel.adapters", "ClaudeAgentAdapter"),
+    "CodexAgentAdapter": ("beddel.adapters", "CodexAgentAdapter"),
+    "InMemoryBudgetEnforcer": ("beddel.adapters", "InMemoryBudgetEnforcer"),
+    "KiroCLIAgentAdapter": ("beddel.adapters", "KiroCLIAgentAdapter"),
+    "LangfuseTracerAdapter": ("beddel.adapters", "LangfuseTracerAdapter"),
+    "LifecycleHookManager": ("beddel.adapters", "LifecycleHookManager"),
+    "OpenClawAgentAdapter": ("beddel.adapters", "OpenClawAgentAdapter"),
+    "SQLiteEventStore": ("beddel.adapters", "SQLiteEventStore"),
+    "SSEMCPClient": ("beddel.adapters", "SSEMCPClient"),
+    "StaticTierRouter": ("beddel.adapters", "StaticTierRouter"),
+    "StdioMCPClient": ("beddel.adapters", "StdioMCPClient"),
     "create_beddel_handler": (
         "beddel.integrations.fastapi",
         "create_beddel_handler",
