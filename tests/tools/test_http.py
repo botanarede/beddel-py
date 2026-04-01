@@ -1,4 +1,4 @@
-"""Unit tests for beddel.tools.http — http_request tool."""
+"""Unit tests for beddel_tools_http.http — http_request tool."""
 
 from __future__ import annotations
 
@@ -6,8 +6,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from beddel.tools.http import http_request
+from beddel_tools_http.http import http_request
 
 
 class TestHttpRequestMetadata:
@@ -29,7 +28,7 @@ class TestHttpRequestMetadata:
 class TestHttpRequestGet:
     """Tests for GET requests."""
 
-    @patch("beddel.tools.http.httpx.Client")
+    @patch("beddel_tools_http.http.httpx.Client")
     def test_get_returns_status_body_headers(self, mock_client_cls: Any) -> None:
         # Arrange
         mock_response = MagicMock()
@@ -60,7 +59,7 @@ class TestHttpRequestGet:
 class TestHttpRequestPost:
     """Tests for POST requests with body."""
 
-    @patch("beddel.tools.http.httpx.Client")
+    @patch("beddel_tools_http.http.httpx.Client")
     def test_post_with_string_body(self, mock_client_cls: Any) -> None:
         # Arrange
         mock_response = MagicMock()
@@ -86,7 +85,7 @@ class TestHttpRequestPost:
             content="raw data",
         )
 
-    @patch("beddel.tools.http.httpx.Client")
+    @patch("beddel_tools_http.http.httpx.Client")
     def test_post_with_dict_body_serializes_to_json(self, mock_client_cls: Any) -> None:
         # Arrange
         mock_response = MagicMock()
@@ -116,7 +115,7 @@ class TestHttpRequestPost:
 class TestHttpRequestCustomHeaders:
     """Tests for custom headers."""
 
-    @patch("beddel.tools.http.httpx.Client")
+    @patch("beddel_tools_http.http.httpx.Client")
     def test_custom_headers_passed_through(self, mock_client_cls: Any) -> None:
         # Arrange
         mock_response = MagicMock()
@@ -146,7 +145,7 @@ class TestHttpRequestCustomHeaders:
 class TestHttpRequestErrorHandling:
     """Tests for error status codes and HTTP errors."""
 
-    @patch("beddel.tools.http.httpx.Client")
+    @patch("beddel_tools_http.http.httpx.Client")
     def test_error_status_code_returned_not_raised(self, mock_client_cls: Any) -> None:
         # Arrange — 404 is returned as data, not raised
         mock_response = MagicMock()
@@ -166,7 +165,7 @@ class TestHttpRequestErrorHandling:
         assert result["status_code"] == 404
         assert result["body"] == "Not Found"
 
-    @patch("beddel.tools.http.httpx.Client")
+    @patch("beddel_tools_http.http.httpx.Client")
     def test_500_status_code_returned(self, mock_client_cls: Any) -> None:
         # Arrange
         mock_response = MagicMock()
@@ -186,7 +185,7 @@ class TestHttpRequestErrorHandling:
         assert result["status_code"] == 500
         assert result["headers"] == {"retry-after": "30"}
 
-    @patch("beddel.tools.http.httpx.Client")
+    @patch("beddel_tools_http.http.httpx.Client")
     def test_httpx_error_raises_runtime_error(self, mock_client_cls: Any) -> None:
         # Arrange
         import httpx

@@ -383,6 +383,9 @@ KIT_RESOLUTION_AMBIGUOUS: str = "BEDDEL-KIT-656"
 KIT_SHADOWS_BUILTIN: str = "BEDDEL-KIT-657"
 """Kit tool has same name as a builtin tool."""
 
+BEDDEL_KIT_660: str = "BEDDEL-KIT-660"
+"""Deprecated adapter import — adapter imported from legacy path; kit import recommended."""
+
 # ---------------------------------------------------------------------------
 # Auth codes  (AUTH prefix, 1000 range)
 # NOTE: String codes use BEDDEL-AUTH-9xx per PRD §8.2. The internal range
@@ -529,6 +532,7 @@ ALL_CODES: dict[str, str] = {
     "KIT_TOOL_NOT_FOUND": KIT_TOOL_NOT_FOUND,
     "KIT_RESOLUTION_AMBIGUOUS": KIT_RESOLUTION_AMBIGUOUS,
     "KIT_SHADOWS_BUILTIN": KIT_SHADOWS_BUILTIN,
+    "BEDDEL_KIT_660": BEDDEL_KIT_660,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }
