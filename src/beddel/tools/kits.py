@@ -10,18 +10,41 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+import re
 from collections import defaultdict
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Any
 
-from beddel.domain.errors import KitManifestError
+from beddel.domain.errors import KitDependencyError, KitManifestError
 from beddel.domain.kit import KitCollision, KitDiscoveryResult, KitManifest, parse_kit_manifest
-from beddel.error_codes import KIT_LOAD_FAILED
+from beddel.error_codes import KIT_DEPENDENCY_MISSING, KIT_LOAD_FAILED
 
 __all__ = ["discover_kits", "load_kit"]
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_package_name(specifier: str) -> str:
+    """Extract package name from a PEP 508 dependency specifier.
+
+    Strips version constraints (``>=``, ``<``, ``~=``, etc.), extras
+    (``[…]``), and environment markers (``;``).
+    """
+    return re.split(r"[><=!~\[;]", specifier)[0].strip()
+
+
+def _validate_dependencies(deps: list[str]) -> list[str]:
+    """Return dependency specifiers whose packages are not installed."""
+    missing: list[str] = []
+    for dep in deps:
+        pkg = _parse_package_name(dep)
+        try:
+            distribution(pkg)
+        except PackageNotFoundError:
+            missing.append(dep)
+    return missing
 
 
 def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
@@ -87,9 +110,29 @@ def load_kit(manifest: KitManifest) -> dict[str, Callable[..., Any]]:
         Dict mapping tool names to their callable implementations.
 
     Raises:
+        KitDependencyError: ``BEDDEL-KIT-653`` if declared pip dependencies
+            are not installed.
         KitManifestError: ``BEDDEL-KIT-652`` if a tool target cannot be
             imported or the function attribute is missing.
     """
+    # --- Dependency validation -------------------------------------------
+    deps = manifest.kit.dependencies
+    if deps:
+        missing = _validate_dependencies(deps)
+        if missing:
+            pkg_list = ", ".join(missing)
+            raise KitDependencyError(
+                code=KIT_DEPENDENCY_MISSING,
+                message=(
+                    f"Kit '{manifest.kit.name}' requires packages that are "
+                    f"not installed: {pkg_list}. "
+                    f"Install them with: pip install {' '.join(missing)}"
+                ),
+                missing_packages=missing,
+                details={"kit": manifest.kit.name, "missing": missing},
+            )
+
+    # --- Tool resolution -------------------------------------------------
     tools: dict[str, Callable[..., Any]] = {}
     for tool_decl in manifest.kit.tools:
         if ":" not in tool_decl.target:

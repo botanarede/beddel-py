@@ -37,6 +37,7 @@ __all__ = [
     "DurableError",
     "MCPError",
     "KitManifestError",
+    "KitDependencyError",
     "BudgetError",
 ]
 
@@ -186,6 +187,26 @@ class MCPError(BeddelError):
 
 class KitManifestError(BeddelError):
     """Kit manifest errors. Error code prefix: BEDDEL-KIT-"""
+
+
+class KitDependencyError(BeddelError):
+    """Kit dependency errors — one or more pip packages are missing.
+
+    Error code prefix: ``BEDDEL-KIT-``
+
+    Attributes:
+        missing_packages: List of dependency specifiers that are not installed.
+    """
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        missing_packages: list[str],
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(code, message, details)
+        self.missing_packages = missing_packages
 
 
 class BudgetError(BeddelError):

@@ -125,6 +125,7 @@ class TestAllExports:
             "DurableError",
             "MCPError",
             "KitManifestError",
+            "KitDependencyError",
             "BudgetError",
         }
         assert set(errors.__all__) == expected

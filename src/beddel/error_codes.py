@@ -368,8 +368,8 @@ KIT_MANIFEST_NOT_FOUND: str = "BEDDEL-KIT-651"
 KIT_LOAD_FAILED: str = "BEDDEL-KIT-652"
 """Tool import from kit manifest failed."""
 
-KIT_DISCOVERY_PATH_INVALID: str = "BEDDEL-KIT-653"
-"""Configured kit discovery path does not exist."""
+KIT_DEPENDENCY_MISSING: str = "BEDDEL-KIT-653"
+"""One or more pip dependencies declared in kit.yaml are not installed."""
 
 KIT_TOOL_COLLISION: str = "BEDDEL-KIT-654"
 """Multiple kits declare the same unnamespaced tool name."""
@@ -385,6 +385,12 @@ KIT_SHADOWS_BUILTIN: str = "BEDDEL-KIT-657"
 
 BEDDEL_KIT_660: str = "BEDDEL-KIT-660"
 """Deprecated adapter import — adapter imported from legacy path; kit import recommended."""
+
+KIT_INSTALL_FAILED: str = "BEDDEL-KIT-661"
+"""beddel kit install failed to install dependencies or copy kit."""
+
+KIT_TARGET_UNSUPPORTED: str = "BEDDEL-KIT-662"
+"""Requested language target not declared in kit.yaml targets section."""
 
 # ---------------------------------------------------------------------------
 # Auth codes  (AUTH prefix, 1000 range)
@@ -527,12 +533,14 @@ ALL_CODES: dict[str, str] = {
     "KIT_MANIFEST_INVALID": KIT_MANIFEST_INVALID,
     "KIT_MANIFEST_NOT_FOUND": KIT_MANIFEST_NOT_FOUND,
     "KIT_LOAD_FAILED": KIT_LOAD_FAILED,
-    "KIT_DISCOVERY_PATH_INVALID": KIT_DISCOVERY_PATH_INVALID,
+    "KIT_DEPENDENCY_MISSING": KIT_DEPENDENCY_MISSING,
     "KIT_TOOL_COLLISION": KIT_TOOL_COLLISION,
     "KIT_TOOL_NOT_FOUND": KIT_TOOL_NOT_FOUND,
     "KIT_RESOLUTION_AMBIGUOUS": KIT_RESOLUTION_AMBIGUOUS,
     "KIT_SHADOWS_BUILTIN": KIT_SHADOWS_BUILTIN,
     "BEDDEL_KIT_660": BEDDEL_KIT_660,
+    "KIT_INSTALL_FAILED": KIT_INSTALL_FAILED,
+    "KIT_TARGET_UNSUPPORTED": KIT_TARGET_UNSUPPORTED,
     # Integration
     "INTERNAL_SERVER_ERROR": INTERNAL_SERVER_ERROR,
 }
