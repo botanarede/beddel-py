@@ -661,3 +661,61 @@ def serve(
         click.echo(f"Dashboard API: http://{host}:{port}/api")
 
     uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+# ---------------------------------------------------------------------------
+# Kit management commands
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def kit() -> None:
+    """Manage solution kits."""
+
+
+@kit.command("install")
+@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.option("--global", "global_install", is_flag=True, help="Install to ~/.beddel/kits/")
+def kit_install(path: str, *, global_install: bool) -> None:
+    """Install a solution kit from a local directory."""
+    import shutil
+    import subprocess
+
+    from beddel.domain.errors import KitManifestError
+    from beddel.domain.kit import parse_kit_manifest
+
+    kit_yaml = Path(path) / "kit.yaml"
+
+    # 1. Validate manifest
+    try:
+        manifest = parse_kit_manifest(kit_yaml)
+    except KitManifestError as exc:
+        click.echo(f"Invalid kit manifest: {exc.message}", err=True)
+        raise SystemExit(1) from None
+
+    # 2. Install pip dependencies
+    deps = manifest.kit.dependencies
+    if deps:
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", *deps],
+                check=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            click.echo(f"Failed to install dependencies: {exc}", err=True)
+            raise SystemExit(1) from None
+
+    # 3. Copy kit directory to target
+    kit_name = manifest.kit.name
+    if global_install:
+        target = Path.home() / ".beddel" / "kits" / kit_name
+    else:
+        target = Path("./kits") / kit_name
+
+    try:
+        shutil.copytree(path, target, dirs_exist_ok=True)
+    except shutil.Error as exc:
+        click.echo(f"Failed to copy kit: {exc}", err=True)
+        raise SystemExit(1) from None
+
+    click.echo(f"Installed {kit_name} v{manifest.kit.version} to {target}")
