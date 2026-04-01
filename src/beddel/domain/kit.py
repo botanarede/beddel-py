@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from beddel.domain.errors import KitManifestError
 from beddel.error_codes import KIT_MANIFEST_INVALID, KIT_MANIFEST_NOT_FOUND
@@ -30,6 +30,7 @@ __all__ = [
     "KitCollision",
     "KitContractDeclaration",
     "KitDiscoveryResult",
+    "KitLanguageTarget",
     "KitManifest",
     "KitToolDeclaration",
     "KitWorkflowDeclaration",
@@ -78,15 +79,50 @@ class KitWorkflowDeclaration(BaseModel):
 class KitAdapterDeclaration(BaseModel):
     """Declaration of an adapter binding provided by a Solution Kit.
 
+    Supports two declaration formats:
+
+    1. **Explicit format** — ``name`` + ``target`` identify the adapter:
+
+       .. code-block:: yaml
+
+          adapters:
+            - name: my-adapter
+              target: "my_kit.adapters:MyAdapter"
+              port: ILLMPort
+
+    2. **Implementation shorthand** — ``implementation`` names the class
+       directly (resolved at load time):
+
+       .. code-block:: yaml
+
+          adapters:
+            - port: IAgentAdapter
+              implementation: OpenClawAgentAdapter
+
+    A ``@model_validator`` ensures at least one format is provided.
+
     Attributes:
-        name: Logical name used to reference this adapter.
-        target: Import path in ``module:class`` format.
+        name: Logical name used to reference this adapter (optional).
+        target: Import path in ``module:class`` format (optional).
         port: Port interface name that this adapter implements.
+        implementation: Class name resolved at load time (optional).
+        description: Optional human-readable description.
     """
 
-    name: str
-    target: str
+    name: str | None = None
+    target: str | None = None
     port: str
+    implementation: str | None = None
+    description: str | None = None
+
+    @model_validator(mode="after")
+    def _check_adapter_identity(self) -> KitAdapterDeclaration:
+        has_explicit = self.name is not None and self.target is not None
+        has_implementation = self.implementation is not None
+        if not has_explicit and not has_implementation:
+            msg = "KitAdapterDeclaration requires either (name + target) or implementation"
+            raise ValueError(msg)
+        return self
 
 
 class KitContractDeclaration(BaseModel):
@@ -103,6 +139,27 @@ class KitContractDeclaration(BaseModel):
     description: str | None = None
 
 
+class KitLanguageTarget(BaseModel):
+    """Typed helper for parsing a language-specific target block.
+
+    Represents the structure under ``targets.<language>`` in a kit manifest
+    (e.g. ``targets.python``).  This is a convenience model for consumers
+    that want typed access — the ``SolutionKit.targets`` field itself is
+    ``dict[str, Any]`` so unknown languages pass through without validation.
+
+    Attributes:
+        module: Python module path for the target package.
+        dependencies: Language-specific dependency specifiers.
+        tools: Tool declarations scoped to this language target.
+        adapters: Adapter declarations scoped to this language target.
+    """
+
+    module: str
+    dependencies: list[str] = Field(default_factory=list)
+    tools: list[KitToolDeclaration] = Field(default_factory=list)
+    adapters: list[KitAdapterDeclaration] = Field(default_factory=list)
+
+
 class SolutionKit(BaseModel):
     """Top-level model for a ``kit.yaml`` manifest.
 
@@ -114,20 +171,28 @@ class SolutionKit(BaseModel):
         version: Semantic version string (e.g. ``0.1.0``).
         description: Human-readable kit description.
         author: Optional author attribution.
+        dependencies: Pip package specifiers required by this kit
+            (e.g. ``["httpx>=0.27", "litellm>=1.40"]``).
         tools: Tool declarations bundled in this kit.
         workflows: Workflow YAML asset declarations.
         adapters: Adapter binding declarations.
         contracts: Contract/schema declarations.
+        targets: Language-specific target mappings keyed by language
+            identifier (e.g. ``python``, ``typescript``).  Values are
+            free-form dicts; use :class:`KitLanguageTarget` for typed
+            access to the ``python`` target.
     """
 
     name: str
     version: str
     description: str
     author: str | None = None
+    dependencies: list[str] = Field(default_factory=list)
     tools: list[KitToolDeclaration] = Field(default_factory=list)
     workflows: list[KitWorkflowDeclaration] = Field(default_factory=list)
     adapters: list[KitAdapterDeclaration] = Field(default_factory=list)
     contracts: list[KitContractDeclaration] = Field(default_factory=list)
+    targets: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("name")
     @classmethod
