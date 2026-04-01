@@ -42,8 +42,8 @@ class TestImportGuard:
 
     def test_stdio_client_import_guard(self) -> None:
         """When mcp SDK is unavailable, constructor raises MCPError."""
-        with patch("beddel.adapters.mcp.stdio_client._MCP_AVAILABLE", False):
-            from beddel.adapters.mcp.stdio_client import StdioMCPClient
+        with patch("beddel_protocol_mcp.stdio_client._MCP_AVAILABLE", False):
+            from beddel_protocol_mcp.stdio_client import StdioMCPClient
 
             with pytest.raises(MCPError, match="MCP SDK not installed") as exc_info:
                 StdioMCPClient(command="echo")
@@ -75,11 +75,11 @@ class TestConnectDisconnect:
 
         with (
             patch(
-                "beddel.adapters.mcp.stdio_client.stdio_client",
+                "beddel_protocol_mcp.stdio_client.stdio_client",
                 return_value=mock_cm,
             ) as mock_stdio,
             patch(
-                "beddel.adapters.mcp.stdio_client.ClientSession",
+                "beddel_protocol_mcp.stdio_client.ClientSession",
                 return_value=mock_session,
             ) as mock_cls,
         ):
@@ -95,7 +95,7 @@ class TestConnectDisconnect:
     @pytest.mark.asyncio()
     async def test_stdio_client_connect_disconnect(self, _mock_mcp_sdk: Any) -> None:
         """Connect creates session and initializes; disconnect cleans up."""
-        from beddel.adapters.mcp.stdio_client import StdioMCPClient
+        from beddel_protocol_mcp.stdio_client import StdioMCPClient
 
         client = StdioMCPClient(command="test-server", args=["--flag"])
 
@@ -119,7 +119,7 @@ class TestConnectDisconnect:
     @pytest.mark.asyncio()
     async def test_stdio_client_connect_error(self, _mock_mcp_sdk: Any) -> None:
         """Connection failure wraps in MCPError(MCP_CONNECTION_FAILED)."""
-        from beddel.adapters.mcp.stdio_client import StdioMCPClient
+        from beddel_protocol_mcp.stdio_client import StdioMCPClient
 
         _mock_mcp_sdk["cm"].__aenter__ = AsyncMock(side_effect=OSError("Connection refused"))
 
@@ -132,7 +132,7 @@ class TestConnectDisconnect:
     @pytest.mark.asyncio()
     async def test_disconnect_safe_when_not_connected(self) -> None:
         """Disconnect is safe to call when not connected."""
-        from beddel.adapters.mcp.stdio_client import StdioMCPClient
+        from beddel_protocol_mcp.stdio_client import StdioMCPClient
 
         client = StdioMCPClient(command="test-server")
         # Should not raise
@@ -150,7 +150,7 @@ class TestListTools:
     @pytest.mark.asyncio()
     async def test_stdio_client_list_tools(self) -> None:
         """list_tools converts SDK Tool objects to dicts."""
-        from beddel.adapters.mcp.stdio_client import StdioMCPClient
+        from beddel_protocol_mcp.stdio_client import StdioMCPClient
 
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -169,11 +169,11 @@ class TestListTools:
 
         with (
             patch(
-                "beddel.adapters.mcp.stdio_client.stdio_client",
+                "beddel_protocol_mcp.stdio_client.stdio_client",
                 return_value=mock_cm,
             ),
             patch(
-                "beddel.adapters.mcp.stdio_client.ClientSession",
+                "beddel_protocol_mcp.stdio_client.ClientSession",
                 return_value=mock_session,
             ),
         ):
@@ -202,7 +202,7 @@ class TestCallTool:
     @pytest.mark.asyncio()
     async def test_stdio_client_call_tool(self) -> None:
         """call_tool returns result content from session."""
-        from beddel.adapters.mcp.stdio_client import StdioMCPClient
+        from beddel_protocol_mcp.stdio_client import StdioMCPClient
 
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -218,11 +218,11 @@ class TestCallTool:
 
         with (
             patch(
-                "beddel.adapters.mcp.stdio_client.stdio_client",
+                "beddel_protocol_mcp.stdio_client.stdio_client",
                 return_value=mock_cm,
             ),
             patch(
-                "beddel.adapters.mcp.stdio_client.ClientSession",
+                "beddel_protocol_mcp.stdio_client.ClientSession",
                 return_value=mock_session,
             ),
         ):
@@ -237,7 +237,7 @@ class TestCallTool:
     @pytest.mark.asyncio()
     async def test_stdio_client_call_tool_error(self) -> None:
         """call_tool wraps exceptions in MCPError(MCP_TOOL_INVOCATION_FAILED)."""
-        from beddel.adapters.mcp.stdio_client import StdioMCPClient
+        from beddel_protocol_mcp.stdio_client import StdioMCPClient
 
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -251,11 +251,11 @@ class TestCallTool:
 
         with (
             patch(
-                "beddel.adapters.mcp.stdio_client.stdio_client",
+                "beddel_protocol_mcp.stdio_client.stdio_client",
                 return_value=mock_cm,
             ),
             patch(
-                "beddel.adapters.mcp.stdio_client.ClientSession",
+                "beddel_protocol_mcp.stdio_client.ClientSession",
                 return_value=mock_session,
             ),
         ):
@@ -269,7 +269,7 @@ class TestCallTool:
     @pytest.mark.asyncio()
     async def test_call_tool_not_connected_raises(self) -> None:
         """call_tool raises MCPError when not connected."""
-        from beddel.adapters.mcp.stdio_client import StdioMCPClient
+        from beddel_protocol_mcp.stdio_client import StdioMCPClient
 
         client = StdioMCPClient(command="test-server")
 
@@ -288,7 +288,7 @@ class TestProtocolConformance:
 
     def test_satisfies_imcp_client_protocol(self) -> None:
         """StdioMCPClient is structurally compatible with IMCPClient."""
-        from beddel.adapters.mcp.stdio_client import StdioMCPClient
+        from beddel_protocol_mcp.stdio_client import StdioMCPClient
 
         # Verify all required methods exist with correct names
         for method_name in ("connect", "list_tools", "call_tool", "disconnect"):
@@ -315,8 +315,8 @@ class TestSSEImportGuard:
 
     def test_sse_client_import_guard(self) -> None:
         """When mcp SDK is unavailable, constructor raises MCPError."""
-        with patch("beddel.adapters.mcp.sse_client._MCP_AVAILABLE", False):
-            from beddel.adapters.mcp.sse_client import SSEMCPClient
+        with patch("beddel_protocol_mcp.sse_client._MCP_AVAILABLE", False):
+            from beddel_protocol_mcp.sse_client import SSEMCPClient
 
             with pytest.raises(MCPError, match="MCP SDK not installed") as exc_info:
                 SSEMCPClient(url="http://localhost:8080/mcp")
@@ -348,11 +348,11 @@ class TestSSEConnectDisconnect:
 
         with (
             patch(
-                "beddel.adapters.mcp.sse_client.sse_client",
+                "beddel_protocol_mcp.sse_client.sse_client",
                 return_value=mock_cm,
             ) as mock_sse,
             patch(
-                "beddel.adapters.mcp.sse_client.ClientSession",
+                "beddel_protocol_mcp.sse_client.ClientSession",
                 return_value=mock_session,
             ) as mock_cls,
         ):
@@ -368,7 +368,7 @@ class TestSSEConnectDisconnect:
     @pytest.mark.asyncio()
     async def test_sse_client_connect_disconnect(self, _mock_sse_sdk: Any) -> None:
         """Connect creates session and initializes; disconnect cleans up."""
-        from beddel.adapters.mcp.sse_client import SSEMCPClient
+        from beddel_protocol_mcp.sse_client import SSEMCPClient
 
         client = SSEMCPClient(
             url="http://localhost:8080/mcp",
@@ -400,7 +400,7 @@ class TestSSEConnectDisconnect:
     @pytest.mark.asyncio()
     async def test_sse_disconnect_safe_when_not_connected(self) -> None:
         """Disconnect is safe to call when not connected."""
-        from beddel.adapters.mcp.sse_client import SSEMCPClient
+        from beddel_protocol_mcp.sse_client import SSEMCPClient
 
         client = SSEMCPClient(url="http://localhost:8080/mcp")
         # Should not raise
@@ -418,7 +418,7 @@ class TestSSEListTools:
     @pytest.mark.asyncio()
     async def test_sse_client_list_tools(self) -> None:
         """list_tools converts SDK Tool objects to dicts."""
-        from beddel.adapters.mcp.sse_client import SSEMCPClient
+        from beddel_protocol_mcp.sse_client import SSEMCPClient
 
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -437,11 +437,11 @@ class TestSSEListTools:
 
         with (
             patch(
-                "beddel.adapters.mcp.sse_client.sse_client",
+                "beddel_protocol_mcp.sse_client.sse_client",
                 return_value=mock_cm,
             ),
             patch(
-                "beddel.adapters.mcp.sse_client.ClientSession",
+                "beddel_protocol_mcp.sse_client.ClientSession",
                 return_value=mock_session,
             ),
         ):
@@ -470,7 +470,7 @@ class TestSSECallTool:
     @pytest.mark.asyncio()
     async def test_sse_client_call_tool(self) -> None:
         """call_tool returns result content from session."""
-        from beddel.adapters.mcp.sse_client import SSEMCPClient
+        from beddel_protocol_mcp.sse_client import SSEMCPClient
 
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -486,11 +486,11 @@ class TestSSECallTool:
 
         with (
             patch(
-                "beddel.adapters.mcp.sse_client.sse_client",
+                "beddel_protocol_mcp.sse_client.sse_client",
                 return_value=mock_cm,
             ),
             patch(
-                "beddel.adapters.mcp.sse_client.ClientSession",
+                "beddel_protocol_mcp.sse_client.ClientSession",
                 return_value=mock_session,
             ),
         ):
@@ -514,7 +514,7 @@ class TestSSECallToolError:
     @pytest.mark.asyncio()
     async def test_sse_client_call_tool_error(self) -> None:
         """call_tool wraps exceptions in MCPError(MCP_TOOL_INVOCATION_FAILED)."""
-        from beddel.adapters.mcp.sse_client import SSEMCPClient
+        from beddel_protocol_mcp.sse_client import SSEMCPClient
 
         mock_session = AsyncMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -528,11 +528,11 @@ class TestSSECallToolError:
 
         with (
             patch(
-                "beddel.adapters.mcp.sse_client.sse_client",
+                "beddel_protocol_mcp.sse_client.sse_client",
                 return_value=mock_cm,
             ),
             patch(
-                "beddel.adapters.mcp.sse_client.ClientSession",
+                "beddel_protocol_mcp.sse_client.ClientSession",
                 return_value=mock_session,
             ),
         ):
@@ -546,7 +546,7 @@ class TestSSECallToolError:
     @pytest.mark.asyncio()
     async def test_sse_call_tool_not_connected_raises(self) -> None:
         """call_tool raises MCPError when not connected."""
-        from beddel.adapters.mcp.sse_client import SSEMCPClient
+        from beddel_protocol_mcp.sse_client import SSEMCPClient
 
         client = SSEMCPClient(url="http://localhost:8080/mcp")
 
@@ -571,10 +571,10 @@ class TestSSEConnectError:
         mock_cm.__aexit__ = AsyncMock(return_value=False)
 
         with patch(
-            "beddel.adapters.mcp.sse_client.sse_client",
+            "beddel_protocol_mcp.sse_client.sse_client",
             return_value=mock_cm,
         ):
-            from beddel.adapters.mcp.sse_client import SSEMCPClient
+            from beddel_protocol_mcp.sse_client import SSEMCPClient
 
             client = SSEMCPClient(url="http://localhost:8080/mcp")
 
@@ -593,7 +593,7 @@ class TestSSEProtocolConformance:
 
     def test_satisfies_imcp_client_protocol(self) -> None:
         """SSEMCPClient is structurally compatible with IMCPClient."""
-        from beddel.adapters.mcp.sse_client import SSEMCPClient
+        from beddel_protocol_mcp.sse_client import SSEMCPClient
 
         # Verify all required methods exist with correct names
         for method_name in ("connect", "list_tools", "call_tool", "disconnect"):
@@ -606,7 +606,8 @@ class TestSSEProtocolConformance:
 
     def test_isinstance_check_with_runtime_checkable(self) -> None:
         """SSEMCPClient has the same method signatures as IMCPClient."""
-        from beddel.adapters.mcp.sse_client import SSEMCPClient
+        from beddel_protocol_mcp.sse_client import SSEMCPClient
+
         from beddel.domain.ports import IMCPClient
 
         # Verify structural compatibility: SSEMCPClient has all Protocol methods

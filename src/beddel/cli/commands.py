@@ -6,6 +6,7 @@ import asyncio
 import importlib
 import json
 import logging
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,29 @@ from typing import Any
 import click
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Kit sys.path helper (ADR-0008, Story 5.1.1 Task 5)
+# ---------------------------------------------------------------------------
+# commands.py lives at: <project_root>/src/beddel-py/src/beddel/cli/commands.py
+#   parents[0] = cli/
+#   parents[1] = beddel/
+#   parents[2] = src/          (beddel-py/src)
+#   parents[3] = beddel-py/
+#   parents[4] = src/          (top-level src/)
+#   parents[5] = <project_root>
+_PROJECT_ROOT = Path(__file__).resolve().parents[5]
+
+
+def _ensure_kit_paths() -> None:
+    """Add all kit ``src/`` directories to ``sys.path`` if not already present."""
+    kits_dir = _PROJECT_ROOT / "kits"
+    if not kits_dir.is_dir():
+        return
+    for kit_dir in kits_dir.iterdir():
+        kit_src = kit_dir / "src"
+        if kit_src.is_dir() and str(kit_src) not in sys.path:
+            sys.path.insert(0, str(kit_src))
 
 
 def _build_tool_registry(
@@ -235,8 +259,10 @@ def run(
     no_kits: bool,
 ) -> None:
     """Execute a workflow and print results."""
-    from beddel.adapters.kiro_cli import KiroCLIAgentAdapter
-    from beddel.adapters.litellm_adapter import LiteLLMAdapter
+    _ensure_kit_paths()
+    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter
+    from beddel_provider_litellm.adapter import LiteLLMAdapter
+
     from beddel.domain.errors import BeddelError
     from beddel.domain.executor import WorkflowExecutor
     from beddel.domain.models import DefaultDependencies, Workflow
@@ -328,7 +354,8 @@ def run(
 @cli.command()
 def status() -> None:
     """Show connection status for the remote dashboard."""
-    from beddel.adapters.github_auth import check_token_validity, load_credentials
+    _ensure_kit_paths()
+    from beddel_auth_github.provider import check_token_validity, load_credentials
 
     creds = load_credentials()
     if creds is None:
@@ -355,7 +382,8 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
     import datetime
     import os
 
-    from beddel.adapters.github_auth import (
+    _ensure_kit_paths()
+    from beddel_auth_github.provider import (
         CredentialData,
         delete_credentials,
         get_github_user,
@@ -364,6 +392,7 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
         poll_for_token,
         save_credentials,
     )
+
     from beddel.domain.errors import BeddelError
 
     if show_status:
@@ -508,8 +537,11 @@ def serve(
         raise SystemExit(1) from None
 
     from beddel import __version__
-    from beddel.adapters.kiro_cli import KiroCLIAgentAdapter
-    from beddel.adapters.litellm_adapter import LiteLLMAdapter
+
+    _ensure_kit_paths()
+    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter
+    from beddel_provider_litellm.adapter import LiteLLMAdapter
+
     from beddel.domain.errors import BeddelError
     from beddel.domain.models import DefaultDependencies, Workflow
     from beddel.domain.parser import WorkflowParser

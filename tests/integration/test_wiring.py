@@ -10,7 +10,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from beddel.adapters.litellm_adapter import LiteLLMAdapter
+from beddel_provider_litellm.adapter import LiteLLMAdapter
+
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import DefaultDependencies, ExecutionContext, Step, Workflow
 from beddel.domain.ports import IPrimitive
@@ -84,7 +85,7 @@ def _make_context(adapter: LiteLLMAdapter, step_id: str = "step-1") -> Execution
 class TestFullCompletionPath:
     """Verify: LLMPrimitive → context → LiteLLMAdapter → litellm.acompletion."""
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_result_propagates_from_adapter_through_primitive(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -104,7 +105,7 @@ class TestFullCompletionPath:
         assert result["usage"]["completion_tokens"] == 5
         assert result["usage"]["total_tokens"] == 15
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_adapter_receives_correct_model_and_messages(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -122,7 +123,7 @@ class TestFullCompletionPath:
         assert call_kwargs["model"] == _MODEL
         assert call_kwargs["messages"] == [{"role": "user", "content": _PROMPT}]
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_optional_kwargs_flow_through_entire_chain(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -144,7 +145,7 @@ class TestFullCompletionPath:
         assert call_kwargs["temperature"] == 0.7
         assert call_kwargs["max_tokens"] == 256
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_messages_config_forwarded_directly(self, mock_acompletion: AsyncMock) -> None:
         """When config uses 'messages' instead of 'prompt', they pass through."""
         mock_acompletion.return_value = _make_completion_response()
@@ -171,7 +172,7 @@ class TestFullCompletionPath:
 class TestFullStreamingPath:
     """Verify: LLMPrimitive (stream=True) → context → LiteLLMAdapter.stream → litellm."""
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_stream_chunks_propagate_through_primitive(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -191,7 +192,7 @@ class TestFullStreamingPath:
             collected.append(text)
         assert collected == ["He", "llo", " world", "!"]
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_stream_calls_acompletion_with_stream_flag(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -211,7 +212,7 @@ class TestFullStreamingPath:
         assert call_kwargs["stream"] is True
         assert call_kwargs["model"] == _MODEL
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_stream_skips_none_content_chunks(self, mock_acompletion: AsyncMock) -> None:
         """None-content chunks are filtered out by the adapter during streaming."""
         chunk_ok = MagicMock()
@@ -245,7 +246,7 @@ class TestRegisterBuiltinsWiring:
     """Verify register_builtins() populates the registry and the registered
     primitive works end-to-end with a real adapter (mocked litellm)."""
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_registry_llm_primitive_completes_full_path(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -266,7 +267,7 @@ class TestRegisterBuiltinsWiring:
         assert result["content"] == "registry works!"
         mock_acompletion.assert_awaited_once()
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_registry_llm_primitive_streams_full_path(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -299,7 +300,7 @@ class TestCallerProvidedDepsWiring:
     dependencies through to the execution context — mirroring the CLI ``run``
     command wiring pattern from Architecture section 9.1."""
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_cli_wiring_round_trip(self, mock_acompletion: AsyncMock) -> None:
         """Full round-trip: build deps like CLI run, execute workflow, verify
         all caller-provided deps are accessible in context."""

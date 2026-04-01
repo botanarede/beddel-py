@@ -8,8 +8,8 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from beddel_protocol_mcp.schema_validator import validate_tool_arguments
 
-from beddel.adapters.mcp.schema_validator import validate_tool_arguments
 from beddel.domain.errors import MCPError
 from beddel.error_codes import MCP_SCHEMA_VALIDATION_FAILED
 
@@ -61,7 +61,7 @@ class TestValidateToolArguments:
         """When jsonschema is unavailable, importing raises ImportError."""
         import importlib
 
-        import beddel.adapters.mcp.schema_validator as mod
+        import beddel_protocol_mcp.schema_validator as mod
 
         with (
             patch.dict("sys.modules", {"jsonschema": None}),

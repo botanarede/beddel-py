@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 from _helpers import make_context
+from beddel_agent_openclaw.adapter import OpenClawAgentAdapter
 
-from beddel.adapters.openclaw_adapter import OpenClawAgentAdapter
 from beddel.domain.errors import AgentError
 from beddel.domain.models import DefaultDependencies
 from beddel.domain.ports import IAgentAdapter
@@ -25,7 +25,7 @@ from beddel.primitives.agent_exec import AgentExecPrimitive
 # ---------------------------------------------------------------------------
 
 _PROMPT = "Analyze the codebase"
-_PATCH_CLIENT = "beddel.adapters.openclaw_adapter.httpx.AsyncClient"
+_PATCH_CLIENT = "beddel_agent_openclaw.adapter.httpx.AsyncClient"
 
 _VALID_RESPONSE_JSON: dict[str, Any] = {
     "choices": [{"message": {"content": "Hello"}}],

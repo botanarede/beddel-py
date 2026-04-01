@@ -122,7 +122,14 @@ def create_beddel_handler(
         if provider is not None:
             effective_provider = provider
         else:
-            from beddel.adapters.litellm_adapter import LiteLLMAdapter
+            import sys as _sys
+            from pathlib import Path as _Path
+
+            _proj_root = _Path(__file__).resolve().parents[5]
+            _kit_src = str(_proj_root / "kits" / "provider-litellm-kit" / "src")
+            if _kit_src not in _sys.path:
+                _sys.path.insert(0, _kit_src)
+            from beddel_provider_litellm.adapter import LiteLLMAdapter
 
             effective_provider = LiteLLMAdapter()
 

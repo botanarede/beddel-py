@@ -103,7 +103,7 @@ _mock_sdk.CLINotFoundError = CLINotFoundError
 _mock_sdk.ProcessError = ProcessError
 sys.modules["claude_agent_sdk"] = _mock_sdk
 
-from beddel.adapters.claude_adapter import ClaudeAgentAdapter  # noqa: E402, I001
+from beddel_agent_claude.adapter import ClaudeAgentAdapter  # noqa: E402, I001
 
 
 # ---------------------------------------------------------------------------

@@ -9,8 +9,7 @@ from typing import Any
 
 import httpx
 import pytest
-
-from beddel.adapters.github_auth import (
+from beddel_auth_github.provider import (
     CredentialData,
     check_token_validity,
     delete_credentials,
@@ -21,6 +20,7 @@ from beddel.adapters.github_auth import (
     poll_for_token,
     save_credentials,
 )
+
 from beddel.domain.errors import BeddelError
 
 
@@ -28,7 +28,7 @@ from beddel.domain.errors import BeddelError
 def _patch_creds_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect CREDENTIALS_PATH to a tmp_path file for test isolation."""
     creds = tmp_path / "credentials.json"
-    monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+    monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
     return creds
 
 
@@ -48,7 +48,7 @@ class TestSaveAndLoadCredentials:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         creds = tmp_path / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
         data = _sample_data()
 
         save_credentials(data)
@@ -68,7 +68,7 @@ class TestLoadNonexistent:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         creds = tmp_path / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
 
         assert load_credentials() is None
 
@@ -78,7 +78,7 @@ class TestDeleteCredentials:
 
     def test_delete_credentials(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         creds = tmp_path / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
         save_credentials(_sample_data())
         assert creds.exists()
 
@@ -91,7 +91,7 @@ class TestDeleteCredentials:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         creds = tmp_path / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
 
         assert delete_credentials() is False
 
@@ -103,7 +103,7 @@ class TestSaveCreatesParentDirs:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         creds = tmp_path / "nested" / "deep" / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
 
         save_credentials(_sample_data())
 
@@ -117,7 +117,7 @@ class TestSaveSetsPermissions:
 
     def test_save_sets_permissions(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         creds = tmp_path / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
 
         save_credentials(_sample_data())
 
@@ -135,7 +135,7 @@ class TestSaveErrorHandling:
         bad_path = tmp_path / "afile"
         bad_path.write_text("block")
         creds = bad_path / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
 
         with pytest.raises(BeddelError) as exc_info:
             save_credentials(_sample_data())
@@ -150,7 +150,7 @@ class TestLoadErrorHandling:
     ) -> None:
         creds = tmp_path / "credentials.json"
         creds.write_text("{invalid json")
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
 
         with pytest.raises(BeddelError) as exc_info:
             load_credentials()
@@ -322,7 +322,7 @@ class TestGetAuthHeadersWithCredentials:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         creds = tmp_path / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
         save_credentials(
             CredentialData(
                 access_token="gho_abc123",
@@ -344,7 +344,7 @@ class TestGetAuthHeadersNoCredentials:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         creds = tmp_path / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
 
         assert get_auth_headers() is None
 
@@ -356,7 +356,7 @@ class TestGetAuthHeadersNoServerUrl:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         creds = tmp_path / "credentials.json"
-        monkeypatch.setattr("beddel.adapters.github_auth.CREDENTIALS_PATH", creds)
+        monkeypatch.setattr("beddel_auth_github.provider.CREDENTIALS_PATH", creds)
         save_credentials(
             CredentialData(
                 access_token="gho_abc123",

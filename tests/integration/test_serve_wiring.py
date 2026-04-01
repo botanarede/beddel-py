@@ -151,7 +151,7 @@ class TestServeWiringRoundTrip:
         assert forwarded_deps.workflow_loader is not None
 
     @patch(
-        "beddel.adapters.litellm_adapter.litellm.acompletion",
+        "beddel_provider_litellm.adapter.litellm.acompletion",
         new_callable=AsyncMock,
     )
     async def test_serve_wiring_full_round_trip(

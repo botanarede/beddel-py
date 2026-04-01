@@ -27,7 +27,14 @@ from beddel.error_codes import (
 )
 
 try:
-    from beddel.adapters.mcp.schema_validator import (
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _tool_proj_root = _Path(__file__).resolve().parents[4]
+    _mcp_kit_src = str(_tool_proj_root / "kits" / "protocol-mcp-kit" / "src")
+    if _mcp_kit_src not in _sys.path:
+        _sys.path.insert(0, _mcp_kit_src)
+    from beddel_protocol_mcp.schema_validator import (
         validate_tool_arguments as _validate_tool_arguments,
     )
 except ImportError:

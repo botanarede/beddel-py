@@ -10,12 +10,12 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from beddel_observability_otel.adapter import OpenTelemetryAdapter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from beddel.adapters.hooks import LifecycleHookManager
-from beddel.adapters.otel_adapter import OpenTelemetryAdapter
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
     EventType,

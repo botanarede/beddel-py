@@ -6,9 +6,9 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from beddel_auth_github.provider import CredentialData
 from click.testing import CliRunner
 
-from beddel.adapters.github_auth import CredentialData
 from beddel.cli.commands import cli
 
 
@@ -36,7 +36,7 @@ class TestConnectStatusNoCredentials:
     """--status when no credentials exist."""
 
     def test_connect_status_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("beddel.adapters.github_auth.load_credentials", lambda: None)
+        monkeypatch.setattr("beddel_auth_github.provider.load_credentials", lambda: None)
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--status"])
         assert result.exit_code == 0
@@ -48,7 +48,7 @@ class TestConnectStatusWithCredentials:
 
     def test_connect_status_with_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.load_credentials", lambda: _sample_creds()
+            "beddel_auth_github.provider.load_credentials", lambda: _sample_creds()
         )
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--status"])
@@ -61,7 +61,7 @@ class TestConnectLogout:
     """--logout when credentials exist."""
 
     def test_connect_logout(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("beddel.adapters.github_auth.delete_credentials", lambda: True)
+        monkeypatch.setattr("beddel_auth_github.provider.delete_credentials", lambda: True)
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--logout"])
         assert result.exit_code == 0
@@ -72,7 +72,7 @@ class TestConnectLogoutNoCredentials:
     """--logout when no credentials exist."""
 
     def test_connect_logout_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("beddel.adapters.github_auth.delete_credentials", lambda: False)
+        monkeypatch.setattr("beddel_auth_github.provider.delete_credentials", lambda: False)
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--logout"])
         assert result.exit_code == 0
@@ -87,9 +87,9 @@ class TestConnectServerUpdate:
         creds = _sample_creds()
         creds["server_url"] = None
 
-        monkeypatch.setattr("beddel.adapters.github_auth.load_credentials", lambda: creds)
+        monkeypatch.setattr("beddel_auth_github.provider.load_credentials", lambda: creds)
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.save_credentials",
+            "beddel_auth_github.provider.save_credentials",
             lambda d: saved.append(d),
         )
 
@@ -104,7 +104,7 @@ class TestConnectServerNoCredentials:
     """--server when no credentials exist."""
 
     def test_connect_server_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("beddel.adapters.github_auth.load_credentials", lambda: None)
+        monkeypatch.setattr("beddel_auth_github.provider.load_credentials", lambda: None)
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--server", "https://x.com"])
         assert result.exit_code != 0
@@ -126,21 +126,21 @@ class TestConnectFullFlow:
         monkeypatch.setenv("BEDDEL_GITHUB_CLIENT_ID", "test-id")
 
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.initiate_device_flow",
+            "beddel_auth_github.provider.initiate_device_flow",
             AsyncMock(return_value=flow_data),
         )
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.poll_for_token",
+            "beddel_auth_github.provider.poll_for_token",
             AsyncMock(return_value="gho_tok_test"),
         )
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.get_github_user",
+            "beddel_auth_github.provider.get_github_user",
             AsyncMock(return_value="octocat"),
         )
 
         saved: list[CredentialData] = []
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.save_credentials",
+            "beddel_auth_github.provider.save_credentials",
             lambda d: saved.append(d),
         )
 
@@ -191,7 +191,7 @@ class TestStatusNoCredentials:
     """``beddel status`` when no credentials exist."""
 
     def test_status_no_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("beddel.adapters.github_auth.load_credentials", lambda: None)
+        monkeypatch.setattr("beddel_auth_github.provider.load_credentials", lambda: None)
         runner = CliRunner()
         result = runner.invoke(cli, ["status"])
         assert result.exit_code == 0
@@ -203,10 +203,10 @@ class TestStatusWithValidToken:
 
     def test_status_with_valid_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.load_credentials", lambda: _sample_creds()
+            "beddel_auth_github.provider.load_credentials", lambda: _sample_creds()
         )
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.check_token_validity",
+            "beddel_auth_github.provider.check_token_validity",
             AsyncMock(return_value=True),
         )
         runner = CliRunner()
@@ -222,10 +222,10 @@ class TestStatusWithExpiredToken:
 
     def test_status_with_expired_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.load_credentials", lambda: _sample_creds()
+            "beddel_auth_github.provider.load_credentials", lambda: _sample_creds()
         )
         monkeypatch.setattr(
-            "beddel.adapters.github_auth.check_token_validity",
+            "beddel_auth_github.provider.check_token_validity",
             AsyncMock(return_value=False),
         )
         runner = CliRunner()

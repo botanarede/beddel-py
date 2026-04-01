@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from _helpers import make_context
+from beddel_agent_kiro.adapter import _DEFAULT_CLI_PATH, KiroCLIAgentAdapter
 
-from beddel.adapters.kiro_cli import _DEFAULT_CLI_PATH, KiroCLIAgentAdapter
 from beddel.domain.errors import AgentError
 from beddel.domain.models import DefaultDependencies
 from beddel.domain.ports import IAgentAdapter
@@ -25,8 +25,8 @@ from beddel.primitives.agent_exec import AgentExecPrimitive
 # ---------------------------------------------------------------------------
 
 _PROMPT = "Write a hello world program"
-_PATCH_EXEC = "beddel.adapters.kiro_cli.asyncio.create_subprocess_exec"
-_PATCH_WAIT = "beddel.adapters.kiro_cli.asyncio.wait_for"
+_PATCH_EXEC = "beddel_agent_kiro.adapter.asyncio.create_subprocess_exec"
+_PATCH_WAIT = "beddel_agent_kiro.adapter.asyncio.wait_for"
 
 
 def _make_mock_process(

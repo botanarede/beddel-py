@@ -6,11 +6,11 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from beddel_observability_otel.adapter import OpenTelemetryAdapter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from beddel.adapters.otel_adapter import OpenTelemetryAdapter
 from beddel.domain.errors import TracingError
 from beddel.domain.ports import ITracer
 from beddel.error_codes import TRACING_FAILURE

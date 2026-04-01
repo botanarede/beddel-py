@@ -6,8 +6,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from beddel_agent_codex.adapter import CodexAgentAdapter
 
-from beddel.adapters.codex_adapter import CodexAgentAdapter
 from beddel.domain.errors import AgentError
 from beddel.domain.ports import IAgentAdapter
 from beddel.error_codes import (
@@ -38,8 +38,8 @@ JSONL_UNKNOWN = '{"type": "unknown.event", "data": "test"}'
 JSONL_MALFORMED = "this is not json"
 
 _PROMPT = "Analyze the codebase"
-_PATCH_SUBPROCESS = "beddel.adapters.codex_adapter.asyncio.create_subprocess_exec"
-_PATCH_WAIT_FOR = "beddel.adapters.codex_adapter.asyncio.wait_for"
+_PATCH_SUBPROCESS = "beddel_agent_codex.adapter.asyncio.create_subprocess_exec"
+_PATCH_WAIT_FOR = "beddel_agent_codex.adapter.asyncio.wait_for"
 
 ALL_JSONL = "\n".join(
     [

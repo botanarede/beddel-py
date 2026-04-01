@@ -8,8 +8,8 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from beddel_observability_langfuse.adapter import LangfuseTracerAdapter
 
-from beddel.adapters.langfuse_tracer import LangfuseTracerAdapter
 from beddel.domain.ports import ITracer
 
 # ---------------------------------------------------------------------------

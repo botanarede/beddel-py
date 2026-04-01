@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from beddel_provider_litellm.adapter import LiteLLMAdapter
 from litellm.exceptions import (
     APIConnectionError,
     APIError,
@@ -16,7 +17,6 @@ from litellm.exceptions import (
     Timeout,
 )
 
-from beddel.adapters.litellm_adapter import LiteLLMAdapter
 from beddel.domain.errors import AdapterError
 from beddel.domain.ports import ILLMProvider
 
@@ -142,7 +142,7 @@ class TestInterfaceCompliance:
 class TestComplete:
     """Tests for LiteLLMAdapter.complete() — single-turn completion."""
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_forwards_model_and_messages(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.return_value = _make_completion_response()
         adapter = LiteLLMAdapter()
@@ -154,7 +154,7 @@ class TestComplete:
         assert call_kwargs["model"] == _MODEL
         assert call_kwargs["messages"] == _MESSAGES
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_response_dict_structure(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.return_value = _make_completion_response(
             content="Hi there",
@@ -177,7 +177,7 @@ class TestComplete:
         }
         assert result["finish_reason"] == "stop"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_forwards_extra_kwargs(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.return_value = _make_completion_response()
         adapter = LiteLLMAdapter()
@@ -188,7 +188,7 @@ class TestComplete:
         assert call_kwargs["temperature"] == 0.7
         assert call_kwargs["max_tokens"] == 256
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_usage_defaults_to_zero_when_none(self, mock_acompletion: AsyncMock) -> None:
         response = _make_completion_response()
         response.usage = None
@@ -212,7 +212,7 @@ class TestComplete:
 class TestStream:
     """Tests for LiteLLMAdapter.stream() — streaming completion."""
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_yields_text_chunks(self, mock_acompletion: AsyncMock) -> None:
         chunks = _make_stream_chunks(["He", "llo", "!"])
         mock_acompletion.return_value = _async_iter(chunks)
@@ -224,7 +224,7 @@ class TestStream:
 
         assert collected == ["He", "llo", "!"]
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_calls_acompletion_with_stream_true(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.return_value = _async_iter([])
         adapter = LiteLLMAdapter()
@@ -236,7 +236,7 @@ class TestStream:
         call_kwargs = mock_acompletion.call_args.kwargs
         assert call_kwargs["stream"] is True
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_skips_chunks_with_none_content(self, mock_acompletion: AsyncMock) -> None:
         chunk_with_content = MagicMock()
         chunk_with_content.choices = [MagicMock()]
@@ -255,7 +255,7 @@ class TestStream:
 
         assert collected == ["Hello"]
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_forwards_extra_kwargs(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.return_value = _async_iter([])
         adapter = LiteLLMAdapter()
@@ -325,7 +325,7 @@ class TestApiKeyResolution:
 
         assert key is None
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_explicit_api_key_kwarg_forwarded_to_acompletion(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -337,7 +337,7 @@ class TestApiKeyResolution:
         call_kwargs = mock_acompletion.call_args.kwargs
         assert call_kwargs["api_key"] == "sk-explicit"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_env_var_key_forwarded_to_acompletion(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.return_value = _make_completion_response()
         adapter = LiteLLMAdapter()
@@ -348,7 +348,7 @@ class TestApiKeyResolution:
         call_kwargs = mock_acompletion.call_args.kwargs
         assert call_kwargs["api_key"] == "sk-from-env"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_default_key_forwarded_to_acompletion(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.return_value = _make_completion_response()
         adapter = LiteLLMAdapter(default_api_key="sk-default")
@@ -369,7 +369,7 @@ class TestApiKeyResolution:
 class TestErrorWrappingComplete:
     """Tests for exception wrapping in complete()."""
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_auth_error_wrapped_as_adapt_001(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.side_effect = _make_auth_error()
         adapter = LiteLLMAdapter()
@@ -380,7 +380,7 @@ class TestErrorWrappingComplete:
         assert exc_info.value.code == "BEDDEL-ADAPT-001"
         assert exc_info.value.details["model"] == _MODEL
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_api_error_wrapped_as_adapt_002(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.side_effect = _make_api_error()
         adapter = LiteLLMAdapter()
@@ -390,7 +390,7 @@ class TestErrorWrappingComplete:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-002"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_rate_limit_error_wrapped_as_adapt_002(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -402,7 +402,7 @@ class TestErrorWrappingComplete:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-002"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_bad_request_error_wrapped_as_adapt_002(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -414,7 +414,7 @@ class TestErrorWrappingComplete:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-002"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_timeout_error_wrapped_as_adapt_003(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.side_effect = _make_timeout_error()
         adapter = LiteLLMAdapter()
@@ -424,7 +424,7 @@ class TestErrorWrappingComplete:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-003"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_connection_error_wrapped_as_adapt_003(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -436,7 +436,7 @@ class TestErrorWrappingComplete:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-003"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_wrapped_error_preserves_original_cause(
         self, mock_acompletion: AsyncMock
     ) -> None:
@@ -453,7 +453,7 @@ class TestErrorWrappingComplete:
 class TestErrorWrappingStream:
     """Tests for exception wrapping in stream() — both at call time and during iteration."""
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_auth_error_at_call_time(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.side_effect = _make_auth_error()
         adapter = LiteLLMAdapter()
@@ -464,7 +464,7 @@ class TestErrorWrappingStream:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-001"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_timeout_error_at_call_time(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.side_effect = _make_timeout_error()
         adapter = LiteLLMAdapter()
@@ -475,7 +475,7 @@ class TestErrorWrappingStream:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-003"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_api_error_at_call_time(self, mock_acompletion: AsyncMock) -> None:
         mock_acompletion.side_effect = _make_api_error()
         adapter = LiteLLMAdapter()
@@ -486,7 +486,7 @@ class TestErrorWrappingStream:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-002"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_auth_error_during_iteration(self, mock_acompletion: AsyncMock) -> None:
         async def _exploding_iter() -> Any:
             yield _make_stream_chunks(["ok"])[0]
@@ -501,7 +501,7 @@ class TestErrorWrappingStream:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-001"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_timeout_error_during_iteration(self, mock_acompletion: AsyncMock) -> None:
         async def _exploding_iter() -> Any:
             raise _make_timeout_error()
@@ -516,7 +516,7 @@ class TestErrorWrappingStream:
 
         assert exc_info.value.code == "BEDDEL-ADAPT-003"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_provider_error_during_iteration(self, mock_acompletion: AsyncMock) -> None:
         async def _exploding_iter() -> Any:
             raise _make_rate_limit_error()
@@ -552,7 +552,7 @@ def _make_completion_response_with_tool_calls() -> MagicMock:
 class TestToolCallsPassthrough:
     """Tests for tool_calls passthrough in LiteLLMAdapter.complete()."""
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_complete_with_tool_calls(self, mock_acompletion: AsyncMock) -> None:
         """Verify tool_calls are included in the response dict when present."""
         # Arrange
@@ -572,7 +572,7 @@ class TestToolCallsPassthrough:
         assert tc["function"]["arguments"] == '{"city": "London"}'
         assert result["finish_reason"] == "tool_calls"
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_complete_without_tool_calls(self, mock_acompletion: AsyncMock) -> None:
         """Verify tool_calls key is absent when message.tool_calls is None."""
         # Arrange
@@ -587,7 +587,7 @@ class TestToolCallsPassthrough:
         # Assert
         assert "tool_calls" not in result
 
-    @patch("beddel.adapters.litellm_adapter.litellm.acompletion", new_callable=AsyncMock)
+    @patch("beddel_provider_litellm.adapter.litellm.acompletion", new_callable=AsyncMock)
     async def test_complete_forwards_tools_kwarg(self, mock_acompletion: AsyncMock) -> None:
         """Verify tools kwarg is forwarded to litellm.acompletion via **kwargs."""
         # Arrange
