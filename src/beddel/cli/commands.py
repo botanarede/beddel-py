@@ -719,3 +719,39 @@ def kit_install(path: str, *, global_install: bool) -> None:
         raise SystemExit(1) from None
 
     click.echo(f"Installed {kit_name} v{manifest.kit.version} to {target}")
+
+
+@kit.command("list")
+def kit_list() -> None:
+    """List all discovered solution kits."""
+    from beddel.domain.errors import KitDependencyError, KitManifestError
+    from beddel.tools.kits import discover_kits, load_kit
+
+    _ensure_kit_paths()
+    result = discover_kits()
+
+    if not result.manifests:
+        click.echo("No kits found.")
+        return
+
+    rows: list[tuple[str, str, str, str]] = []
+    for manifest in result.manifests:
+        name = manifest.kit.name
+        version = manifest.kit.version
+        path = str(manifest.root_path)
+        try:
+            load_kit(manifest)
+            status = "loaded"
+        except KitDependencyError:
+            status = "missing-deps"
+        except (KitManifestError, Exception):
+            status = "error"
+        rows.append((name, version, status, path))
+
+    headers = ("NAME", "VERSION", "STATUS", "PATH")
+    widths = [max(len(h), max(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
+    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    click.echo(fmt.format(*headers))
+    click.echo(fmt.format(*("-" * w for w in widths)))
+    for row in rows:
+        click.echo(fmt.format(*row))
