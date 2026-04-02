@@ -302,7 +302,12 @@ def export_mcp(workflow_meta: dict[str, Any], output_dir: Path) -> Path:
 def export_endpoint(workflow_meta: dict[str, Any], output_dir: Path) -> Path:
     """Generate a standalone FastAPI app serving a workflow as a REST endpoint.
 
-    Creates an `app.py` file inside `output_dir/endpoints/{name}/`.
+    Creates an ``app.py`` and ``README.md`` inside
+    ``output_dir/endpoints/{kebab-name}/``.
+
+    The generated ``app.py`` is scaffolding — a template the user
+    will customise.  It does **not** need to be importable or runnable
+    in the test environment.
 
     Args:
         workflow_meta: Workflow metadata with keys: name, description,
@@ -312,10 +317,73 @@ def export_endpoint(workflow_meta: dict[str, Any], output_dir: Path) -> Path:
     Returns:
         Path to the generated app.py file.
     """
-    name = workflow_meta["name"]
-    endpoint_dir = output_dir / "endpoints" / name
+    name: str = workflow_meta["name"]
+    description: str = workflow_meta.get("description", "")
+    version: str = workflow_meta.get("version", "1.0")
+    workflow_id: str = workflow_meta.get("id", name)
+
+    dir_name = _to_kebab_case(name)
+    endpoint_dir = output_dir / "endpoints" / dir_name
     endpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    readme = endpoint_dir / "README.md"
-    readme.write_text(f"# {name} Endpoint\n\nPlaceholder — endpoint export.\n")
-    return readme
+    # -- app.py ------------------------------------------------------------
+    app_py = (
+        f'"""FastAPI endpoint for {name}."""\n'
+        f"\n"
+        f"from fastapi import FastAPI\n"
+        f"\n"
+        f'app = FastAPI(title="{name}")\n'
+        f"\n"
+        f"\n"
+        f'@app.post("/{workflow_id}")\n'
+        f"async def run_workflow(inputs: dict) -> dict:\n"  # noqa: E501
+        f'    """{description}"""\n'
+        f"    # TODO: Load and execute the workflow\n"
+        f'    return {{"status": "ok"}}\n'
+        f"\n"
+        f"\n"
+        f'if __name__ == "__main__":\n'
+        f"    import uvicorn\n"
+        f"\n"
+        f"    uvicorn.run(app)\n"
+    )
+
+    app_path = endpoint_dir / "app.py"
+    app_path.write_text(app_py)
+
+    # -- README.md ---------------------------------------------------------
+    readme_md = (
+        f"# {name} Endpoint\n"
+        f"\n"
+        f"{description}\n"
+        f"\n"
+        f"## Installation\n"
+        f"\n"
+        f"```bash\n"
+        f"pip install fastapi uvicorn\n"
+        f"```\n"
+        f"\n"
+        f"## Running\n"
+        f"\n"
+        f"```bash\n"
+        f"python app.py\n"
+        f"```\n"
+        f"\n"
+        f"## Usage\n"
+        f"\n"
+        f"```bash\n"
+        f"curl -X POST http://localhost:8000/{workflow_id} \\\n"
+        f'  -H "Content-Type: application/json" \\\n'
+        f'  -d \'{{"topic": "example"}}\'\n'
+        f"```\n"
+        f"\n"
+        f"## Details\n"
+        f"\n"
+        f"- **Version:** {version}\n"
+        f"- **Workflow:** `{workflow_id}`\n"
+    )
+
+    readme_path = endpoint_dir / "README.md"
+    readme_path.write_text(readme_md)
+
+    return app_path

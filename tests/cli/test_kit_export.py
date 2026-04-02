@@ -167,3 +167,51 @@ class TestExportMcp:
         assert "pip install mcp" in readme_content
         assert "python server.py" in readme_content
         assert "Simple LLM Workflow" in readme_content
+
+
+class TestExportEndpoint:
+    """Tests for ``beddel kit export --format endpoint``."""
+
+    def test_export_endpoint(self, tmp_path: Path) -> None:
+        """Endpoint export creates app.py and README.md with correct content."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["kit", "export", str(FIXTURE), "--format", "endpoint", "-o", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+
+        endpoint_dir = tmp_path / "endpoints" / "simple-llm-workflow"
+        app_py = endpoint_dir / "app.py"
+        readme_md = endpoint_dir / "README.md"
+
+        # Both files must exist
+        assert app_py.exists(), f"app.py not found in {endpoint_dir}"
+        assert readme_md.exists(), f"README.md not found in {endpoint_dir}"
+
+        # app.py — FastAPI import
+        app_content = app_py.read_text()
+        assert "from fastapi import FastAPI" in app_content
+
+        # app.py — app instance with workflow name as title
+        assert 'FastAPI(title="Simple LLM Workflow")' in app_content
+
+        # app.py — POST endpoint using workflow id
+        assert '@app.post("/simple-llm")' in app_content
+
+        # app.py — main block with uvicorn
+        assert 'if __name__ == "__main__"' in app_content
+        assert "import uvicorn" in app_content
+        assert "uvicorn.run(app)" in app_content
+
+        # app.py — description in docstring
+        assert "A minimal workflow" in app_content
+
+        # README.md — install and usage instructions
+        readme_content = readme_md.read_text()
+        assert "pip install fastapi uvicorn" in readme_content
+        assert "python app.py" in readme_content
+        assert "curl" in readme_content
+        assert "simple-llm" in readme_content
+        assert "Simple LLM Workflow" in readme_content
