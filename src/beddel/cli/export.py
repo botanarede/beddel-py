@@ -107,24 +107,92 @@ def export_skill(workflow_meta: dict[str, Any], output_dir: Path) -> Path:
 def export_kit(workflow_meta: dict[str, Any], output_dir: Path) -> Path:
     """Generate a solution kit wrapping a workflow.
 
-    Creates a `kit.yaml` manifest and copies the workflow YAML
-    inside `output_dir/kits/{name}-kit/`.
+    Creates a ``kit.yaml`` manifest, copies the source workflow YAML
+    into a ``workflows/`` subdirectory, and generates a ``README.md``
+    inside ``output_dir/kits/{kebab-name}-kit/``.
 
     Args:
         workflow_meta: Workflow metadata with keys: name, description,
-            version, id, steps.
+            version, id, steps.  Optional ``source_path`` (Path) points
+            to the original workflow file for copying.
         output_dir: Root directory for generated output.
 
     Returns:
         Path to the generated kit.yaml file.
     """
-    name = workflow_meta["name"]
-    kit_dir = output_dir / "kits" / f"{name}-kit"
+    import shutil
+
+    import yaml
+
+    name: str = workflow_meta["name"]
+    description: str = workflow_meta.get("description", "")
+    version: str = workflow_meta.get("version", "1.0")
+    source_path: Path | None = workflow_meta.get("source_path")
+
+    dir_name = _to_kebab_case(name)
+    kit_name = f"{dir_name}-kit"
+    kit_dir = output_dir / "kits" / kit_name
     kit_dir.mkdir(parents=True, exist_ok=True)
 
-    readme = kit_dir / "README.md"
-    readme.write_text(f"# {name}-kit\n\nPlaceholder — kit export.\n")
-    return readme
+    # Determine workflow filename
+    workflow_file = source_path.name if source_path else f"{dir_name}.yaml"
+
+    # -- kit.yaml ----------------------------------------------------------
+    kit_manifest: dict[str, Any] = {
+        "name": kit_name,
+        "version": version,
+        "description": description,
+        "workflows": [
+            {
+                "name": name,
+                "path": f"workflows/{workflow_file}",
+            },
+        ],
+    }
+
+    kit_yaml_path = kit_dir / "kit.yaml"
+    kit_yaml_path.write_text(yaml.dump(kit_manifest, sort_keys=False))
+
+    # -- workflows/{file} --------------------------------------------------
+    workflows_dir = kit_dir / "workflows"
+    workflows_dir.mkdir(parents=True, exist_ok=True)
+
+    if source_path and source_path.exists():
+        shutil.copy2(source_path, workflows_dir / workflow_file)
+    else:
+        # Fallback: serialise the steps we have
+        (workflows_dir / workflow_file).write_text(
+            yaml.dump({"name": name, "steps": workflow_meta.get("steps", [])}, sort_keys=False)
+        )
+
+    # -- README.md ---------------------------------------------------------
+    readme_md = (
+        f"# {kit_name}\n"
+        f"\n"
+        f"{description}\n"
+        f"\n"
+        f"## Installation\n"
+        f"\n"
+        f"```bash\n"
+        f"beddel kit install kits/{kit_name}/\n"
+        f"```\n"
+        f"\n"
+        f"## Workflow Usage\n"
+        f"\n"
+        f"```bash\n"
+        f"beddel run workflows/{workflow_file}\n"
+        f"```\n"
+        f"\n"
+        f"## Details\n"
+        f"\n"
+        f"- **Version:** {version}\n"
+        f"- **Workflow:** `{name}`\n"
+    )
+
+    readme_path = kit_dir / "README.md"
+    readme_path.write_text(readme_md)
+
+    return kit_yaml_path
 
 
 def export_mcp(workflow_meta: dict[str, Any], output_dir: Path) -> Path:

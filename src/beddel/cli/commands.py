@@ -791,6 +791,7 @@ def kit_export(workflow_path: Path, fmt: str, output_dir: Path) -> None:
         "version": raw.get("version", "1.0"),
         "id": raw.get("id", workflow_path.stem),
         "steps": raw.get("steps", []),
+        "source_path": workflow_path.resolve(),
     }
 
     generators = {
