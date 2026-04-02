@@ -215,3 +215,48 @@ class TestExportEndpoint:
         assert "curl" in readme_content
         assert "simple-llm" in readme_content
         assert "Simple LLM Workflow" in readme_content
+
+
+class TestExportIntegration:
+    """Integration tests for ``beddel kit export`` — error handling and metadata."""
+
+    def test_format_required(self) -> None:
+        """Omitting ``--format`` produces a non-zero exit code and error message."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["kit", "export", str(FIXTURE)])
+
+        assert result.exit_code != 0
+        assert "Missing option" in result.output or "required" in result.output.lower()
+
+    def test_invalid_workflow_path(self) -> None:
+        """A non-existent workflow path produces a non-zero exit code."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["kit", "export", "/nonexistent/path.yaml", "--format", "skill"],
+        )
+
+        assert result.exit_code != 0
+
+    def test_workflow_metadata_extraction(self, tmp_path: Path) -> None:
+        """Workflow name, description, and default version are correctly extracted."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["kit", "export", str(FIXTURE), "--format", "skill", "-o", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+
+        skill_dir = tmp_path / ".agents" / "skills" / "simple-llm-workflow"
+        skill_md = skill_dir / "SKILL.md"
+        readme_md = skill_dir / "README.md"
+
+        # SKILL.md frontmatter — name and description
+        skill_content = skill_md.read_text()
+        assert "name: Simple LLM Workflow" in skill_content
+        assert "description: A minimal workflow" in skill_content
+
+        # README.md — version defaults to "1.0" (simple.yaml has no version field)
+        readme_content = readme_md.read_text()
+        assert "1.0" in readme_content
