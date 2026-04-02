@@ -32,6 +32,7 @@ _KIT_DIRS = [
     "auth-github-kit",
     "serve-fastapi-kit",
     "tools-http-kit",
+    "tools-file-kit",
 ]
 
 for _kit in _KIT_DIRS:
