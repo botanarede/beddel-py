@@ -755,3 +755,50 @@ def kit_list() -> None:
     click.echo(fmt.format(*("-" * w for w in widths)))
     for row in rows:
         click.echo(fmt.format(*row))
+
+
+@kit.command("export")
+@click.argument("workflow_path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--format",
+    "fmt",
+    required=True,
+    type=click.Choice(["skill", "kit", "mcp", "endpoint"]),
+    help="Output format for the exported workflow.",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=".",
+    help="Output directory (default: current directory).",
+)
+def kit_export(workflow_path: Path, fmt: str, output_dir: Path) -> None:
+    """Export a workflow as a skill, kit, MCP server, or endpoint."""
+    import yaml
+
+    from beddel.cli.export import export_endpoint, export_kit, export_mcp, export_skill
+
+    raw = yaml.safe_load(workflow_path.read_text())
+    if not isinstance(raw, dict):
+        click.echo("Error: workflow file must be a YAML mapping.", err=True)
+        raise SystemExit(1)
+
+    workflow_meta: dict[str, Any] = {
+        "name": raw.get("name", workflow_path.stem),
+        "description": raw.get("description", ""),
+        "version": raw.get("version", "1.0"),
+        "id": raw.get("id", workflow_path.stem),
+        "steps": raw.get("steps", []),
+    }
+
+    generators = {
+        "skill": export_skill,
+        "kit": export_kit,
+        "mcp": export_mcp,
+        "endpoint": export_endpoint,
+    }
+
+    result_path = generators[fmt](workflow_meta, output_dir.resolve())
+    click.echo(f"Exported {fmt}: {result_path}")
