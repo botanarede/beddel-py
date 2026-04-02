@@ -198,23 +198,105 @@ def export_kit(workflow_meta: dict[str, Any], output_dir: Path) -> Path:
 def export_mcp(workflow_meta: dict[str, Any], output_dir: Path) -> Path:
     """Generate a FastMCP server exposing a workflow as an MCP tool.
 
-    Creates a `server.py` file inside `output_dir/mcp-servers/{name}/`.
+    Creates a ``server.py`` and ``README.md`` inside
+    ``output_dir/mcp-servers/{kebab-name}/``.
+
+    The generated ``server.py`` is scaffolding — a template the user
+    will customise.  It does **not** need to be importable or runnable
+    in the test environment.
 
     Args:
         workflow_meta: Workflow metadata with keys: name, description,
-            version, id, steps.
+            version, id, steps.  Optional ``input_schema`` dict for
+            generating typed function parameters.
         output_dir: Root directory for generated output.
 
     Returns:
         Path to the generated server.py file.
     """
-    name = workflow_meta["name"]
-    mcp_dir = output_dir / "mcp-servers" / name
+    name: str = workflow_meta["name"]
+    description: str = workflow_meta.get("description", "")
+    version: str = workflow_meta.get("version", "1.0")
+    workflow_id: str = workflow_meta.get("id", name)
+    input_schema: dict[str, Any] | None = workflow_meta.get("input_schema")
+
+    # Sanitise workflow id to a valid Python identifier
+    func_name = workflow_id.replace("-", "_")
+
+    dir_name = _to_kebab_case(name)
+    mcp_dir = output_dir / "mcp-servers" / dir_name
     mcp_dir.mkdir(parents=True, exist_ok=True)
 
-    readme = mcp_dir / "README.md"
-    readme.write_text(f"# {name} MCP Server\n\nPlaceholder — mcp export.\n")
-    return readme
+    # Build function parameters from input_schema if available
+    properties = (input_schema or {}).get("properties", {})
+    params = ", ".join(f"{p}: str" for p in properties) if properties else "inputs: str"
+
+    # -- server.py ---------------------------------------------------------
+    server_py = (
+        f'"""FastMCP server for {name}."""\n'
+        f"\n"
+        f"from mcp.server.fastmcp import FastMCP\n"
+        f"\n"
+        f'mcp = FastMCP("{name}")\n'
+        f"\n"
+        f"\n"
+        f"@mcp.tool()\n"
+        f"async def {func_name}({params}) -> str:\n"
+        f'    """{description}"""\n'
+        f"    # TODO: Load and execute the workflow\n"
+        f'    return "Not implemented"\n'
+        f"\n"
+        f"\n"
+        f'if __name__ == "__main__":\n'
+        f"    mcp.run()\n"
+    )
+
+    server_path = mcp_dir / "server.py"
+    server_path.write_text(server_py)
+
+    # -- README.md ---------------------------------------------------------
+    readme_md = (
+        f"# {name} MCP Server\n"
+        f"\n"
+        f"{description}\n"
+        f"\n"
+        f"## Installation\n"
+        f"\n"
+        f"```bash\n"
+        f"pip install mcp\n"
+        f"```\n"
+        f"\n"
+        f"## Running\n"
+        f"\n"
+        f"```bash\n"
+        f"python server.py\n"
+        f"```\n"
+        f"\n"
+        f"## MCP Client Configuration\n"
+        f"\n"
+        f"Add this to your MCP client config:\n"
+        f"\n"
+        f"```json\n"
+        f"{{\n"
+        f'  "mcpServers": {{\n'
+        f'    "{dir_name}": {{\n'
+        f'      "command": "python",\n'
+        f'      "args": ["server.py"]\n'
+        f"    }}\n"
+        f"  }}\n"
+        f"}}\n"
+        f"```\n"
+        f"\n"
+        f"## Details\n"
+        f"\n"
+        f"- **Version:** {version}\n"
+        f"- **Workflow:** `{workflow_id}`\n"
+    )
+
+    readme_path = mcp_dir / "README.md"
+    readme_path.write_text(readme_md)
+
+    return server_path
 
 
 def export_endpoint(workflow_meta: dict[str, Any], output_dir: Path) -> Path:

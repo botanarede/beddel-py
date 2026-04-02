@@ -116,3 +116,54 @@ class TestExportKit:
         assert "simple-llm-workflow-kit" in readme_content
         assert "beddel kit install" in readme_content
         assert "beddel run" in readme_content
+
+
+class TestExportMcp:
+    """Tests for ``beddel kit export --format mcp``."""
+
+    def test_export_mcp(self, tmp_path: Path) -> None:
+        """MCP export creates server.py and README.md with correct content."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["kit", "export", str(FIXTURE), "--format", "mcp", "-o", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+
+        mcp_dir = tmp_path / "mcp-servers" / "simple-llm-workflow"
+        server_py = mcp_dir / "server.py"
+        readme_md = mcp_dir / "README.md"
+
+        # Both files must exist
+        assert server_py.exists(), f"server.py not found in {mcp_dir}"
+        assert readme_md.exists(), f"README.md not found in {mcp_dir}"
+
+        # server.py — FastMCP import
+        server_content = server_py.read_text()
+        assert "from mcp.server.fastmcp import FastMCP" in server_content
+
+        # server.py — tool decorator
+        assert "@mcp.tool()" in server_content
+
+        # server.py — main block
+        assert 'if __name__ == "__main__"' in server_content
+        assert "mcp.run()" in server_content
+
+        # server.py — workflow name in server instance
+        assert "Simple LLM Workflow" in server_content
+
+        # server.py — function uses sanitised workflow id
+        assert "def simple_llm(" in server_content
+
+        # server.py — input parameters from input_schema
+        assert "topic: str" in server_content
+
+        # server.py — docstring with description
+        assert "A minimal workflow" in server_content
+
+        # README.md — install instructions
+        readme_content = readme_md.read_text()
+        assert "pip install mcp" in readme_content
+        assert "python server.py" in readme_content
+        assert "Simple LLM Workflow" in readme_content
