@@ -33,6 +33,7 @@ _KIT_DIRS = [
     "serve-fastapi-kit",
     "tools-http-kit",
     "tools-file-kit",
+    "tools-shell-kit",
 ]
 
 for _kit in _KIT_DIRS:
