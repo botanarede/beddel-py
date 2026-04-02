@@ -34,6 +34,7 @@ _KIT_DIRS = [
     "tools-http-kit",
     "tools-file-kit",
     "tools-shell-kit",
+    "tools-gates-kit",
 ]
 
 for _kit in _KIT_DIRS:
