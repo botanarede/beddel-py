@@ -55,9 +55,9 @@ class TestDiscoverBuiltinTools:
         assert isinstance(result, dict)
 
     def test_discovers_builtin_tools(self) -> None:
-        """Builtin tool submodules are discovered by the registry."""
+        """After kit extraction, no builtin tool submodules remain."""
         result = discover_builtin_tools()
-        assert len(result) > 0
+        assert len(result) == 0
 
     def test_all_values_are_callable(self) -> None:
         result = discover_builtin_tools()

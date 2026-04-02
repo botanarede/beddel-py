@@ -1,11 +1,11 @@
-"""Unit tests for beddel.tools.gates — validation gate tools."""
+"""Unit tests for beddel_tools_gates.tools — validation gate tools."""
 
 from __future__ import annotations
 
 from typing import Any
 from unittest.mock import patch
 
-from beddel.tools.gates import mypy_check, pytest_run, ruff_check, ruff_format
+from beddel_tools_gates.tools import mypy_check, pytest_run, ruff_check, ruff_format
 
 
 class TestGateToolMetadata:
@@ -35,7 +35,7 @@ class TestGateToolMetadata:
 class TestGateToolDefaults:
     """Tests for gate tools using default commands."""
 
-    @patch("beddel.tools.gates.shell_exec")
+    @patch("beddel_tools_gates.tools.shell_exec")
     def test_pytest_run_default_cmd(self, mock_shell: Any) -> None:
         mock_shell.return_value = {"exit_code": 0, "stdout": "", "stderr": ""}
 
@@ -46,7 +46,7 @@ class TestGateToolDefaults:
             fail_on_error=True,
         )
 
-    @patch("beddel.tools.gates.shell_exec")
+    @patch("beddel_tools_gates.tools.shell_exec")
     def test_ruff_check_default_cmd(self, mock_shell: Any) -> None:
         mock_shell.return_value = {"exit_code": 0, "stdout": "", "stderr": ""}
 
@@ -54,7 +54,7 @@ class TestGateToolDefaults:
 
         mock_shell.assert_called_once_with(cmd="ruff check .", fail_on_error=True)
 
-    @patch("beddel.tools.gates.shell_exec")
+    @patch("beddel_tools_gates.tools.shell_exec")
     def test_ruff_format_default_cmd(self, mock_shell: Any) -> None:
         mock_shell.return_value = {"exit_code": 0, "stdout": "", "stderr": ""}
 
@@ -65,7 +65,7 @@ class TestGateToolDefaults:
             fail_on_error=True,
         )
 
-    @patch("beddel.tools.gates.shell_exec")
+    @patch("beddel_tools_gates.tools.shell_exec")
     def test_mypy_check_default_cmd(self, mock_shell: Any) -> None:
         mock_shell.return_value = {"exit_code": 0, "stdout": "", "stderr": ""}
 
@@ -77,7 +77,7 @@ class TestGateToolDefaults:
 class TestGateToolCustomCmd:
     """Tests for gate tools with custom command overrides."""
 
-    @patch("beddel.tools.gates.shell_exec")
+    @patch("beddel_tools_gates.tools.shell_exec")
     def test_pytest_run_custom_cmd(self, mock_shell: Any) -> None:
         mock_shell.return_value = {"exit_code": 0, "stdout": "", "stderr": ""}
 
@@ -88,7 +88,7 @@ class TestGateToolCustomCmd:
             fail_on_error=True,
         )
 
-    @patch("beddel.tools.gates.shell_exec")
+    @patch("beddel_tools_gates.tools.shell_exec")
     def test_ruff_check_custom_cmd(self, mock_shell: Any) -> None:
         mock_shell.return_value = {"exit_code": 0, "stdout": "", "stderr": ""}
 
@@ -100,7 +100,7 @@ class TestGateToolCustomCmd:
 class TestGateToolErrorPropagation:
     """Tests that gate tools propagate RuntimeError from shell_exec."""
 
-    @patch("beddel.tools.gates.shell_exec")
+    @patch("beddel_tools_gates.tools.shell_exec")
     def test_pytest_run_propagates_runtime_error(self, mock_shell: Any) -> None:
         mock_shell.side_effect = RuntimeError("tests failed")
 
@@ -109,7 +109,7 @@ class TestGateToolErrorPropagation:
         with pytest.raises(RuntimeError, match="tests failed"):
             pytest_run()
 
-    @patch("beddel.tools.gates.shell_exec")
+    @patch("beddel_tools_gates.tools.shell_exec")
     def test_ruff_check_propagates_runtime_error(self, mock_shell: Any) -> None:
         mock_shell.side_effect = RuntimeError("lint errors")
 

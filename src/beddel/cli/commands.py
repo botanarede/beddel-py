@@ -260,8 +260,8 @@ def run(
 ) -> None:
     """Execute a workflow and print results."""
     _ensure_kit_paths()
-    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter
-    from beddel_provider_litellm.adapter import LiteLLMAdapter
+    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter  # type: ignore[import-not-found]
+    from beddel_provider_litellm.adapter import LiteLLMAdapter  # type: ignore[import-not-found]
 
     from beddel.domain.errors import BeddelError
     from beddel.domain.executor import WorkflowExecutor
@@ -355,7 +355,10 @@ def run(
 def status() -> None:
     """Show connection status for the remote dashboard."""
     _ensure_kit_paths()
-    from beddel_auth_github.provider import check_token_validity, load_credentials
+    from beddel_auth_github.provider import (  # type: ignore[import-not-found]
+        check_token_validity,
+        load_credentials,
+    )
 
     creds = load_credentials()
     if creds is None:
@@ -539,8 +542,8 @@ def serve(
     from beddel import __version__
 
     _ensure_kit_paths()
-    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter
-    from beddel_provider_litellm.adapter import LiteLLMAdapter
+    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter  # type: ignore[import-not-found]
+    from beddel_provider_litellm.adapter import LiteLLMAdapter  # type: ignore[import-not-found]
 
     from beddel.domain.errors import BeddelError
     from beddel.domain.models import DefaultDependencies, Workflow

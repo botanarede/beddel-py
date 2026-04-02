@@ -34,7 +34,7 @@ try:
     _mcp_kit_src = str(_tool_proj_root / "kits" / "protocol-mcp-kit" / "src")
     if _mcp_kit_src not in _sys.path:
         _sys.path.insert(0, _mcp_kit_src)
-    from beddel_protocol_mcp.schema_validator import (
+    from beddel_protocol_mcp.schema_validator import (  # type: ignore[import-not-found]
         validate_tool_arguments as _validate_tool_arguments,
     )
 except ImportError:

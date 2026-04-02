@@ -1,12 +1,11 @@
-"""Unit tests for beddel.tools.file — file_read and file_write tools."""
+"""Unit tests for beddel_tools_file.tools — file_read and file_write tools."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-
-from beddel.tools.file import file_read, file_write
+from beddel_tools_file.tools import file_read, file_write
 
 
 class TestFileToolMetadata:

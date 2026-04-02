@@ -1,11 +1,12 @@
-"""Unit tests for beddel.tools.shell — shell_exec tool."""
+"""Unit tests for beddel_tools_shell.tools — shell_exec tool."""
 
 from __future__ import annotations
 
 from typing import Any
 from unittest.mock import patch
 
-from beddel.tools.shell import shell_exec
+from beddel_tools_shell.tools import shell_exec
+
 from beddel.utils.subprocess import SubprocessResult
 
 
@@ -25,7 +26,7 @@ class TestShellExecMetadata:
 class TestShellExecExecution:
     """Tests for shell_exec execution behavior."""
 
-    @patch("beddel.tools.shell.SafeSubprocessRunner.run")
+    @patch("beddel_tools_shell.tools.SafeSubprocessRunner.run")
     def test_returns_dict_from_subprocess_result(self, mock_run: Any) -> None:
         # Arrange
         mock_run.return_value = SubprocessResult(
@@ -47,7 +48,7 @@ class TestShellExecExecution:
         assert result["timed_out"] is False
         assert result["truncated"] is False
 
-    @patch("beddel.tools.shell.SafeSubprocessRunner.run")
+    @patch("beddel_tools_shell.tools.SafeSubprocessRunner.run")
     def test_passes_cmd_to_runner(self, mock_run: Any) -> None:
         mock_run.return_value = SubprocessResult(
             exit_code=0,
@@ -61,7 +62,7 @@ class TestShellExecExecution:
 
         mock_run.assert_called_once_with("ls -la", timeout=60, cwd=None)
 
-    @patch("beddel.tools.shell.SafeSubprocessRunner.run")
+    @patch("beddel_tools_shell.tools.SafeSubprocessRunner.run")
     def test_passes_custom_timeout(self, mock_run: Any) -> None:
         mock_run.return_value = SubprocessResult(
             exit_code=0,
@@ -75,7 +76,7 @@ class TestShellExecExecution:
 
         mock_run.assert_called_once_with("sleep 1", timeout=120, cwd=None)
 
-    @patch("beddel.tools.shell.SafeSubprocessRunner.run")
+    @patch("beddel_tools_shell.tools.SafeSubprocessRunner.run")
     def test_passes_custom_cwd(self, mock_run: Any) -> None:
         mock_run.return_value = SubprocessResult(
             exit_code=0,
@@ -89,7 +90,7 @@ class TestShellExecExecution:
 
         mock_run.assert_called_once_with("ls", timeout=60, cwd="/tmp")
 
-    @patch("beddel.tools.shell.SafeSubprocessRunner.run")
+    @patch("beddel_tools_shell.tools.SafeSubprocessRunner.run")
     def test_fail_on_error_false_does_not_raise(self, mock_run: Any) -> None:
         mock_run.return_value = SubprocessResult(
             exit_code=1,
@@ -103,7 +104,7 @@ class TestShellExecExecution:
 
         assert result["exit_code"] == 1
 
-    @patch("beddel.tools.shell.SafeSubprocessRunner.run")
+    @patch("beddel_tools_shell.tools.SafeSubprocessRunner.run")
     def test_fail_on_error_true_raises_on_nonzero(self, mock_run: Any) -> None:
         mock_run.return_value = SubprocessResult(
             exit_code=1,
@@ -118,7 +119,7 @@ class TestShellExecExecution:
         with pytest.raises(RuntimeError, match="something failed"):
             shell_exec(cmd="false", fail_on_error=True)
 
-    @patch("beddel.tools.shell.SafeSubprocessRunner.run")
+    @patch("beddel_tools_shell.tools.SafeSubprocessRunner.run")
     def test_fail_on_error_true_does_not_raise_on_zero(self, mock_run: Any) -> None:
         mock_run.return_value = SubprocessResult(
             exit_code=0,
