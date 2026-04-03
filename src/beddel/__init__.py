@@ -65,6 +65,7 @@ from beddel.domain.strategies import (
 from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
+    from beddel.adapters import CompositeMemoryProvider as CompositeMemoryProvider
     from beddel.adapters import ConfigurableApprovalGate as ConfigurableApprovalGate
     from beddel.adapters import InMemoryApprovalGate as InMemoryApprovalGate
     from beddel.adapters import InMemoryBudgetEnforcer as InMemoryBudgetEnforcer
@@ -94,6 +95,7 @@ __version__ = "0.1.3"
 # beddel → beddel.adapters → otel_adapter → beddel.__version__
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
+    "CompositeMemoryProvider": ("beddel.adapters", "CompositeMemoryProvider"),
     "ConfigurableApprovalGate": ("beddel.adapters", "ConfigurableApprovalGate"),
     "DEFAULT_PII_PATTERNS": (
         "beddel.adapters.pii_tokenizer",
@@ -150,6 +152,7 @@ __all__ = [
     "BeddelSSEAdapter",
     "BudgetError",
     "BudgetStatus",
+    "CompositeMemoryProvider",
     "ConfigurableApprovalGate",
     "DEFAULT_PII_PATTERNS",
     "DefaultDependencies",

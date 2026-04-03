@@ -1,12 +1,18 @@
 """Memory provider adapters for episodic memory.
 
 Provides :class:`InMemoryMemoryProvider` — a dict-based in-memory
-implementation of :class:`~beddel.domain.ports.IMemoryProvider` for testing.
+implementation of :class:`~beddel.domain.ports.IMemoryProvider` for testing,
+and :class:`CompositeMemoryProvider` — a dual-backend adapter that routes
+structured ops to one backend and semantic search to another.
 """
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from beddel.domain.ports import IMemoryProvider
 
 from beddel.domain.errors import MemoryError as MemoryError  # noqa: A004
 from beddel.domain.models import Episode, MemoryEntry
@@ -107,3 +113,52 @@ class InMemoryMemoryProvider:
                 MEMORY_EPISODE_FAILED,
                 f"Failed to add episode: {exc}",
             ) from exc
+
+
+class CompositeMemoryProvider:
+    """Dual-backend memory provider that routes operations by type.
+
+    Routes ``get``/``set``/``list_episodes`` to a *structured* backend and
+    ``search`` to a *semantic* backend.  Both must satisfy the
+    :class:`~beddel.domain.ports.IMemoryProvider` protocol.
+
+    ``set()`` uses :func:`asyncio.create_task` for non-blocking writes —
+    the caller's coroutine returns immediately while the structured backend
+    persists in the background.
+
+    [Source: docs/stories/epic-6/story-6.4.md — AC 5, AC 9]
+    """
+
+    def __init__(
+        self,
+        structured: IMemoryProvider,
+        semantic: IMemoryProvider,
+    ) -> None:
+        self._structured = structured
+        self._semantic = semantic
+        self._background_tasks: set[asyncio.Task[None]] = set()
+
+    async def get(self, key: str) -> Any | None:
+        """Retrieve a value from the structured backend."""
+        return await self._structured.get(key)
+
+    async def set(self, key: str, value: Any) -> None:
+        """Schedule a write on the structured backend without blocking.
+
+        The write is dispatched via :func:`asyncio.create_task` and the
+        coroutine returns immediately.  A reference to the task is kept
+        in ``_background_tasks`` to prevent garbage collection.
+        """
+        task: asyncio.Task[None] = asyncio.create_task(
+            self._structured.set(key, value),
+        )
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def search(self, query: str, top_k: int = 5) -> list[MemoryEntry]:
+        """Search the semantic backend."""
+        return await self._semantic.search(query, top_k)
+
+    async def list_episodes(self, workflow_id: str) -> list[Episode]:
+        """List episodes from the structured backend."""
+        return await self._structured.list_episodes(workflow_id)
