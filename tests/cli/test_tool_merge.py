@@ -132,3 +132,125 @@ class TestBuildToolRegistry:
         merged = _build_tool_registry(wf, {}, no_kits=True)
 
         assert merged == {}
+
+    def test_discover_builtin_tools_not_called(self) -> None:
+        """discover_builtin_tools() is NOT called during _build_tool_registry()."""
+        from beddel.cli.commands import _build_tool_registry
+        from beddel.domain.kit import KitDiscoveryResult
+
+        wf = Workflow(
+            id="t",
+            name="t",
+            steps=[{"id": "s1", "primitive": "llm"}],  # type: ignore[list-item]
+        )
+
+        discovery = KitDiscoveryResult(manifests=[], collisions=[])
+
+        with (
+            patch("beddel.tools.kits.discover_kits", return_value=discovery),
+            patch("beddel.tools.discover_builtin_tools") as mock_builtin,
+        ):
+            _build_tool_registry(wf, {})
+
+        mock_builtin.assert_not_called()
+
+    def test_kit_tools_are_layer_1_in_merge(self) -> None:
+        """Kit tools are the base layer — overridden by inline and CLI."""
+        from beddel.cli.commands import _build_tool_registry
+        from beddel.domain.kit import (
+            KitDiscoveryResult,
+            KitManifest,
+            KitToolDeclaration,
+            SolutionKit,
+        )
+
+        kit_manifest = KitManifest(
+            kit=SolutionKit(
+                name="base-kit",
+                version="0.1.0",
+                description="t",
+                tools=[KitToolDeclaration(name="tool-a", target="json:dumps")],
+            ),
+            root_path=Path("/fake"),
+            loaded_at=__import__("datetime").datetime.now(tz=__import__("datetime").UTC),
+        )
+        discovery = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
+
+        wf = Workflow(
+            id="t",
+            name="t",
+            steps=[{"id": "s1", "primitive": "llm"}],  # type: ignore[list-item]
+        )
+        # Inline overrides kit
+        wf.metadata["_inline_tools"] = {"tool-a": _fake_inline}
+
+        with (
+            patch("beddel.tools.kits.discover_kits", return_value=discovery),
+            patch(
+                "beddel.tools.kits.load_kit",
+                return_value={"tool-a": lambda: "kit"},
+            ),
+        ):
+            merged = _build_tool_registry(wf, {})
+
+        # Inline (layer 2) overrides kit (layer 1)
+        assert merged["tool-a"] is _fake_inline
+
+
+# ---------------------------------------------------------------------------
+# kit_list — SOURCE column output
+# ---------------------------------------------------------------------------
+
+
+class TestKitListSourceColumn:
+    """Tests for `beddel kit list` SOURCE column output."""
+
+    def test_source_column_in_output(self) -> None:
+        """kit_list displays SOURCE column with correct values."""
+        from datetime import UTC, datetime
+
+        from click.testing import CliRunner
+
+        from beddel.cli.commands import cli
+        from beddel.domain.kit import (
+            KitDiscoveryResult,
+            KitManifest,
+            SolutionKit,
+        )
+
+        bundled_manifest = KitManifest(
+            kit=SolutionKit(
+                name="bundled-kit",
+                version="0.1.0",
+                description="t",
+                tools=[],
+            ),
+            root_path=Path("/fake/bundled"),
+            loaded_at=datetime.now(tz=UTC),
+            source="bundled",
+        )
+        local_manifest = KitManifest(
+            kit=SolutionKit(
+                name="local-kit",
+                version="0.2.0",
+                description="t",
+                tools=[],
+            ),
+            root_path=Path("/fake/local"),
+            loaded_at=datetime.now(tz=UTC),
+            source="local",
+        )
+        discovery = KitDiscoveryResult(manifests=[bundled_manifest, local_manifest], collisions=[])
+
+        runner = CliRunner()
+        with (
+            patch("beddel.tools.kits.discover_kits", return_value=discovery),
+            patch("beddel.tools.kits.load_kit", return_value={}),
+            patch("beddel.cli.commands._ensure_kit_paths"),
+        ):
+            result = runner.invoke(cli, ["kit", "list"])
+
+        assert result.exit_code == 0
+        assert "SOURCE" in result.output
+        assert "bundled" in result.output
+        assert "local" in result.output

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -10,8 +11,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from beddel.domain.errors import KitManifestError
-from beddel.domain.kit import KitDiscoveryResult, KitManifest, KitToolDeclaration, SolutionKit
+from beddel.domain.errors import KitDependencyError, KitManifestError
+from beddel.domain.kit import (
+    KitDiscoveryResult,
+    KitManifest,
+    KitToolDeclaration,
+    SolutionKit,
+    parse_kit_manifest,
+)
 from beddel.error_codes import KIT_LOAD_FAILED
 from beddel.tools.kits import discover_kits, load_kit
 
@@ -110,6 +117,169 @@ class TestDiscoverKitsValid:
         result = discover_kits([path_a, path_b])
 
         assert len(result.manifests) == 2
+
+
+# ---------------------------------------------------------------------------
+# discover_kits — 3-path discovery with bundled kits
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverKitsBundled:
+    """Tests for 3-path discovery: bundled → local → global."""
+
+    def test_bundled_path_included_by_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When BEDDEL_KIT_PATHS is NOT set, BUNDLED_KITS_PATH is the first default."""
+        bundled = tmp_path / "bundled"
+        _write_kit_yaml(bundled / "bundled-kit", _minimal_kit("bundled-kit"))
+
+        monkeypatch.delenv("BEDDEL_KIT_PATHS", raising=False)
+        monkeypatch.setattr("beddel.tools.kits.BUNDLED_KITS_PATH", bundled)
+        # Patch home and cwd to avoid scanning real ~/.beddel/kits/ and ./kits/
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "fakehome")
+        fakecwd = tmp_path / "fakecwd"
+        fakecwd.mkdir()
+        monkeypatch.chdir(fakecwd)
+
+        result = discover_kits()
+
+        assert len(result.manifests) == 1
+        assert result.manifests[0].kit.name == "bundled-kit"
+        assert result.manifests[0].source == "bundled"
+
+    def test_local_overrides_bundled_same_name(self, tmp_path: Path) -> None:
+        """A local kit with the same name as a bundled kit wins (later path)."""
+        bundled = tmp_path / "bundled"
+        local = tmp_path / "local"
+        _write_kit_yaml(
+            bundled / "shared-kit",
+            _minimal_kit("shared-kit"),
+        )
+        _write_kit_yaml(
+            local / "shared-kit",
+            {**_minimal_kit("shared-kit"), "description": "local version"},
+        )
+
+        result = discover_kits([bundled, local])
+
+        assert len(result.manifests) == 1
+        assert result.manifests[0].kit.name == "shared-kit"
+        # Later path (local) wins
+        assert result.manifests[0].kit.description == "local version"
+        assert result.manifests[0].source == "local"
+
+    def test_global_overrides_local_and_bundled(self, tmp_path: Path) -> None:
+        """Global path (index 2) overrides both bundled (0) and local (1)."""
+        bundled = tmp_path / "bundled"
+        local = tmp_path / "local"
+        global_ = tmp_path / "global"
+        _write_kit_yaml(bundled / "shared-kit", _minimal_kit("shared-kit"))
+        _write_kit_yaml(local / "shared-kit", _minimal_kit("shared-kit"))
+        _write_kit_yaml(
+            global_ / "shared-kit",
+            {**_minimal_kit("shared-kit"), "description": "global version"},
+        )
+
+        result = discover_kits([bundled, local, global_])
+
+        assert len(result.manifests) == 1
+        assert result.manifests[0].kit.description == "global version"
+        assert result.manifests[0].source == "global"
+
+    def test_env_var_replaces_all_defaults(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """BEDDEL_KIT_PATHS replaces all 3 default paths; kits get source='custom'."""
+        custom = tmp_path / "custom"
+        _write_kit_yaml(custom / "custom-kit", _minimal_kit("custom-kit"))
+        monkeypatch.setenv("BEDDEL_KIT_PATHS", str(custom))
+
+        result = discover_kits()
+
+        assert len(result.manifests) == 1
+        assert result.manifests[0].kit.name == "custom-kit"
+        assert result.manifests[0].source == "custom"
+
+
+# ---------------------------------------------------------------------------
+# parse_kit_manifest — source field values
+# ---------------------------------------------------------------------------
+
+
+class TestKitManifestSource:
+    """Tests for KitManifest.source field set by parse_kit_manifest()."""
+
+    def test_source_bundled(self, tmp_path: Path) -> None:
+        kit_dir = _write_kit_yaml(tmp_path / "my-kit", _minimal_kit("my-kit"))
+        manifest = parse_kit_manifest(kit_dir / "kit.yaml", source="bundled")
+        assert manifest.source == "bundled"
+
+    def test_source_global(self, tmp_path: Path) -> None:
+        kit_dir = _write_kit_yaml(tmp_path / "my-kit", _minimal_kit("my-kit"))
+        manifest = parse_kit_manifest(kit_dir / "kit.yaml", source="global")
+        assert manifest.source == "global"
+
+    def test_source_defaults_to_local(self, tmp_path: Path) -> None:
+        kit_dir = _write_kit_yaml(tmp_path / "my-kit", _minimal_kit("my-kit"))
+        manifest = parse_kit_manifest(kit_dir / "kit.yaml")
+        assert manifest.source == "local"
+
+    def test_source_custom(self, tmp_path: Path) -> None:
+        kit_dir = _write_kit_yaml(tmp_path / "my-kit", _minimal_kit("my-kit"))
+        manifest = parse_kit_manifest(kit_dir / "kit.yaml", source="custom")
+        assert manifest.source == "custom"
+
+
+# ---------------------------------------------------------------------------
+# Graceful degradation — missing deps
+# ---------------------------------------------------------------------------
+
+
+class TestGracefulDegradation:
+    """Tests that _build_tool_registry() gracefully skips kits with missing deps."""
+
+    def test_missing_deps_logs_warning_and_continues(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Kit with missing deps is skipped with BEDDEL-KIT-658 warning."""
+        from beddel.cli.commands import _build_tool_registry
+
+        workflow = MagicMock()
+        workflow.metadata = {}
+
+        good_manifest = _make_manifest(
+            name="good-kit",
+            tools=[KitToolDeclaration(name="good-tool", target="json:dumps")],
+        )
+        bad_manifest = _make_manifest(
+            name="bad-kit",
+            tools=[KitToolDeclaration(name="bad-tool", target="json:loads")],
+        )
+        discovery = KitDiscoveryResult(manifests=[bad_manifest, good_manifest], collisions=[])
+
+        def _selective_load(manifest: KitManifest) -> dict[str, Callable[..., Any]]:
+            if manifest.kit.name == "bad-kit":
+                raise KitDependencyError(
+                    code="BEDDEL-KIT-653",
+                    message="missing deps",
+                    missing_packages=["some-pkg"],
+                )
+            return {"good-tool": lambda: "ok"}
+
+        with (
+            patch("beddel.tools.kits.discover_kits", return_value=discovery),
+            patch("beddel.tools.kits.load_kit", side_effect=_selective_load),
+            caplog.at_level(logging.WARNING),
+        ):
+            result = _build_tool_registry(workflow, {})
+
+        # Good kit's tool is present
+        assert "good-tool" in result
+        # Bad kit's tool is NOT present
+        assert "bad-tool" not in result
+        # Warning logged with BEDDEL-KIT-658
+        assert any("BEDDEL-KIT-658" in msg for msg in caplog.messages)
 
 
 # ---------------------------------------------------------------------------
