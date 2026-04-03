@@ -16,6 +16,7 @@ import contextlib
 import logging
 from typing import Any
 
+from beddel.domain.models import ApprovalResult, RiskLevel
 from beddel.domain.ports import IHookManager, ILifecycleHook
 
 logger = logging.getLogger(__name__)
@@ -246,6 +247,53 @@ class LifecycleHookManager(IHookManager):
             except Exception:
                 logger.warning(
                     "Lifecycle hook %s.on_budget_threshold raised (ignored)",
+                    type(hook).__name__,
+                    exc_info=True,
+                )
+
+    async def on_approval_requested(
+        self, step_id: str, action: str, risk_level: RiskLevel
+    ) -> None:
+        """Dispatch approval-requested event to all registered hooks.
+
+        Args:
+            step_id: Identifier of the step requiring approval.
+            action: Description of the action requiring approval.
+            risk_level: The classified risk level of the action.
+        """
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
+            try:
+                if asyncio.iscoroutinefunction(hook.on_approval_requested):
+                    await hook.on_approval_requested(step_id, action, risk_level)
+                else:
+                    hook.on_approval_requested(step_id, action, risk_level)  # type: ignore[unused-coroutine]
+            except Exception:
+                logger.warning(
+                    "Lifecycle hook %s.on_approval_requested raised (ignored)",
+                    type(hook).__name__,
+                    exc_info=True,
+                )
+
+    async def on_approval_received(self, step_id: str, result: ApprovalResult) -> None:
+        """Dispatch approval-received event to all registered hooks.
+
+        Args:
+            step_id: Identifier of the step that was awaiting approval.
+            result: The approval decision.
+        """
+        async with self._lock:
+            hooks = list(self._hooks)
+        for hook in hooks:
+            try:
+                if asyncio.iscoroutinefunction(hook.on_approval_received):
+                    await hook.on_approval_received(step_id, result)
+                else:
+                    hook.on_approval_received(step_id, result)  # type: ignore[unused-coroutine]
+            except Exception:
+                logger.warning(
+                    "Lifecycle hook %s.on_approval_received raised (ignored)",
                     type(hook).__name__,
                     exc_info=True,
                 )

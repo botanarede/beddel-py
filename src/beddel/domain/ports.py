@@ -556,6 +556,34 @@ class ILifecycleHook:
             threshold: The degradation threshold value (fraction of ``max_cost_usd``).
         """
 
+    async def on_approval_requested(
+        self, step_id: str, action: str, risk_level: RiskLevel
+    ) -> None:
+        """Called when an approval request is submitted for a workflow step.
+
+        Fires when the executor determines that a step requires human
+        approval based on the configured risk policy, before the approval
+        gate is consulted.
+
+        Args:
+            step_id: Identifier of the step requiring approval.
+            action: Description of the action requiring approval
+                (e.g. ``"delete_database"``).
+            risk_level: The classified risk level of the action.
+        """
+
+    async def on_approval_received(self, step_id: str, result: ApprovalResult) -> None:
+        """Called when an approval decision is received for a workflow step.
+
+        Fires after the approval gate returns a result (approved, denied,
+        timeout, or escalated).
+
+        Args:
+            step_id: Identifier of the step that was awaiting approval.
+            result: The approval decision containing status, approver,
+                and metadata.
+        """
+
 
 class IHookManager(ILifecycleHook):
     """Contract for hook management, extending lifecycle hook notifications.
