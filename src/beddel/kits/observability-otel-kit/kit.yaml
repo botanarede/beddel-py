@@ -1,0 +1,17 @@
+name: observability-otel-kit
+version: "0.1.0"
+description: "OpenTelemetry observability tracing adapter"
+author: "Beddel Team"
+adapters:
+  - port: ITracer
+    implementation: OpenTelemetryAdapter
+    description: "Observability tracing via OpenTelemetry"
+
+targets:
+  python:
+    module: "beddel_observability_otel"
+    dependencies:
+      - "opentelemetry-api>=1.0"
+    adapters:
+      - port: ITracer
+        target: "beddel_observability_otel.adapter:OpenTelemetryAdapter"

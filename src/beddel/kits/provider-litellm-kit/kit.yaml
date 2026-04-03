@@ -1,0 +1,17 @@
+name: provider-litellm-kit
+version: "0.1.0"
+description: "LiteLLM multi-provider LLM adapter"
+author: "Beddel Team"
+adapters:
+  - port: ILLMProvider
+    implementation: LiteLLMAdapter
+    description: "Multi-provider LLM access via LiteLLM"
+
+targets:
+  python:
+    module: "beddel_provider_litellm"
+    dependencies:
+      - "litellm>=1.40,<1.82.7"
+    adapters:
+      - port: ILLMProvider
+        target: "beddel_provider_litellm.adapter:LiteLLMAdapter"

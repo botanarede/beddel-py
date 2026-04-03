@@ -1,0 +1,21 @@
+name: serve-fastapi-kit
+version: "0.1.0"
+description: "FastAPI serving + SSE + Dashboard"
+author: "Beddel Team"
+integrations:
+  - name: create_beddel_handler
+    module: handler
+    description: "One-line workflow-to-endpoint factory with SSE streaming"
+  - name: BeddelSSEAdapter
+    module: sse
+    description: "SSE adapter for Beddel workflow event streams"
+  - name: create_dashboard_router
+    module: dashboard
+    description: "Dashboard Server Protocol router with execution history"
+
+targets:
+  python:
+    module: "beddel_serve_fastapi"
+    dependencies:
+      - "fastapi>=0.100"
+      - "sse-starlette>=1.6"

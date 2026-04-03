@@ -1,0 +1,21 @@
+name: tools-file-kit
+version: "0.1.0"
+description: "File I/O tools (read, write) with path validation"
+author: "Beddel Team"
+tools:
+  - name: file_read
+    description: "Read file content"
+    category: file
+  - name: file_write
+    description: "Write file content"
+    category: file
+
+targets:
+  python:
+    module: "beddel_tools_file"
+    dependencies: []
+    tools:
+      - name: file_read
+        target: "beddel_tools_file.tools:file_read"
+      - name: file_write
+        target: "beddel_tools_file.tools:file_write"
