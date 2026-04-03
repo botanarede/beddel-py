@@ -128,6 +128,7 @@ class TestAllExports:
             "KitManifestError",
             "KitDependencyError",
             "BudgetError",
+            "PIIError",
         }
         assert set(errors.__all__) == expected
 
