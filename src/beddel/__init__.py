@@ -65,6 +65,9 @@ if TYPE_CHECKING:
     from beddel.adapters import InMemoryApprovalGate as InMemoryApprovalGate
     from beddel.adapters import InMemoryBudgetEnforcer as InMemoryBudgetEnforcer
     from beddel.adapters import InMemoryCircuitBreaker as InMemoryCircuitBreaker
+    from beddel.adapters import InMemoryEventStore as InMemoryEventStore
+    from beddel.adapters import InMemoryStateStore as InMemoryStateStore
+    from beddel.adapters import JSONFileStateStore as JSONFileStateStore
     from beddel.adapters import LifecycleHookManager as LifecycleHookManager
     from beddel.adapters import SQLiteEventStore as SQLiteEventStore
     from beddel.adapters import StaticTierRouter as StaticTierRouter
@@ -93,6 +96,9 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     ),
     "InMemoryApprovalGate": ("beddel.adapters", "InMemoryApprovalGate"),
     "InMemoryBudgetEnforcer": ("beddel.adapters", "InMemoryBudgetEnforcer"),
+    "InMemoryEventStore": ("beddel.adapters", "InMemoryEventStore"),
+    "InMemoryStateStore": ("beddel.adapters", "InMemoryStateStore"),
+    "JSONFileStateStore": ("beddel.adapters", "JSONFileStateStore"),
     "LifecycleHookManager": ("beddel.adapters", "LifecycleHookManager"),
     "PIIMiddleware": (
         "beddel.adapters.pii_middleware",
@@ -157,8 +163,10 @@ __all__ = [
     "IPIITokenizer",
     "IStateStore",
     "ITracer",
+    "JSONFileStateStore",
     "InMemoryApprovalGate",
     "InMemoryBudgetEnforcer",
+    "InMemoryStateStore",
     "InterruptibleContext",
     "LifecycleHookManager",
     "MCPError",
