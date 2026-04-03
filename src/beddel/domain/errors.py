@@ -19,6 +19,7 @@ Prefix             Domain
 ``BEDDEL-DURABLE-``  Durable execution errors
 ``BEDDEL-MCP-``  MCP integration errors
 ``BEDDEL-KIT-``  Kit manifest errors
+``BEDDEL-PII-``  PII tokenization errors
 =================  ============================
 """
 
@@ -41,6 +42,7 @@ __all__ = [
     "KitManifestError",
     "KitDependencyError",
     "BudgetError",
+    "PIIError",
 ]
 
 
@@ -217,3 +219,7 @@ class KitDependencyError(BeddelError):
 
 class BudgetError(BeddelError):
     """Budget enforcement errors. Error code prefix: BEDDEL-BUDGET-"""
+
+
+class PIIError(AdapterError):
+    """PII tokenization errors. Error code prefix: BEDDEL-PII-"""

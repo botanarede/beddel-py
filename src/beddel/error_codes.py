@@ -21,6 +21,7 @@ Range       Prefix    Domain
 850 – 899   BUDGET    Budget enforcement errors
 900 – 949   DURABLE   Durable execution errors
 900 – 919   APPROVAL  Approval gate errors (shared band with DURABLE, distinct prefix)
+920 – 939   PII       PII tokenization errors
 950 – 999   MCP       MCP integration errors
 1000 – 1049  AUTH     Remote authentication errors
 650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
@@ -71,6 +72,9 @@ APPROVAL_RANGE: tuple[int, int] = (900, 919)
 DURABLE_RANGE covers 900-949 for allocation tracking; APPROVAL uses a distinct
 string prefix BEDDEL-APPROVAL- to avoid collision (same pattern as KIT_RANGE
 sharing the 600-699 band with RESOLVE_RANGE)."""
+
+PII_RANGE: tuple[int, int] = (920, 939)
+"""PII tokenization errors."""
 
 MCP_RANGE: tuple[int, int] = (950, 999)
 """MCP integration errors."""
@@ -357,6 +361,19 @@ APPROVAL_ESCALATION_FAILED: str = "BEDDEL-APPROVAL-902"
 """Fallback escalation policy also failed after timeout."""
 
 # ---------------------------------------------------------------------------
+# PII codes  (PII prefix, 920 sub-range)
+# ---------------------------------------------------------------------------
+
+PII_TOKENIZATION_FAILED: str = "BEDDEL-PII-920"
+"""PII pattern matching encountered an error."""
+
+PII_DETOKENIZATION_FAILED: str = "BEDDEL-PII-921"
+"""Token map lookup failed during de-tokenization."""
+
+PII_TOKEN_MAP_CORRUPTED: str = "BEDDEL-PII-922"
+"""Token map state inconsistent (missing entries)."""
+
+# ---------------------------------------------------------------------------
 # MCP codes  (MCP prefix, 950 range)
 # ---------------------------------------------------------------------------
 
@@ -540,6 +557,10 @@ ALL_CODES: dict[str, str] = {
     "APPROVAL_TIMEOUT": APPROVAL_TIMEOUT,
     "APPROVAL_DENIED": APPROVAL_DENIED,
     "APPROVAL_ESCALATION_FAILED": APPROVAL_ESCALATION_FAILED,
+    # PII
+    "PII_TOKENIZATION_FAILED": PII_TOKENIZATION_FAILED,
+    "PII_DETOKENIZATION_FAILED": PII_DETOKENIZATION_FAILED,
+    "PII_TOKEN_MAP_CORRUPTED": PII_TOKEN_MAP_CORRUPTED,
     # MCP
     "MCP_CONNECTION_FAILED": MCP_CONNECTION_FAILED,
     "MCP_TOOL_NOT_FOUND": MCP_TOOL_NOT_FOUND,
