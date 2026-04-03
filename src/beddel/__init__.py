@@ -55,6 +55,8 @@ from beddel.domain.strategies import (
 from beddel.primitives.agent_exec import AgentExecPrimitive
 
 if TYPE_CHECKING:
+    from beddel.adapters import ConfigurableApprovalGate as ConfigurableApprovalGate
+    from beddel.adapters import InMemoryApprovalGate as InMemoryApprovalGate
     from beddel.adapters import InMemoryBudgetEnforcer as InMemoryBudgetEnforcer
     from beddel.adapters import InMemoryCircuitBreaker as InMemoryCircuitBreaker
     from beddel.adapters import LifecycleHookManager as LifecycleHookManager
@@ -73,6 +75,8 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
     "ClaudeAgentAdapter": ("beddel.adapters", "ClaudeAgentAdapter"),
     "CodexAgentAdapter": ("beddel.adapters", "CodexAgentAdapter"),
+    "ConfigurableApprovalGate": ("beddel.adapters", "ConfigurableApprovalGate"),
+    "InMemoryApprovalGate": ("beddel.adapters", "InMemoryApprovalGate"),
     "InMemoryBudgetEnforcer": ("beddel.adapters", "InMemoryBudgetEnforcer"),
     "KiroCLIAgentAdapter": ("beddel.adapters", "KiroCLIAgentAdapter"),
     "LangfuseTracerAdapter": ("beddel.adapters", "LangfuseTracerAdapter"),
@@ -118,6 +122,7 @@ __all__ = [
     "BudgetStatus",
     "ClaudeAgentAdapter",
     "CodexAgentAdapter",
+    "ConfigurableApprovalGate",
     "DefaultDependencies",
     "DurableError",
     "DurableExecutionStrategy",
@@ -133,6 +138,7 @@ __all__ = [
     "ILifecycleHook",
     "IMCPClient",
     "ITracer",
+    "InMemoryApprovalGate",
     "InMemoryBudgetEnforcer",
     "InterruptibleContext",
     "KiroCLIAgentAdapter",

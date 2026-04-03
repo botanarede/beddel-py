@@ -14,6 +14,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from beddel.adapters.approval import ConfigurableApprovalGate, InMemoryApprovalGate
 from beddel.adapters.budget_enforcer import InMemoryBudgetEnforcer
 from beddel.adapters.circuit_breaker import InMemoryCircuitBreaker
 from beddel.adapters.event_store import InMemoryEventStore, SQLiteEventStore
@@ -21,6 +22,8 @@ from beddel.adapters.hooks import LifecycleHookManager
 from beddel.adapters.tier_router import StaticTierRouter
 
 __all__ = [
+    "ConfigurableApprovalGate",
+    "InMemoryApprovalGate",
     "InMemoryBudgetEnforcer",
     "InMemoryCircuitBreaker",
     "InMemoryEventStore",
