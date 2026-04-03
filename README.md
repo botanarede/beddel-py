@@ -27,35 +27,74 @@ steps:
 ## Why Beddel
 
 - Write workflows in YAML, not hundreds of lines of Python
-- 7 built-in primitives cover most AI workflow patterns out of the box
+- 7 compositional primitives cover most AI workflow patterns out of the box
 - Multi-provider LLM support via [LiteLLM](https://docs.litellm.ai/) (100+ providers)
-- Adaptive execution: branching, retry with backoff, fallback, skip, delegate
-- OpenTelemetry tracing with token usage tracking per step
+- Adaptive execution: branching, retry with backoff, reflection loops, parallel, circuit breaker, goal-oriented, durable (SQLite exactly-once)
+- Solution Kit ecosystem — slim core, isolated kits for adapters, tools, and integrations
+- 4 agent adapters: OpenClaw, Claude, Codex, Kiro CLI
+- OpenTelemetry + Langfuse tracing with token usage tracking per step
+- Model tier selection, effort control, and budget enforcement
 - Lifecycle hooks for custom logging, metrics, and side effects
 - Expose workflows as HTTP/SSE endpoints with one function call
+- MCP client (stdio + SSE) for tool discovery and invocation
 - Hexagonal architecture — swap adapters without touching domain logic
 - Extensible namespace system — plug in domain knowledge, memory, or any data source via `register_namespace()`
 
 ## Installation
 
 ```bash
-# Core only (parser, resolver, executor — no external adapters)
 pip install beddel
-
-# With LLM adapters (LiteLLM, OpenTelemetry, httpx)
-pip install beddel[adapters]
-
-# With FastAPI integration (HTTP endpoints + SSE streaming)
-pip install beddel[fastapi]
-
-# With CLI (validate, run, serve workflows)
-pip install beddel[cli]
-
-# Everything
-pip install beddel[all]
 ```
 
-Requires Python 3.11+.
+This installs the core engine with 3 dependencies (`pydantic`, `pyyaml`, `click`): parser, resolver, executor, registry, kit discovery, and CLI. Requires Python 3.11+.
+
+### Installing Kits
+
+Adapters, tools, and integrations are distributed as solution kits in the [beddel repository](https://github.com/botanarede/beddel). Install them with the CLI:
+
+```bash
+# Install a kit from the official repository (downloads + installs pip deps)
+beddel kit install provider-litellm-kit
+
+# Install from an explicit GitHub path
+beddel kit install github:botanarede/beddel/kits/agent-openclaw-kit
+
+# Install from a local directory
+beddel kit install ./my-custom-kit/
+
+# Install globally (shared across projects)
+beddel kit install provider-litellm-kit --global
+
+# List installed kits
+beddel kit list
+```
+
+Each kit declares its own pip dependencies in `kit.yaml`. The `install` command handles them automatically:
+
+```
+$ beddel kit install provider-litellm-kit
+Installing litellm>=1.40,<1.82.7 ...
+Installed provider-litellm-kit v0.1.0 to ./kits/provider-litellm-kit
+```
+
+### Available Kits
+
+| Category | Kit | Pip Dependencies |
+|----------|-----|-----------------|
+| agent | `agent-openclaw-kit` | httpx |
+| agent | `agent-claude-kit` | claude-agent-sdk |
+| agent | `agent-codex-kit` | — |
+| agent | `agent-kiro-kit` | — |
+| provider | `provider-litellm-kit` | litellm |
+| observability | `observability-otel-kit` | opentelemetry-api |
+| observability | `observability-langfuse-kit` | langfuse |
+| serve | `serve-fastapi-kit` | fastapi, sse-starlette |
+| protocol | `protocol-mcp-kit` | mcp, jsonschema |
+| auth | `auth-github-kit` | httpx |
+| tools | `tools-file-kit` | — |
+| tools | `tools-shell-kit` | — |
+| tools | `tools-gates-kit` | — |
+| tools | `tools-http-kit` | httpx |
 
 ## Quickstart
 
@@ -64,7 +103,8 @@ Get a workflow running in under 5 minutes.
 ### 1. Install
 
 ```bash
-pip install beddel[adapters]
+pip install beddel
+beddel kit install provider-litellm-kit
 ```
 
 ### 2. Set your API key
@@ -107,7 +147,7 @@ steps:
 import asyncio
 from pathlib import Path
 
-from beddel.adapters.litellm_adapter import LiteLLMAdapter
+from beddel_provider_litellm.adapter import LiteLLMAdapter
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.parser import WorkflowParser
 from beddel.domain.registry import PrimitiveRegistry
@@ -147,7 +187,8 @@ The [`examples/`](./examples/) directory contains ready-to-run workflows:
 Run any example with the CLI:
 
 ```bash
-pip install beddel[all]
+pip install beddel
+beddel kit install provider-litellm-kit
 export GEMINI_API_KEY="your-key-here"
 
 # Research pipeline
@@ -338,7 +379,7 @@ Production-grade observability and framework integration.
 **OpenTelemetry Tracing** — Opt-in tracing with three nesting levels and token usage tracking:
 
 ```python
-from beddel.adapters.otel_adapter import OpenTelemetryAdapter
+from beddel_observability_otel.adapter import OpenTelemetryAdapter
 
 tracer = OpenTelemetryAdapter(service_name="my-app")
 executor = WorkflowExecutor(registry, provider=adapter, tracer=tracer)
@@ -385,7 +426,7 @@ app.include_router(router)
 The handler streams workflow execution via Server-Sent Events (W3C-compliant). Clients receive real-time events: `WORKFLOW_START`, `STEP_START`, `STEP_END`, `WORKFLOW_END`.
 
 ```bash
-pip install beddel[fastapi]
+beddel kit install serve-fastapi-kit
 beddel serve -w workflow.yaml --port 8000
 ```
 
@@ -396,10 +437,10 @@ Endpoints:
 
 ## CLI
 
-Beddel includes a command-line interface for validating, running, and serving workflows.
+Beddel includes a command-line interface for validating, running, serving workflows, and managing kits.
 
 ```bash
-pip install beddel[cli]
+pip install beddel
 ```
 
 ### Validate a workflow
@@ -449,7 +490,7 @@ beddel version
 
 ## OpenClaw Integration
 
-Beddel works as an [OpenClaw](https://openclaw.com) agent skill. After installing with `pip install beddel[cli]`, the `beddel` command is available for any OpenClaw agent to create, validate, and execute AI workflows.
+Beddel works as an [OpenClaw](https://openclaw.com) agent skill. After installing with `pip install beddel`, the `beddel` command is available for any OpenClaw agent to create, validate, and execute AI workflows.
 
 ### Practical examples
 
@@ -500,24 +541,33 @@ See `SKILL.md` for the full skill manifest and OpenClaw metadata.
 
 ## Architecture
 
-Beddel follows Hexagonal Architecture (Ports & Adapters). The domain core never imports from adapters or integrations — all external dependencies flow through port interfaces.
+Beddel follows Hexagonal Architecture (Ports & Adapters) with a Solution Kit ecosystem. The domain core never imports from adapters or integrations — all external dependencies flow through port interfaces. Adapters, tools, and integrations live in isolated kits.
 
 ```
 ┌─────────────────────────────────────────────┐
-│              Integrations                    │
-│         FastAPI  ·  SSE Streaming            │
-├─────────────────────────────────────────────┤
-│               Adapters                       │
-│    LiteLLM  ·  OpenTelemetry  ·  Hooks       │
+│            Solution Kits (kits/)             │
+│  agent-openclaw · agent-claude · agent-codex │
+│  agent-kiro · provider-litellm               │
+│  observability-otel · observability-langfuse  │
+│  serve-fastapi · protocol-mcp · auth-github  │
+│  tools-file · tools-shell · tools-gates      │
+│  tools-http                                  │
 ├─────────────────────────────────────────────┤
 │            Compositional Primitives          │
-│  llm · chat · output · guardrail · tool · …  │
+│  llm · chat · output · guardrail · tool      │
+│  call-agent · agent-exec                     │
+├─────────────────────────────────────────────┤
+│          Adaptive Execution Engine           │
+│  Sequential · Reflection · Parallel          │
+│  Circuit Breaker · Goal-Oriented · Durable   │
 ├─────────────────────────────────────────────┤
 │              Domain Core                     │
 │  Parser · Resolver · Executor · Registry     │
-│  Models · Ports (interfaces)                 │
+│  Models · Ports · Kit Discovery              │
 └─────────────────────────────────────────────┘
 ```
+
+The 4-layer tool registry merges tools from: `discover_builtin_tools()` (empty — tools are in kits) → kit tools via `discover_kits()` → inline YAML declarations → CLI flags.
 
 ## Development Setup
 
@@ -545,11 +595,9 @@ The `-Wd` flag turns `DeprecationWarning` into errors, catching deprecated API u
 
 ## Roadmap
 
-Epics 1–3 (Adaptive Core, Compositional Primitives, Observability & Integration) are complete. Upcoming:
+Epics 1–5.1 are complete (Adaptive Core, Primitives, Observability, Adaptive Execution, Agent Adapters, Kit Ecosystem). Upcoming:
 
-- **Epic 4** — Adaptive Execution Patterns: reflection loops, parallel execution, circuit breaker, goal-oriented execution, durable execution, MCP-native tool integration
-- **Epic 5** — Agent Autonomy & Safety: human-on-the-loop (HOTL), model tier selection, PII tokenization, state persistence, episodic memory, cost controls with budget enforcement
-- **Epic 6** — Ecosystem & Enterprise Integration: multi-agent coordination, event-driven execution, decision-centric runtime, skill composition, knowledge architecture port (`IKnowledgeProvider` — consume domain knowledge from YAML files, knowledge graphs, or formal ontologies through a unified interface)
+- **Epic 6** — Enterprise Safety & Knowledge Architecture: HOTL approval gates, PII tokenization, state persistence, episodic memory, knowledge architecture port, decision-centric runtime, multi-agent coordination, event-driven execution, skill composition
 
 ## Contributing
 

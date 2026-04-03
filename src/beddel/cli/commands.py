@@ -676,29 +676,135 @@ def kit() -> None:
     """Manage solution kits."""
 
 
+_OFFICIAL_REPO = "botanarede/beddel"
+_OFFICIAL_BRANCH = "main"
+_KITS_PREFIX = "kits"
+
+
+def _resolve_kit_source(source: str) -> Path:
+    """Resolve a kit source to a local directory path.
+
+    Supports:
+    - Local path: ``./my-kit/`` or ``/abs/path/to/kit``
+    - GitHub explicit: ``github:owner/repo/kits/kit-name``
+    - Short name: ``provider-litellm-kit`` (resolves to official repo)
+
+    Returns:
+        Path to a local directory containing ``kit.yaml``.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    local = Path(source)
+    if local.is_dir() and (local / "kit.yaml").is_file():
+        return local
+
+    # Parse GitHub source
+    if source.startswith("github:"):
+        # github:owner/repo/kits/kit-name[@branch]
+        rest = source[len("github:") :]
+        parts = rest.split("/")
+        if len(parts) < 3:
+            click.echo(
+                f"Invalid github source: {source}\nExpected: github:owner/repo/path/to/kit",
+                err=True,
+            )
+            raise SystemExit(1)
+        owner_repo = f"{parts[0]}/{parts[1]}"
+        kit_path = "/".join(parts[2:])
+        branch = _OFFICIAL_BRANCH
+        if "@" in parts[-1]:
+            last, branch = parts[-1].rsplit("@", 1)
+            kit_path = "/".join(parts[2:-1] + [last])
+    else:
+        # Short name: treat as official repo kit
+        owner_repo = _OFFICIAL_REPO
+        kit_path = f"{_KITS_PREFIX}/{source}"
+        branch = _OFFICIAL_BRANCH
+
+    # Download via git sparse checkout
+    tmp = Path(tempfile.mkdtemp(prefix="beddel-kit-"))
+    url = f"https://github.com/{owner_repo}.git"
+    click.echo(f"Fetching {kit_path} from {owner_repo}@{branch}...")
+
+    git = shutil.which("git")
+    if git is None:
+        click.echo("Error: git is required for remote kit install", err=True)
+        raise SystemExit(1)
+
+    try:
+        subprocess.run(
+            [
+                git,
+                "clone",
+                "--depth=1",
+                "--filter=blob:none",
+                "--sparse",
+                f"--branch={branch}",
+                url,
+                str(tmp / "repo"),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            [git, "sparse-checkout", "set", kit_path],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(tmp / "repo"),
+        )
+    except subprocess.CalledProcessError as exc:
+        click.echo(f"Failed to fetch kit: {exc.stderr or exc.stdout}", err=True)
+        raise SystemExit(1) from None
+
+    result_dir = tmp / "repo" / kit_path
+    if not (result_dir / "kit.yaml").is_file():
+        click.echo(
+            f"Kit not found at {kit_path} in {owner_repo}@{branch}",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    return result_dir
+
+
 @kit.command("install")
-@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.argument("source")
 @click.option("--global", "global_install", is_flag=True, help="Install to ~/.beddel/kits/")
-def kit_install(path: str, *, global_install: bool) -> None:
-    """Install a solution kit from a local directory."""
+def kit_install(source: str, *, global_install: bool) -> None:
+    """Install a solution kit from a local directory or GitHub.
+
+    SOURCE can be:
+
+    \b
+      Local path:    ./my-kit/
+      Kit name:      provider-litellm-kit  (fetches from official repo)
+      GitHub path:   github:owner/repo/kits/kit-name
+    """
     import shutil
     import subprocess
 
     from beddel.domain.errors import KitManifestError
     from beddel.domain.kit import parse_kit_manifest
 
-    kit_yaml = Path(path) / "kit.yaml"
+    # 1. Resolve source to local directory
+    kit_dir = _resolve_kit_source(source)
+    kit_yaml = kit_dir / "kit.yaml"
 
-    # 1. Validate manifest
+    # 2. Validate manifest
     try:
         manifest = parse_kit_manifest(kit_yaml)
     except KitManifestError as exc:
         click.echo(f"Invalid kit manifest: {exc.message}", err=True)
         raise SystemExit(1) from None
 
-    # 2. Install pip dependencies
+    # 3. Install pip dependencies
     deps = manifest.kit.dependencies
     if deps:
+        click.echo(f"Installing dependencies: {', '.join(deps)}")
         try:
             subprocess.run(
                 [sys.executable, "-m", "pip", "install", *deps],
@@ -708,7 +814,7 @@ def kit_install(path: str, *, global_install: bool) -> None:
             click.echo(f"Failed to install dependencies: {exc}", err=True)
             raise SystemExit(1) from None
 
-    # 3. Copy kit directory to target
+    # 4. Copy kit directory to target
     kit_name = manifest.kit.name
     if global_install:
         target = Path.home() / ".beddel" / "kits" / kit_name
@@ -716,7 +822,7 @@ def kit_install(path: str, *, global_install: bool) -> None:
         target = Path("./kits") / kit_name
 
     try:
-        shutil.copytree(path, target, dirs_exist_ok=True)
+        shutil.copytree(str(kit_dir), str(target), dirs_exist_ok=True)
     except shutil.Error as exc:
         click.echo(f"Failed to copy kit: {exc}", err=True)
         raise SystemExit(1) from None
