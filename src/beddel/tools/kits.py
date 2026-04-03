@@ -20,6 +20,7 @@ from typing import Any
 from beddel.domain.errors import KitDependencyError, KitManifestError
 from beddel.domain.kit import KitCollision, KitDiscoveryResult, KitManifest, parse_kit_manifest
 from beddel.error_codes import KIT_DEPENDENCY_MISSING, KIT_LOAD_FAILED
+from beddel.kits import BUNDLED_KITS_PATH
 
 __all__ = ["discover_kits", "load_kit"]
 
@@ -52,24 +53,37 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
 
     Args:
         paths: Directories to scan. If *None*, uses ``BEDDEL_KIT_PATHS``
-            env var (colon-separated) or the defaults ``./kits/`` and
-            ``~/.beddel/kits/``.
+            env var (colon-separated) or the 3-path defaults:
+            bundled (``beddel/kits/``) → local (``./kits/``) → global
+            (``~/.beddel/kits/``).
 
     Returns:
         A :class:`KitDiscoveryResult` with alphabetically sorted manifests
         and any detected tool name collisions.
     """
+    # Determine source label for each path
+    use_custom = False
     if paths is None:
         env_val = os.environ.get("BEDDEL_KIT_PATHS")
         if env_val:
             paths = [Path(p) for p in env_val.split(":") if p]
+            use_custom = True
         else:
-            paths = [Path("./kits"), Path.home() / ".beddel" / "kits"]
+            paths = [BUNDLED_KITS_PATH, Path("./kits"), Path.home() / ".beddel" / "kits"]
+
+    # Map each path to its source label (order matters for priority)
+    _SOURCE_LABELS = {0: "bundled", 1: "local", 2: "global"}
+
+    def _source_for(path_index: int) -> str:
+        if use_custom:
+            return "custom"
+        return _SOURCE_LABELS.get(path_index, "local")
 
     manifests: list[KitManifest] = []
-    for base in paths:
+    for path_index, base in enumerate(paths):
         if not base.is_dir():
             continue
+        source = _source_for(path_index)
         for child in sorted(base.iterdir()):
             if not child.is_dir():
                 continue
@@ -77,11 +91,18 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
             if not kit_yaml.is_file():
                 continue
             try:
-                manifest = parse_kit_manifest(kit_yaml)
+                manifest = parse_kit_manifest(kit_yaml, source=source)
             except KitManifestError as exc:
                 logger.warning("Skipping kit at %s: %s", kit_yaml, exc.message)
                 continue
             manifests.append(manifest)
+
+    # Deduplicate: later paths override earlier ones for same kit name.
+    # Walk in order so the last occurrence (highest priority) wins.
+    seen: dict[str, int] = {}
+    for idx, m in enumerate(manifests):
+        seen[m.kit.name] = idx
+    manifests = [manifests[i] for i in sorted(seen.values())]
 
     manifests.sort(key=lambda m: m.kit.name)
 

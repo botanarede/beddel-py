@@ -225,11 +225,14 @@ class KitManifest:
         kit: The validated ``SolutionKit`` Pydantic model.
         root_path: Absolute path to the kit directory (parent of ``kit.yaml``).
         loaded_at: Timezone-aware UTC timestamp of when the manifest was loaded.
+        source: Origin of the kit — ``"bundled"``, ``"local"``, ``"global"``,
+            or ``"custom"`` (when loaded via ``BEDDEL_KIT_PATHS``).
     """
 
     kit: SolutionKit
     root_path: Path
     loaded_at: datetime
+    source: str = "local"
 
 
 @dataclass(frozen=True)
@@ -258,11 +261,14 @@ class KitDiscoveryResult:
     collisions: list[KitCollision]
 
 
-def parse_kit_manifest(path: Path) -> KitManifest:
+def parse_kit_manifest(path: Path, *, source: str = "local") -> KitManifest:
     """Load and validate a ``kit.yaml`` file into a :class:`KitManifest`.
 
     Args:
         path: Path to the ``kit.yaml`` file.
+        source: Origin label for the kit — ``"bundled"``, ``"local"``,
+            ``"global"``, or ``"custom"``.  Defaults to ``"local"`` for
+            backward compatibility.
 
     Returns:
         A frozen :class:`KitManifest` wrapping the validated model.
@@ -306,4 +312,5 @@ def parse_kit_manifest(path: Path) -> KitManifest:
         kit=kit,
         root_path=path.parent.resolve(),
         loaded_at=datetime.now(tz=UTC),
+        source=source,
     )
