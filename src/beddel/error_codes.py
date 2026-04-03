@@ -80,6 +80,9 @@ PII_RANGE: tuple[int, int] = (920, 939)
 STATE_RANGE: tuple[int, int] = (940, 959)
 """State persistence errors."""
 
+MEMORY_RANGE: tuple[int, int] = (960, 979)
+"""Episodic memory errors."""
+
 MCP_RANGE: tuple[int, int] = (950, 999)
 """MCP integration errors."""
 
@@ -394,6 +397,25 @@ STATE_CORRUPTED: str = "BEDDEL-STATE-943"
 """State data corrupted."""
 
 # ---------------------------------------------------------------------------
+# Memory codes  (MEMORY prefix, 960 sub-range)
+# ---------------------------------------------------------------------------
+
+MEMORY_GET_FAILED: str = "BEDDEL-MEMORY-960"
+"""Memory get operation failed."""
+
+MEMORY_SET_FAILED: str = "BEDDEL-MEMORY-961"
+"""Memory set operation failed."""
+
+MEMORY_SEARCH_FAILED: str = "BEDDEL-MEMORY-962"
+"""Memory search operation failed."""
+
+MEMORY_EPISODE_FAILED: str = "BEDDEL-MEMORY-963"
+"""Episode creation failed."""
+
+MEMORY_NOT_CONFIGURED: str = "BEDDEL-MEMORY-964"
+"""Memory provider not configured."""
+
+# ---------------------------------------------------------------------------
 # MCP codes  (MCP prefix, 950 range)
 # ---------------------------------------------------------------------------
 
@@ -586,6 +608,12 @@ ALL_CODES: dict[str, str] = {
     "STATE_LOAD_FAILED": STATE_LOAD_FAILED,
     "STATE_DELETE_FAILED": STATE_DELETE_FAILED,
     "STATE_CORRUPTED": STATE_CORRUPTED,
+    # Memory
+    "MEMORY_GET_FAILED": MEMORY_GET_FAILED,
+    "MEMORY_SET_FAILED": MEMORY_SET_FAILED,
+    "MEMORY_SEARCH_FAILED": MEMORY_SEARCH_FAILED,
+    "MEMORY_EPISODE_FAILED": MEMORY_EPISODE_FAILED,
+    "MEMORY_NOT_CONFIGURED": MEMORY_NOT_CONFIGURED,
     # MCP
     "MCP_CONNECTION_FAILED": MCP_CONNECTION_FAILED,
     "MCP_TOOL_NOT_FOUND": MCP_TOOL_NOT_FOUND,

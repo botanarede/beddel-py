@@ -11,6 +11,7 @@ from beddel.domain.errors import (
     DurableError,
     ExecutionError,
     MCPError,
+    MemoryError,
     ParseError,
     PrimitiveError,
     ResolveError,
@@ -30,6 +31,7 @@ _SUBCLASSES: list[tuple[type[BeddelError], str]] = [
     (DurableError, "BEDDEL-DURABLE-900"),
     (MCPError, "BEDDEL-MCP-600"),
     (StateError, "BEDDEL-STATE-940"),
+    (MemoryError, "BEDDEL-MEMORY-960"),
 ]
 
 
@@ -132,6 +134,7 @@ class TestAllExports:
             "BudgetError",
             "PIIError",
             "StateError",
+            "MemoryError",
         }
         assert set(errors.__all__) == expected
 

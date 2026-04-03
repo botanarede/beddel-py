@@ -21,6 +21,7 @@ Prefix             Domain
 ``BEDDEL-KIT-``  Kit manifest errors
 ``BEDDEL-PII-``  PII tokenization errors
 ``BEDDEL-STATE-``  State persistence errors
+``BEDDEL-MEMORY-``  Episodic memory errors
 =================  ============================
 """
 
@@ -45,6 +46,7 @@ __all__ = [
     "BudgetError",
     "PIIError",
     "StateError",
+    "MemoryError",
 ]
 
 
@@ -229,3 +231,7 @@ class PIIError(AdapterError):
 
 class StateError(BeddelError):
     """State persistence errors. Error code prefix: BEDDEL-STATE-"""
+
+
+class MemoryError(BeddelError):  # noqa: A001
+    """Episodic memory errors. Error code prefix: BEDDEL-MEMORY-"""
