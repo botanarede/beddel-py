@@ -218,6 +218,31 @@ class IApprovalGate(Protocol):
         """
         ...
 
+    async def request_approval_async(self, action: str, risk_level: RiskLevel) -> str:
+        """Request approval asynchronously using the CIBA pattern.
+
+        Submits an approval request and returns the ``request_id``
+        immediately without blocking.  The caller then polls
+        :meth:`check_status` to retrieve the eventual decision.
+
+        This is the non-blocking variant of :meth:`request_approval`,
+        following the Client Initiated Backchannel Authentication
+        (CIBA, RFC 9126) pattern.
+
+        The default implementation delegates to :meth:`request_approval`
+        and extracts the ``request_id`` from the result.
+
+        Args:
+            action: Description of the action requiring approval.
+            risk_level: The classified risk level of the action.
+
+        Returns:
+            The ``request_id`` string for subsequent polling via
+            :meth:`check_status`.
+        """
+        result = await self.request_approval(action, risk_level)
+        return result.request_id
+
 
 class IBudgetEnforcer(Protocol):
     """Contract for per-workflow budget enforcement implementations.
