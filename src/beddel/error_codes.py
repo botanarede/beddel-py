@@ -22,6 +22,7 @@ Range       Prefix    Domain
 900 – 949   DURABLE   Durable execution errors
 900 – 919   APPROVAL  Approval gate errors (shared band with DURABLE, distinct prefix)
 920 – 939   PII       PII tokenization errors
+940 – 959   STATE     State persistence errors
 950 – 999   MCP       MCP integration errors
 1000 – 1049  AUTH     Remote authentication errors
 650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
@@ -75,6 +76,9 @@ sharing the 600-699 band with RESOLVE_RANGE)."""
 
 PII_RANGE: tuple[int, int] = (920, 939)
 """PII tokenization errors."""
+
+STATE_RANGE: tuple[int, int] = (940, 959)
+"""State persistence errors."""
 
 MCP_RANGE: tuple[int, int] = (950, 999)
 """MCP integration errors."""
@@ -374,6 +378,22 @@ PII_TOKEN_MAP_CORRUPTED: str = "BEDDEL-PII-922"
 """Token map state inconsistent (missing entries)."""
 
 # ---------------------------------------------------------------------------
+# State codes  (STATE prefix, 940 sub-range)
+# ---------------------------------------------------------------------------
+
+STATE_SAVE_FAILED: str = "BEDDEL-STATE-940"
+"""State persistence save failed."""
+
+STATE_LOAD_FAILED: str = "BEDDEL-STATE-941"
+"""State persistence load failed."""
+
+STATE_DELETE_FAILED: str = "BEDDEL-STATE-942"
+"""State persistence delete failed."""
+
+STATE_CORRUPTED: str = "BEDDEL-STATE-943"
+"""State data corrupted."""
+
+# ---------------------------------------------------------------------------
 # MCP codes  (MCP prefix, 950 range)
 # ---------------------------------------------------------------------------
 
@@ -561,6 +581,11 @@ ALL_CODES: dict[str, str] = {
     "PII_TOKENIZATION_FAILED": PII_TOKENIZATION_FAILED,
     "PII_DETOKENIZATION_FAILED": PII_DETOKENIZATION_FAILED,
     "PII_TOKEN_MAP_CORRUPTED": PII_TOKEN_MAP_CORRUPTED,
+    # State
+    "STATE_SAVE_FAILED": STATE_SAVE_FAILED,
+    "STATE_LOAD_FAILED": STATE_LOAD_FAILED,
+    "STATE_DELETE_FAILED": STATE_DELETE_FAILED,
+    "STATE_CORRUPTED": STATE_CORRUPTED,
     # MCP
     "MCP_CONNECTION_FAILED": MCP_CONNECTION_FAILED,
     "MCP_TOOL_NOT_FOUND": MCP_TOOL_NOT_FOUND,

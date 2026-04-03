@@ -14,6 +14,7 @@ from beddel.domain.errors import (
     ParseError,
     PrimitiveError,
     ResolveError,
+    StateError,
     TracingError,
 )
 
@@ -28,6 +29,7 @@ _SUBCLASSES: list[tuple[type[BeddelError], str]] = [
     (AgentError, "BEDDEL-AGENT-700"),
     (DurableError, "BEDDEL-DURABLE-900"),
     (MCPError, "BEDDEL-MCP-600"),
+    (StateError, "BEDDEL-STATE-940"),
 ]
 
 
@@ -129,6 +131,7 @@ class TestAllExports:
             "KitDependencyError",
             "BudgetError",
             "PIIError",
+            "StateError",
         }
         assert set(errors.__all__) == expected
 

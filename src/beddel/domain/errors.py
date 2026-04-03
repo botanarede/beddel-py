@@ -20,6 +20,7 @@ Prefix             Domain
 ``BEDDEL-MCP-``  MCP integration errors
 ``BEDDEL-KIT-``  Kit manifest errors
 ``BEDDEL-PII-``  PII tokenization errors
+``BEDDEL-STATE-``  State persistence errors
 =================  ============================
 """
 
@@ -43,6 +44,7 @@ __all__ = [
     "KitDependencyError",
     "BudgetError",
     "PIIError",
+    "StateError",
 ]
 
 
@@ -223,3 +225,7 @@ class BudgetError(BeddelError):
 
 class PIIError(AdapterError):
     """PII tokenization errors. Error code prefix: BEDDEL-PII-"""
+
+
+class StateError(BeddelError):
+    """State persistence errors. Error code prefix: BEDDEL-STATE-"""

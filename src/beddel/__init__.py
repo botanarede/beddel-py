@@ -19,6 +19,7 @@ from beddel.domain.errors import (
     PIIError,
     PrimitiveError,
     ResolveError,
+    StateError,
     TracingError,
 )
 from beddel.domain.executor import SequentialStrategy
@@ -175,6 +176,7 @@ __all__ = [
     "SpanT",
     "SQLiteEventStore",
     "StaticTierRouter",
+    "StateError",
     "StepRunner",
     "TokenMap",
     "TracingError",

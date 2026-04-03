@@ -9,6 +9,7 @@ from beddel.domain.errors import (
     ParseError,
     PrimitiveError,
     ResolveError,
+    StateError,
 )
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
@@ -62,6 +63,7 @@ __all__ = [
     "PrimitiveRegistry",
     "ResolveError",
     "RetryConfig",
+    "StateError",
     "Step",
     "StepFilter",
     "StepFilterPredicate",
