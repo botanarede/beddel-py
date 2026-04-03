@@ -57,6 +57,12 @@ class WorkflowInspector:
                 "description": wf.description,
                 "version": wf.version,
                 "step_count": len(wf.steps),
+                "status": "published",
+                "category": "automation",
+                "author": "local",
+                "tags": [],
+                "created_at": "1970-01-01T00:00:00Z",
+                "updated_at": "1970-01-01T00:00:00Z",
             }
             for wf in self._workflows.values()
         ]
