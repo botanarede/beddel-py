@@ -16,6 +16,7 @@ Ports defined here:
 - :class:`IContextReducer` — contract for pluggable context reduction strategies.
 - :class:`ITierRouter` — contract for model tier routing strategies.
 - :class:`IBudgetEnforcer` — contract for per-workflow budget enforcement.
+- :class:`IStateStore` — contract for state persistence and checkpoints.
 - :class:`ITracer` — contract for observability tracing.
 - :class:`NoOpTracer` — no-op tracer for testing and explicit opt-out.
 """
@@ -54,6 +55,7 @@ __all__ = [
     "IContextReducer",
     "IEventStore",
     "IExecutionStrategy",
+    "IStateStore",
     "IHookManager",
     "ILifecycleHook",
     "ILLMProvider",
@@ -170,6 +172,11 @@ class ExecutionDependencies(Protocol):
     @property
     def pii_tokenizer(self) -> IPIITokenizer | None:
         """The PII tokenizer for data protection, or ``None`` if not configured."""
+        return None
+
+    @property
+    def state_store(self) -> IStateStore | None:
+        """The state store for checkpoint persistence, or ``None`` if not configured."""
         return None
 
 
@@ -936,6 +943,48 @@ class IEventStore(Protocol):
 
     async def truncate(self, workflow_id: str) -> None:
         """Remove all events for a workflow.
+
+        Args:
+            workflow_id: Identifier of the workflow execution to clear.
+        """
+        ...
+
+
+class IStateStore(Protocol):
+    """Contract for state persistence and checkpoint implementations.
+
+    Provides save/load/delete operations for workflow execution state,
+    enabling checkpoint-based pause and resume.  Implementations may
+    store state in files, databases, or remote services.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`IEventStore`, :class:`ICircuitBreaker`, and other domain ports.
+
+    [Source: docs/stories/epic-6/story-6.3.md — AC 1]
+    """
+
+    async def save(self, workflow_id: str, state: dict[str, Any]) -> None:
+        """Persist execution state for a workflow.
+
+        Args:
+            workflow_id: Identifier of the workflow execution.
+            state: Serialized execution state to persist.
+        """
+        ...
+
+    async def load(self, workflow_id: str) -> dict[str, Any] | None:
+        """Load persisted execution state for a workflow.
+
+        Args:
+            workflow_id: Identifier of the workflow execution.
+
+        Returns:
+            The persisted state dict, or ``None`` if no checkpoint exists.
+        """
+        ...
+
+    async def delete(self, workflow_id: str) -> None:
+        """Remove persisted execution state for a workflow.
 
         Args:
             workflow_id: Identifier of the workflow execution to clear.

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         IHookManager,
         ILLMProvider,
         IPIITokenizer,
+        IStateStore,
         ITierRouter,
         ITracer,
     )
@@ -516,6 +517,10 @@ class DefaultDependencies:
             or ``None`` if not configured.  Defaults to ``None``.
         approval_gate: The approval gate for HOTL approval flows,
             or ``None`` if not configured.  Defaults to ``None``.
+        pii_tokenizer: The PII tokenizer for data protection,
+            or ``None`` if not configured.  Defaults to ``None``.
+        state_store: The state store for checkpoint persistence,
+            or ``None`` if not configured.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -537,6 +542,7 @@ class DefaultDependencies:
         "_budget_enforcer",
         "_approval_gate",
         "_pii_tokenizer",
+        "_state_store",
     )
 
     def __init__(
@@ -559,6 +565,7 @@ class DefaultDependencies:
         budget_enforcer: IBudgetEnforcer | None = None,
         approval_gate: IApprovalGate | None = None,
         pii_tokenizer: IPIITokenizer | None = None,
+        state_store: IStateStore | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -578,6 +585,7 @@ class DefaultDependencies:
         self._budget_enforcer = budget_enforcer
         self._approval_gate = approval_gate
         self._pii_tokenizer = pii_tokenizer
+        self._state_store = state_store
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -668,6 +676,11 @@ class DefaultDependencies:
     def pii_tokenizer(self) -> IPIITokenizer | None:
         """The PII tokenizer for data protection, or ``None`` if not configured."""
         return self._pii_tokenizer
+
+    @property
+    def state_store(self) -> IStateStore | None:
+        """The state store for checkpoint persistence, or ``None`` if not configured."""
+        return self._state_store
 
 
 _log = logging.getLogger(__name__)
