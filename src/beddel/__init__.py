@@ -66,6 +66,12 @@ if TYPE_CHECKING:
     from beddel.adapters import LifecycleHookManager as LifecycleHookManager
     from beddel.adapters import SQLiteEventStore as SQLiteEventStore
     from beddel.adapters import StaticTierRouter as StaticTierRouter
+    from beddel.adapters.pii_tokenizer import (
+        DEFAULT_PII_PATTERNS as DEFAULT_PII_PATTERNS,
+    )
+    from beddel.adapters.pii_tokenizer import (
+        RegexPIITokenizer as RegexPIITokenizer,
+    )
     from beddel.integrations.fastapi import (
         create_beddel_handler as create_beddel_handler,
     )
@@ -78,9 +84,17 @@ __version__ = "0.1.3"
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
     "ConfigurableApprovalGate": ("beddel.adapters", "ConfigurableApprovalGate"),
+    "DEFAULT_PII_PATTERNS": (
+        "beddel.adapters.pii_tokenizer",
+        "DEFAULT_PII_PATTERNS",
+    ),
     "InMemoryApprovalGate": ("beddel.adapters", "InMemoryApprovalGate"),
     "InMemoryBudgetEnforcer": ("beddel.adapters", "InMemoryBudgetEnforcer"),
     "LifecycleHookManager": ("beddel.adapters", "LifecycleHookManager"),
+    "RegexPIITokenizer": (
+        "beddel.adapters.pii_tokenizer",
+        "RegexPIITokenizer",
+    ),
     "SQLiteEventStore": ("beddel.adapters", "SQLiteEventStore"),
     "StaticTierRouter": ("beddel.adapters", "StaticTierRouter"),
     "create_beddel_handler": (
@@ -118,6 +132,7 @@ __all__ = [
     "BudgetError",
     "BudgetStatus",
     "ConfigurableApprovalGate",
+    "DEFAULT_PII_PATTERNS",
     "DefaultDependencies",
     "DurableError",
     "DurableExecutionStrategy",
@@ -145,6 +160,7 @@ __all__ = [
     "PIIPattern",
     "PrimitiveError",
     "ResolveError",
+    "RegexPIITokenizer",
     "RiskLevel",
     "RiskMatrix",
     "SequentialStrategy",

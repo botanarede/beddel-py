@@ -13,15 +13,18 @@ from beddel.adapters.budget_enforcer import InMemoryBudgetEnforcer
 from beddel.adapters.circuit_breaker import InMemoryCircuitBreaker
 from beddel.adapters.event_store import InMemoryEventStore, SQLiteEventStore
 from beddel.adapters.hooks import LifecycleHookManager
+from beddel.adapters.pii_tokenizer import DEFAULT_PII_PATTERNS, RegexPIITokenizer
 from beddel.adapters.tier_router import StaticTierRouter
 
 __all__ = [
     "ConfigurableApprovalGate",
+    "DEFAULT_PII_PATTERNS",
     "InMemoryApprovalGate",
     "InMemoryBudgetEnforcer",
     "InMemoryCircuitBreaker",
     "InMemoryEventStore",
     "LifecycleHookManager",
+    "RegexPIITokenizer",
     "SQLiteEventStore",
     "StaticTierRouter",
 ]
