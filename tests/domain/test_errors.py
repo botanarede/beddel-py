@@ -122,6 +122,7 @@ class TestAllExports:
             "AdapterError",
             "TracingError",
             "AgentError",
+            "ApprovalError",
             "DurableError",
             "MCPError",
             "KitManifestError",

@@ -20,6 +20,7 @@ Range       Prefix    Domain
 800 – 849   CODEX     Codex integration errors (planned)
 850 – 899   BUDGET    Budget enforcement errors
 900 – 949   DURABLE   Durable execution errors
+900 – 919   APPROVAL  Approval gate errors (shared band with DURABLE, distinct prefix)
 950 – 999   MCP       MCP integration errors
 1000 – 1049  AUTH     Remote authentication errors
 650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
@@ -64,6 +65,12 @@ BUDGET_RANGE: tuple[int, int] = (850, 899)
 
 DURABLE_RANGE: tuple[int, int] = (900, 949)
 """Durable execution errors."""
+
+APPROVAL_RANGE: tuple[int, int] = (900, 919)
+"""Approval gate errors — sub-range within the 900-949 numeric band.
+DURABLE_RANGE covers 900-949 for allocation tracking; APPROVAL uses a distinct
+string prefix BEDDEL-APPROVAL- to avoid collision (same pattern as KIT_RANGE
+sharing the 600-699 band with RESOLVE_RANGE)."""
 
 MCP_RANGE: tuple[int, int] = (950, 999)
 """MCP integration errors."""
@@ -337,10 +344,24 @@ DURABLE_CORRUPT_DATA: str = "BEDDEL-DURABLE-902"
 """Event store corrupt data."""
 
 # ---------------------------------------------------------------------------
+# Approval codes  (APPROVAL prefix, 900 sub-range)
+# ---------------------------------------------------------------------------
+
+APPROVAL_TIMEOUT: str = "BEDDEL-APPROVAL-900"
+"""No human response within configured approval window."""
+
+APPROVAL_DENIED: str = "BEDDEL-APPROVAL-901"
+"""Human explicitly denied the action."""
+
+APPROVAL_ESCALATION_FAILED: str = "BEDDEL-APPROVAL-902"
+"""Fallback escalation policy also failed after timeout."""
+
+# ---------------------------------------------------------------------------
 # MCP codes  (MCP prefix, 950 range)
 # ---------------------------------------------------------------------------
 
 MCP_CONNECTION_FAILED: str = "BEDDEL-MCP-600"
+
 """MCP server connection failed."""
 
 MCP_TOOL_NOT_FOUND: str = "BEDDEL-MCP-601"
@@ -515,6 +536,10 @@ ALL_CODES: dict[str, str] = {
     "DURABLE_WRITE_FAILED": DURABLE_WRITE_FAILED,
     "DURABLE_READ_FAILED": DURABLE_READ_FAILED,
     "DURABLE_CORRUPT_DATA": DURABLE_CORRUPT_DATA,
+    # Approval
+    "APPROVAL_TIMEOUT": APPROVAL_TIMEOUT,
+    "APPROVAL_DENIED": APPROVAL_DENIED,
+    "APPROVAL_ESCALATION_FAILED": APPROVAL_ESCALATION_FAILED,
     # MCP
     "MCP_CONNECTION_FAILED": MCP_CONNECTION_FAILED,
     "MCP_TOOL_NOT_FOUND": MCP_TOOL_NOT_FOUND,

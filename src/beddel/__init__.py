@@ -9,6 +9,7 @@ from beddel import error_codes as error_codes  # re-export module
 from beddel.domain.errors import (
     AdapterError,
     AgentError,
+    ApprovalError,
     BeddelError,
     BudgetError,
     DurableError,
@@ -22,9 +23,14 @@ from beddel.domain.errors import (
 from beddel.domain.executor import SequentialStrategy
 from beddel.domain.models import (
     AgentResult,
+    ApprovalPolicy,
+    ApprovalResult,
+    ApprovalStatus,
     BudgetStatus,
     DefaultDependencies,
     InterruptibleContext,
+    RiskLevel,
+    RiskMatrix,
 )
 from beddel.domain.ports import (
     ExecutionDependencies,
@@ -101,6 +107,10 @@ __all__ = [
     "AgentExecPrimitive",
     "AgentError",
     "AgentResult",
+    "ApprovalError",
+    "ApprovalPolicy",
+    "ApprovalResult",
+    "ApprovalStatus",
     "BeddelError",
     "BeddelSSEAdapter",
     "BudgetError",
@@ -132,6 +142,8 @@ __all__ = [
     "ParseError",
     "PrimitiveError",
     "ResolveError",
+    "RiskLevel",
+    "RiskMatrix",
     "SequentialStrategy",
     "SpanT",
     "SSEMCPClient",

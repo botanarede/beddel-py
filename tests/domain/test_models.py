@@ -819,6 +819,9 @@ class TestAllExports:
 
         expected = {
             "AgentResult",
+            "ApprovalPolicy",
+            "ApprovalResult",
+            "ApprovalStatus",
             "BackoffType",
             "BeddelEvent",
             "BudgetStatus",
@@ -833,6 +836,8 @@ class TestAllExports:
             "InterruptibleContext",
             "ParallelConfig",
             "RetryConfig",
+            "RiskLevel",
+            "RiskMatrix",
             "SKIPPED",
             "Step",
             "StrategyType",

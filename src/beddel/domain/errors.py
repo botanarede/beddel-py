@@ -15,6 +15,7 @@ Prefix             Domain
 ``BEDDEL-PRIM-``   Primitive execution
 ``BEDDEL-ADAPT-``  Adapter errors
 ``BEDDEL-AGENT-``  Agent adapter errors
+``BEDDEL-APPROVAL-``  Approval gate errors
 ``BEDDEL-DURABLE-``  Durable execution errors
 ``BEDDEL-MCP-``  MCP integration errors
 ``BEDDEL-KIT-``  Kit manifest errors
@@ -33,6 +34,7 @@ __all__ = [
     "PrimitiveError",
     "AdapterError",
     "AgentError",
+    "ApprovalError",
     "TracingError",
     "DurableError",
     "MCPError",
@@ -175,6 +177,10 @@ class AgentError(BeddelError):
         - ``BEDDEL-AGENT-702``: Agent execution timeout
         - ``BEDDEL-AGENT-703``: Agent stream interrupted
     """
+
+
+class ApprovalError(BeddelError):
+    """Approval gate errors. Error code prefix: BEDDEL-APPROVAL-"""
 
 
 class DurableError(BeddelError):

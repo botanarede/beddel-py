@@ -13,7 +13,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -36,6 +36,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 __all__ = [
     "AgentResult",
+    "ApprovalPolicy",
+    "ApprovalResult",
+    "ApprovalStatus",
     "BackoffType",
     "BeddelEvent",
     "BudgetStatus",
@@ -50,6 +53,8 @@ __all__ = [
     "InterruptibleContext",
     "ParallelConfig",
     "RetryConfig",
+    "RiskLevel",
+    "RiskMatrix",
     "SKIPPED",
     "Step",
     "StrategyType",
@@ -105,6 +110,130 @@ class AgentResult:
     files_changed: list[str]
     usage: dict[str, Any]
     agent_id: str
+
+
+# ---------------------------------------------------------------------------
+# Approval gate domain types  (Epic 6 — HOTL)
+# ---------------------------------------------------------------------------
+
+
+class RiskLevel(StrEnum):
+    """Risk classification for agent actions.
+
+    Used by :class:`RiskMatrix` and :class:`ApprovalPolicy` to determine
+    whether an action requires human approval.
+
+    - ``LOW``: Read-only, fully reversible — auto-approve.
+    - ``MEDIUM``: Write actions, partially reversible — review.
+    - ``HIGH``: Destructive, irreversible — require approval.
+    - ``CRITICAL``: System-level, catastrophic potential — always block.
+    """
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class ApprovalStatus(StrEnum):
+    """Status of an approval request through its lifecycle.
+
+    - ``PENDING``: Awaiting human decision.
+    - ``APPROVED``: Human approved the action.
+    - ``DENIED``: Human denied the action.
+    - ``TIMEOUT``: No response within the configured window.
+    - ``ESCALATED``: Timeout triggered escalation policy.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+    TIMEOUT = "timeout"
+    ESCALATED = "escalated"
+
+
+@dataclass(frozen=True)
+class ApprovalResult:
+    """Immutable result of an approval gate decision.
+
+    Returned by :class:`~beddel.domain.ports.IApprovalGate` after a human
+    (or policy) resolves an approval request.
+
+    Attributes:
+        request_id: Unique identifier for the approval request.
+        status: Current status of the approval.
+        approver: Identity of the approver, or ``None`` for policy decisions.
+        timestamp: Unix timestamp when the decision was made.
+        metadata: Arbitrary metadata attached to the result.
+    """
+
+    request_id: str
+    status: ApprovalStatus
+    approver: str | None = None
+    timestamp: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class ApprovalPolicy(BaseModel):
+    """Configuration for risk-based approval policies.
+
+    Controls which risk levels are auto-approved, timeout behaviour, and
+    escalation strategy when no human responds.
+
+    Attributes:
+        auto_approve_levels: Risk levels that bypass human approval.
+        timeout_seconds: Seconds to wait for human response before escalation.
+        escalation_policy: What to do on timeout — ``"auto-approve"``,
+            ``"auto-deny"``, or ``"delegate"``.
+        risk_matrix: Custom action-to-risk-level overrides.
+    """
+
+    auto_approve_levels: list[RiskLevel] = Field(
+        default_factory=lambda: [RiskLevel.LOW],
+    )
+    timeout_seconds: float = 300.0
+    escalation_policy: str = "auto-deny"
+    risk_matrix: dict[str, RiskLevel] = Field(default_factory=dict)
+
+
+class RiskMatrix:
+    """Classifies actions into risk levels using prefix matching.
+
+    Default patterns follow the stakes × reversibility matrix:
+
+    - ``read*``, ``get*``, ``list*``, ``describe*`` → LOW
+    - ``write*``, ``update*``, ``create*``, ``put*`` → MEDIUM
+    - ``delete*``, ``remove*``, ``drop*``, ``destroy*`` → HIGH
+    - Fallback → MEDIUM
+
+    Custom overrides can be supplied via the ``overrides`` dict, which
+    maps exact action names to risk levels (checked before prefix matching).
+    """
+
+    _LOW_PREFIXES: tuple[str, ...] = ("read", "get", "list", "describe")
+    _MEDIUM_PREFIXES: tuple[str, ...] = ("write", "update", "create", "put")
+    _HIGH_PREFIXES: tuple[str, ...] = ("delete", "remove", "drop", "destroy")
+
+    def __init__(self, overrides: dict[str, RiskLevel] | None = None) -> None:
+        self._overrides: dict[str, RiskLevel] = overrides or {}
+
+    def classify(self, action: str) -> RiskLevel:
+        """Classify an action string into a :class:`RiskLevel`.
+
+        Checks exact overrides first, then prefix matching, then falls
+        back to ``MEDIUM``.
+        """
+        if action in self._overrides:
+            return self._overrides[action]
+
+        lower = action.lower()
+        if lower.startswith(self._LOW_PREFIXES):
+            return RiskLevel.LOW
+        if lower.startswith(self._MEDIUM_PREFIXES):
+            return RiskLevel.MEDIUM
+        if lower.startswith(self._HIGH_PREFIXES):
+            return RiskLevel.HIGH
+        return RiskLevel.MEDIUM
 
 
 class StrategyType(StrEnum):
