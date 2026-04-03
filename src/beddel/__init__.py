@@ -70,6 +70,7 @@ if TYPE_CHECKING:
     from beddel.adapters import InMemoryBudgetEnforcer as InMemoryBudgetEnforcer
     from beddel.adapters import InMemoryCircuitBreaker as InMemoryCircuitBreaker
     from beddel.adapters import InMemoryEventStore as InMemoryEventStore
+    from beddel.adapters import InMemoryMemoryProvider as InMemoryMemoryProvider
     from beddel.adapters import InMemoryStateStore as InMemoryStateStore
     from beddel.adapters import JSONFileStateStore as JSONFileStateStore
     from beddel.adapters import LifecycleHookManager as LifecycleHookManager
@@ -101,6 +102,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "InMemoryApprovalGate": ("beddel.adapters", "InMemoryApprovalGate"),
     "InMemoryBudgetEnforcer": ("beddel.adapters", "InMemoryBudgetEnforcer"),
     "InMemoryEventStore": ("beddel.adapters", "InMemoryEventStore"),
+    "InMemoryMemoryProvider": ("beddel.adapters", "InMemoryMemoryProvider"),
     "InMemoryStateStore": ("beddel.adapters", "InMemoryStateStore"),
     "JSONFileStateStore": ("beddel.adapters", "JSONFileStateStore"),
     "LifecycleHookManager": ("beddel.adapters", "LifecycleHookManager"),
@@ -172,6 +174,7 @@ __all__ = [
     "JSONFileStateStore",
     "InMemoryApprovalGate",
     "InMemoryBudgetEnforcer",
+    "InMemoryMemoryProvider",
     "InMemoryStateStore",
     "InterruptibleContext",
     "LifecycleHookManager",
