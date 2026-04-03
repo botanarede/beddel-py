@@ -52,13 +52,16 @@ Documentation = "https://beddel.com.br/docs"
 beddel = "beddel.cli:main"
 
 [project.optional-dependencies]
-dev = [
+default = [
     "litellm>=1.40,<1.82.7",
     "opentelemetry-api>=1.0",
-    "opentelemetry-sdk>=1.0",
     "httpx>=0.27",
     "fastapi",
     "sse-starlette",
+]
+dev = [
+    "beddel[default]",
+    "opentelemetry-sdk>=1.0",
     "click>=8.0",
     "langfuse",
     "mcp>=1.0",
