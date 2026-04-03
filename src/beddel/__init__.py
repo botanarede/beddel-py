@@ -66,6 +66,7 @@ if TYPE_CHECKING:
     from beddel.adapters import LifecycleHookManager as LifecycleHookManager
     from beddel.adapters import SQLiteEventStore as SQLiteEventStore
     from beddel.adapters import StaticTierRouter as StaticTierRouter
+    from beddel.adapters.pii_middleware import PIIMiddleware as PIIMiddleware
     from beddel.adapters.pii_tokenizer import (
         DEFAULT_PII_PATTERNS as DEFAULT_PII_PATTERNS,
     )
@@ -91,6 +92,10 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "InMemoryApprovalGate": ("beddel.adapters", "InMemoryApprovalGate"),
     "InMemoryBudgetEnforcer": ("beddel.adapters", "InMemoryBudgetEnforcer"),
     "LifecycleHookManager": ("beddel.adapters", "LifecycleHookManager"),
+    "PIIMiddleware": (
+        "beddel.adapters.pii_middleware",
+        "PIIMiddleware",
+    ),
     "RegexPIITokenizer": (
         "beddel.adapters.pii_tokenizer",
         "RegexPIITokenizer",
@@ -157,6 +162,7 @@ __all__ = [
     "NoOpTracer",
     "ParseError",
     "PIIError",
+    "PIIMiddleware",
     "PIIPattern",
     "PrimitiveError",
     "ResolveError",

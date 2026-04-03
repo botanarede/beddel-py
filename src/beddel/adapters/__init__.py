@@ -13,6 +13,7 @@ from beddel.adapters.budget_enforcer import InMemoryBudgetEnforcer
 from beddel.adapters.circuit_breaker import InMemoryCircuitBreaker
 from beddel.adapters.event_store import InMemoryEventStore, SQLiteEventStore
 from beddel.adapters.hooks import LifecycleHookManager
+from beddel.adapters.pii_middleware import PIIMiddleware
 from beddel.adapters.pii_tokenizer import DEFAULT_PII_PATTERNS, RegexPIITokenizer
 from beddel.adapters.tier_router import StaticTierRouter
 
@@ -24,6 +25,7 @@ __all__ = [
     "InMemoryCircuitBreaker",
     "InMemoryEventStore",
     "LifecycleHookManager",
+    "PIIMiddleware",
     "RegexPIITokenizer",
     "SQLiteEventStore",
     "StaticTierRouter",
