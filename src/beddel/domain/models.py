@@ -28,12 +28,30 @@ if TYPE_CHECKING:
         IExecutionStrategy,
         IHookManager,
         ILLMProvider,
+        IPIITokenizer,
         ITierRouter,
         ITracer,
     )
     from beddel.domain.registry import PrimitiveRegistry
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# ---------------------------------------------------------------------------
+# PII tokenization types  (Epic 6 — PII Tokenization)
+# ---------------------------------------------------------------------------
+
+TokenMap = dict[str, str]
+"""Mapping of PII token placeholders to their original values."""
+
+
+@dataclass(frozen=True)
+class PIIPattern:
+    """Definition of a PII pattern for regex-based tokenization."""
+
+    name: str
+    pattern: str
+    replacement_prefix: str
+
 
 __all__ = [
     "AgentResult",
@@ -52,6 +70,7 @@ __all__ = [
     "ExecutionStrategy",
     "GoalConfig",
     "InterruptibleContext",
+    "PIIPattern",
     "ParallelConfig",
     "RetryConfig",
     "RiskLevel",
@@ -60,6 +79,7 @@ __all__ = [
     "Step",
     "StrategyType",
     "TierConfig",
+    "TokenMap",
     "ToolDeclaration",
     "Workflow",
 ]
@@ -516,6 +536,7 @@ class DefaultDependencies:
         "_tier_router",
         "_budget_enforcer",
         "_approval_gate",
+        "_pii_tokenizer",
     )
 
     def __init__(
@@ -537,6 +558,7 @@ class DefaultDependencies:
         tier_router: ITierRouter | None = None,
         budget_enforcer: IBudgetEnforcer | None = None,
         approval_gate: IApprovalGate | None = None,
+        pii_tokenizer: IPIITokenizer | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -555,6 +577,7 @@ class DefaultDependencies:
         self._tier_router = tier_router
         self._budget_enforcer = budget_enforcer
         self._approval_gate = approval_gate
+        self._pii_tokenizer = pii_tokenizer
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -640,6 +663,11 @@ class DefaultDependencies:
     def approval_gate(self) -> IApprovalGate | None:
         """The approval gate for HOTL approval flows, or ``None`` if not configured."""
         return self._approval_gate
+
+    @property
+    def pii_tokenizer(self) -> IPIITokenizer | None:
+        """The PII tokenizer for data protection, or ``None`` if not configured."""
+        return self._pii_tokenizer
 
 
 _log = logging.getLogger(__name__)

@@ -834,6 +834,7 @@ class TestAllExports:
             "ExecutionStrategy",
             "GoalConfig",
             "InterruptibleContext",
+            "PIIPattern",
             "ParallelConfig",
             "RetryConfig",
             "RiskLevel",
@@ -842,6 +843,7 @@ class TestAllExports:
             "Step",
             "StrategyType",
             "TierConfig",
+            "TokenMap",
             "ToolDeclaration",
             "Workflow",
         }

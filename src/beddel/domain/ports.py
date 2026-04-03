@@ -33,6 +33,7 @@ from beddel.domain.models import (
     ExecutionContext,
     RiskLevel,
     Step,
+    TokenMap,
     Workflow,
 )
 
@@ -57,6 +58,7 @@ __all__ = [
     "ILifecycleHook",
     "ILLMProvider",
     "IMCPClient",
+    "IPIITokenizer",
     "IPrimitive",
     "ITierRouter",
     "ITracer",
@@ -163,6 +165,49 @@ class ExecutionDependencies(Protocol):
     @property
     def approval_gate(self) -> IApprovalGate | None:
         """The approval gate for HOTL approval flows, or ``None`` if not configured."""
+        ...
+
+    @property
+    def pii_tokenizer(self) -> IPIITokenizer | None:
+        """The PII tokenizer for data protection, or ``None`` if not configured."""
+        return None
+
+
+class IPIITokenizer(Protocol):
+    """Port interface for PII tokenization.
+
+    Implementations replace sensitive data with tokens before LLM calls
+    and restore original values after responses.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`ICircuitBreaker`, :class:`IEventStore`, :class:`IMCPClient`,
+    and other domain ports.
+
+    [Source: docs/stories/epic-6/story-6.2.md — AC 1]
+    """
+
+    def tokenize(self, text: str) -> tuple[str, TokenMap]:
+        """Replace PII in text with tokens.
+
+        Args:
+            text: Input text potentially containing PII.
+
+        Returns:
+            Tuple of (tokenized_text, token_map) where token_map maps
+            token placeholders to original values.
+        """
+        ...
+
+    def detokenize(self, text: str, token_map: TokenMap) -> str:
+        """Restore original PII values from tokens.
+
+        Args:
+            text: Text containing PII tokens.
+            token_map: Mapping of tokens to original values.
+
+        Returns:
+            Text with tokens replaced by original values.
+        """
         ...
 
 
