@@ -99,7 +99,6 @@ class TestNamespacedRegistration:
         discovery = KitDiscoveryResult(manifests=[manifest], collisions=[])
 
         with (
-            patch("beddel.tools.discover_builtin_tools", return_value={}),
             patch("beddel.tools.kits.discover_kits", return_value=discovery),
             patch(
                 "beddel.tools.kits.load_kit",
@@ -129,7 +128,6 @@ class TestUnnamespacedShortcut:
         discovery = KitDiscoveryResult(manifests=[manifest], collisions=[])
 
         with (
-            patch("beddel.tools.discover_builtin_tools", return_value={}),
             patch("beddel.tools.kits.discover_kits", return_value=discovery),
             patch(
                 "beddel.tools.kits.load_kit",
@@ -170,7 +168,6 @@ class TestCollisionDetection:
         )
 
         with (
-            patch("beddel.tools.discover_builtin_tools", return_value={}),
             patch("beddel.tools.kits.discover_kits", return_value=discovery),
             patch(
                 "beddel.tools.kits.load_kit",
@@ -209,7 +206,6 @@ class TestCollisionDetection:
 
         with (
             caplog.at_level(logging.WARNING, logger="beddel.cli.commands"),
-            patch("beddel.tools.discover_builtin_tools", return_value={}),
             patch("beddel.tools.kits.discover_kits", return_value=discovery),
             patch(
                 "beddel.tools.kits.load_kit",

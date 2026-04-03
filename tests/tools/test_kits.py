@@ -329,9 +329,9 @@ class TestLoadKitErrors:
 
 
 class TestBuildToolRegistry:
-    """Tests for _build_tool_registry() 4-layer merge order."""
+    """Tests for _build_tool_registry() 3-layer merge order."""
 
-    def test_four_layer_merge_order(self) -> None:
+    def test_three_layer_merge_order(self) -> None:
         from beddel.cli.commands import _build_tool_registry
 
         # Create a mock workflow with inline tools
@@ -346,12 +346,6 @@ class TestBuildToolRegistry:
             "cli-only": lambda: "y",
         }
 
-        # Mock discover_builtin_tools to return a known set
-        builtin_tools: dict[str, Callable[..., Any]] = {
-            "shared": lambda: "builtin",
-            "builtin-only": lambda: "y",
-        }
-
         # Mock kit tools
         kit_manifest = _make_manifest(
             name="test-kit",
@@ -360,10 +354,6 @@ class TestBuildToolRegistry:
         discovery_result = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
 
         with (
-            patch(
-                "beddel.tools.discover_builtin_tools",
-                return_value=builtin_tools,
-            ),
             patch(
                 "beddel.tools.kits.discover_kits",
                 return_value=discovery_result,
@@ -378,7 +368,6 @@ class TestBuildToolRegistry:
         # CLI flags win over everything
         assert result["shared"]() == "cli"
         # All layers contribute unique tools
-        assert "builtin-only" in result
         assert "kit-only" in result
         assert "inline-only" in result
         assert "cli-only" in result
@@ -398,10 +387,6 @@ class TestBuildToolRegistry:
 
         with (
             patch(
-                "beddel.tools.discover_builtin_tools",
-                return_value={},
-            ),
-            patch(
                 "beddel.tools.kits.discover_kits",
                 return_value=discovery_result,
             ),
@@ -414,7 +399,8 @@ class TestBuildToolRegistry:
 
         assert result["tool-x"]() == "inline"
 
-    def test_kit_overrides_builtin(self) -> None:
+    def test_kit_tools_are_layer_1(self) -> None:
+        """Kit tools appear in registry as the base layer."""
         from beddel.cli.commands import _build_tool_registry
 
         workflow = MagicMock()
@@ -426,10 +412,6 @@ class TestBuildToolRegistry:
         discovery_result = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
 
         with (
-            patch(
-                "beddel.tools.discover_builtin_tools",
-                return_value={"tool-x": lambda: "builtin"},
-            ),
             patch(
                 "beddel.tools.kits.discover_kits",
                 return_value=discovery_result,
@@ -460,10 +442,6 @@ class TestNoKitsFlag:
 
         with (
             patch(
-                "beddel.tools.discover_builtin_tools",
-                return_value={},
-            ),
-            patch(
                 "beddel.tools.kits.discover_kits",
             ) as mock_discover,
         ):
@@ -471,7 +449,7 @@ class TestNoKitsFlag:
 
         mock_discover.assert_not_called()
 
-    def test_no_kits_still_includes_builtins_and_cli(self) -> None:
+    def test_no_kits_still_includes_inline_and_cli(self) -> None:
         from beddel.cli.commands import _build_tool_registry
 
         workflow = MagicMock()
@@ -479,12 +457,7 @@ class TestNoKitsFlag:
 
         cli_tools: dict[str, Callable[..., Any]] = {"cli": lambda: "y"}
 
-        with patch(
-            "beddel.tools.discover_builtin_tools",
-            return_value={"builtin": lambda: "y"},
-        ):
-            result = _build_tool_registry(workflow, cli_tools, no_kits=True)
+        result = _build_tool_registry(workflow, cli_tools, no_kits=True)
 
-        assert "builtin" in result
         assert "inline" in result
         assert "cli" in result

@@ -1,12 +1,15 @@
 """Backward compatibility tests for kit integration in _build_tool_registry().
 
 Validates:
-- Unnamespaced tool names resolve when no kits loaded (AC #1)
-- Inline YAML tools override kit tools — layer 3 > layer 2 (AC #2)
-- CLI tools override everything — layer 4 > all (AC #3)
-- Deprecation warning when kit tool shadows builtin (AC #5)
+- Empty registry when no_kits=True and no overrides (AC #1)
+- Inline YAML tools override kit tools — layer 2 > layer 1 (AC #2)
+- CLI tools override everything — layer 3 > all (AC #3)
 - Strict mode raises KitManifestError on collision (AC #6)
 - Strict mode does NOT raise when no collisions exist (AC #6)
+
+After Story 6.1.1, ``discover_builtin_tools()`` is no longer called as a
+separate merge layer.  The shadow-builtin deprecation warning (old AC #5)
+no longer applies.
 """
 
 from __future__ import annotations
@@ -53,43 +56,31 @@ def _make_manifest(
 
 
 # ---------------------------------------------------------------------------
-# AC #1: Unnamespaced tool names resolve when no kits loaded
+# AC #1: Empty registry when no_kits and no overrides
 # ---------------------------------------------------------------------------
 
 
-class TestUnnamespacedNoKits:
-    """Unnamespaced tool names still resolve when no_kits=True."""
+class TestNoKitsEmptyRegistry:
+    """Registry is empty when no_kits=True and no overrides given."""
 
-    def test_builtin_tools_resolve_without_kits(self) -> None:
+    def test_empty_registry_without_kits_or_overrides(self) -> None:
         from beddel.cli.commands import _build_tool_registry
 
         workflow = MagicMock()
         workflow.metadata = {}
 
-        builtin_tools: dict[str, Callable[..., Any]] = {
-            "read_file": lambda: "builtin",
-            "shell": lambda: "builtin",
-        }
+        result = _build_tool_registry(workflow, {}, no_kits=True)
 
-        with patch(
-            "beddel.tools.discover_builtin_tools",
-            return_value=builtin_tools,
-        ):
-            result = _build_tool_registry(workflow, {}, no_kits=True)
-
-        assert "read_file" in result
-        assert "shell" in result
-        assert result["read_file"]() == "builtin"
-        assert result["shell"]() == "builtin"
+        assert result == {}
 
 
 # ---------------------------------------------------------------------------
-# AC #2: Inline YAML tools override kit tools (layer 3 > layer 2)
+# AC #2: Inline YAML tools override kit tools (layer 2 > layer 1)
 # ---------------------------------------------------------------------------
 
 
 class TestInlineOverridesKit:
-    """Inline YAML tools (layer 3) override kit tools (layer 2)."""
+    """Inline YAML tools (layer 2) override kit tools (layer 1)."""
 
     def test_inline_yaml_wins_over_kit(self) -> None:
         from beddel.cli.commands import _build_tool_registry
@@ -106,7 +97,6 @@ class TestInlineOverridesKit:
         discovery = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
 
         with (
-            patch("beddel.tools.discover_builtin_tools", return_value={}),
             patch("beddel.tools.kits.discover_kits", return_value=discovery),
             patch(
                 "beddel.tools.kits.load_kit",
@@ -119,14 +109,14 @@ class TestInlineOverridesKit:
 
 
 # ---------------------------------------------------------------------------
-# AC #3: CLI tools override everything (layer 4 > all)
+# AC #3: CLI tools override everything (layer 3 > all)
 # ---------------------------------------------------------------------------
 
 
 class TestCLIOverridesAll:
-    """CLI --tool flags (layer 4) override all other layers."""
+    """CLI --tool flags (layer 3) override all other layers."""
 
-    def test_cli_wins_over_inline_and_kit_and_builtin(self) -> None:
+    def test_cli_wins_over_inline_and_kit(self) -> None:
         from beddel.cli.commands import _build_tool_registry
 
         workflow = MagicMock()
@@ -142,10 +132,6 @@ class TestCLIOverridesAll:
         discovery = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
 
         with (
-            patch(
-                "beddel.tools.discover_builtin_tools",
-                return_value={"shared": lambda: "builtin"},
-            ),
             patch("beddel.tools.kits.discover_kits", return_value=discovery),
             patch(
                 "beddel.tools.kits.load_kit",
@@ -155,41 +141,6 @@ class TestCLIOverridesAll:
             result = _build_tool_registry(workflow, cli_tools)
 
         assert result["shared"]() == "cli"
-
-
-# ---------------------------------------------------------------------------
-# AC #5: Deprecation warning when kit tool shadows builtin
-# ---------------------------------------------------------------------------
-
-
-class TestShadowWarning:
-    """Deprecation warning emitted when a kit tool shadows a builtin."""
-
-    def test_shadow_emits_deprecation_warning(self) -> None:
-        from beddel.cli.commands import _build_tool_registry
-
-        workflow = MagicMock()
-        workflow.metadata = {}
-
-        kit_manifest = _make_manifest(
-            name="my-kit",
-            tools=[KitToolDeclaration(name="read_file", target="json:dumps")],
-        )
-        discovery = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
-
-        with (
-            patch(
-                "beddel.tools.discover_builtin_tools",
-                return_value={"read_file": lambda: "builtin"},
-            ),
-            patch("beddel.tools.kits.discover_kits", return_value=discovery),
-            patch(
-                "beddel.tools.kits.load_kit",
-                return_value={"read_file": lambda: "kit"},
-            ),
-            pytest.warns(DeprecationWarning, match="shadows"),
-        ):
-            _build_tool_registry(workflow, {})
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +171,6 @@ class TestStrictMode:
         discovery = KitDiscoveryResult(manifests=[kit_a, kit_b], collisions=[collision])
 
         with (
-            patch("beddel.tools.discover_builtin_tools", return_value={}),
             patch("beddel.tools.kits.discover_kits", return_value=discovery),
             patch(
                 "beddel.tools.kits.load_kit",
@@ -248,7 +198,6 @@ class TestStrictMode:
         discovery = KitDiscoveryResult(manifests=[kit_manifest], collisions=[])
 
         with (
-            patch("beddel.tools.discover_builtin_tools", return_value={}),
             patch("beddel.tools.kits.discover_kits", return_value=discovery),
             patch(
                 "beddel.tools.kits.load_kit",

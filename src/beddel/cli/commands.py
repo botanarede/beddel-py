@@ -29,7 +29,21 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[5]
 
 
 def _ensure_kit_paths() -> None:
-    """Add all kit ``src/`` directories to ``sys.path`` if not already present."""
+    """Add all kit ``src/`` directories to ``sys.path`` if not already present.
+
+    Scans both bundled kits (``beddel/kits/``) and project-local kits
+    (``<project_root>/kits/``).
+    """
+    from beddel.kits import BUNDLED_KITS_PATH
+
+    # Bundled kits shipped inside the package
+    if BUNDLED_KITS_PATH.is_dir():
+        for kit_dir in BUNDLED_KITS_PATH.iterdir():
+            kit_src = kit_dir / "src"
+            if kit_src.is_dir() and str(kit_src) not in sys.path:
+                sys.path.insert(0, str(kit_src))
+
+    # Project-local kits
     kits_dir = _PROJECT_ROOT / "kits"
     if not kits_dir.is_dir():
         return
@@ -46,13 +60,12 @@ def _build_tool_registry(
     kit_paths: list[Path] | None = None,
     no_kits: bool = False,
 ) -> dict[str, Callable[..., Any]]:
-    """Build a merged tool registry using the 4-layer override pattern.
+    """Build a merged tool registry using the 3-layer override pattern.
 
     Merge order (later layers override earlier ones):
-      1. ``discover_builtin_tools()`` — built-in tools from ``beddel.tools.*``
-      2. Kit tools — discovered via ``discover_kits()`` / ``load_kit()``
-      3. ``workflow.metadata["_inline_tools"]`` — inline YAML ``tools:`` section
-      4. ``parsed_tools`` — CLI ``--tool`` flags
+      1. Kit tools — discovered via ``discover_kits()`` / ``load_kit()``
+      2. ``workflow.metadata["_inline_tools"]`` — inline YAML ``tools:`` section
+      3. ``parsed_tools`` — CLI ``--tool`` flags
 
     Args:
         workflow: Parsed :class:`~beddel.domain.models.Workflow` instance.
@@ -63,14 +76,11 @@ def _build_tool_registry(
     Returns:
         Merged dict mapping tool names to callables.
     """
-    from beddel.tools import discover_builtin_tools
+    merged: dict[str, Callable[..., Any]] = {}
 
-    merged = discover_builtin_tools()
-
-    # Layer 2: kit tools (between builtins and inline YAML)
+    # Layer 1: kit tools
     if not no_kits:
         import os
-        import warnings
 
         from beddel.domain.errors import KitManifestError
         from beddel.domain.kit import KitDiscoveryResult
@@ -90,9 +100,6 @@ def _build_tool_registry(
                 collision.kit_names,
             )
 
-        # Track which builtin names exist before kit merging
-        builtin_names: set[str] = set(merged.keys())
-
         for manifest in discovery_result.manifests:
             kit_name = manifest.kit.name
             try:
@@ -103,14 +110,6 @@ def _build_tool_registry(
             for tool_name, tool_fn in kit_tools.items():
                 # Always register namespaced form
                 merged[f"{kit_name}:{tool_name}"] = tool_fn
-                # Emit deprecation warning when kit tool shadows a builtin
-                if tool_name in builtin_names:
-                    warnings.warn(
-                        f"Kit tool '{kit_name}:{tool_name}' shadows builtin"
-                        f" tool '{tool_name}'. Use namespaced form.",
-                        DeprecationWarning,
-                        stacklevel=2,
-                    )
                 # Register unnamespaced form only when no collision
                 if tool_name not in collided_names:
                     merged[tool_name] = tool_fn

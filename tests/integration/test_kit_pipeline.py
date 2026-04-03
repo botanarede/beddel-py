@@ -254,10 +254,6 @@ class TestNamespaceRegistration:
 
         with (
             patch(
-                "beddel.tools.discover_builtin_tools",
-                return_value={},
-            ),
-            patch(
                 "beddel.tools.kits.discover_kits",
                 return_value=discovery_result,
             ),
