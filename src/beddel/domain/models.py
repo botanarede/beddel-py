@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         IExecutionStrategy,
         IHookManager,
         ILLMProvider,
+        IMemoryProvider,
         IPIITokenizer,
         IStateStore,
         ITierRouter,
@@ -68,12 +69,14 @@ __all__ = [
     "CircuitBreakerConfig",
     "CircuitState",
     "DefaultDependencies",
+    "Episode",
     "ErrorSemantics",
     "EventType",
     "ExecutionContext",
     "ExecutionStrategy",
     "GoalConfig",
     "InterruptibleContext",
+    "MemoryEntry",
     "PIIPattern",
     "ParallelConfig",
     "RetryConfig",
@@ -87,6 +90,46 @@ __all__ = [
     "ToolDeclaration",
     "Workflow",
 ]
+
+
+@dataclass(frozen=True)
+class MemoryEntry:
+    """A single entry returned from a memory search.
+
+    Attributes:
+        key: The memory key.
+        value: The stored value.
+        score: Relevance score from the search (0.0–1.0).
+        metadata: Arbitrary metadata attached to the entry.
+    """
+
+    key: str
+    value: Any
+    score: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Episode:
+    """A recorded workflow execution episode for episodic memory.
+
+    Attributes:
+        workflow_id: Identifier of the workflow that produced this episode.
+        episode_id: Unique identifier for this episode.
+        inputs: Inputs provided to the workflow execution.
+        outputs: Outputs produced by the workflow execution.
+        duration_ms: Execution duration in milliseconds.
+        created_at: Unix timestamp when the episode was created.
+        metadata: Arbitrary metadata attached to the episode.
+    """
+
+    workflow_id: str
+    episode_id: str
+    inputs: dict[str, Any]
+    outputs: dict[str, Any]
+    duration_ms: float
+    created_at: float
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class _Skipped:
@@ -524,6 +567,8 @@ class DefaultDependencies:
             or ``None`` if not configured.  Defaults to ``None``.
         state_store: The state store for checkpoint persistence,
             or ``None`` if not configured.  Defaults to ``None``.
+        memory_provider: The memory provider for episodic memory,
+            or ``None`` if not configured.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -546,6 +591,7 @@ class DefaultDependencies:
         "_approval_gate",
         "_pii_tokenizer",
         "_state_store",
+        "_memory_provider",
     )
 
     def __init__(
@@ -569,6 +615,7 @@ class DefaultDependencies:
         approval_gate: IApprovalGate | None = None,
         pii_tokenizer: IPIITokenizer | None = None,
         state_store: IStateStore | None = None,
+        memory_provider: IMemoryProvider | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -589,6 +636,7 @@ class DefaultDependencies:
         self._approval_gate = approval_gate
         self._pii_tokenizer = pii_tokenizer
         self._state_store = state_store
+        self._memory_provider = memory_provider
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -684,6 +732,11 @@ class DefaultDependencies:
     def state_store(self) -> IStateStore | None:
         """The state store for checkpoint persistence, or ``None`` if not configured."""
         return self._state_store
+
+    @property
+    def memory_provider(self) -> IMemoryProvider | None:
+        """The memory provider for episodic memory, or ``None`` if not configured."""
+        return self._memory_provider
 
 
 _log = logging.getLogger(__name__)

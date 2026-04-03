@@ -31,7 +31,9 @@ from beddel.domain.models import (
     AgentResult,
     ApprovalResult,
     ApprovalStatus,
+    Episode,
     ExecutionContext,
+    MemoryEntry,
     RiskLevel,
     Step,
     TokenMap,
@@ -55,6 +57,7 @@ __all__ = [
     "IContextReducer",
     "IEventStore",
     "IExecutionStrategy",
+    "IMemoryProvider",
     "IStateStore",
     "IHookManager",
     "ILifecycleHook",
@@ -177,6 +180,11 @@ class ExecutionDependencies(Protocol):
     @property
     def state_store(self) -> IStateStore | None:
         """The state store for checkpoint persistence, or ``None`` if not configured."""
+        return None
+
+    @property
+    def memory_provider(self) -> IMemoryProvider | None:
+        """The memory provider for episodic memory, or ``None`` if not configured."""
         return None
 
 
@@ -988,6 +996,64 @@ class IStateStore(Protocol):
 
         Args:
             workflow_id: Identifier of the workflow execution to clear.
+        """
+        ...
+
+
+class IMemoryProvider(Protocol):
+    """Contract for episodic memory provider implementations.
+
+    Provides key-value get/set, semantic search, and episode listing
+    for workflow-level episodic memory.  Implementations may store data
+    in-memory, in ChromaDB, qmd, or other backends.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`IStateStore`, :class:`IPIITokenizer`, and other domain ports.
+
+    [Source: docs/stories/epic-6/story-6.4.md — AC 1]
+    """
+
+    async def get(self, key: str) -> Any | None:
+        """Retrieve a value by key.
+
+        Args:
+            key: The memory key to look up.
+
+        Returns:
+            The stored value, or ``None`` if the key does not exist.
+        """
+        ...
+
+    async def set(self, key: str, value: Any) -> None:
+        """Store a value by key.
+
+        Args:
+            key: The memory key.
+            value: The value to store.
+        """
+        ...
+
+    async def search(self, query: str, top_k: int = 5) -> list[MemoryEntry]:
+        """Search memory for entries matching a query.
+
+        Args:
+            query: The search query string.
+            top_k: Maximum number of results to return.
+
+        Returns:
+            List of :class:`~beddel.domain.models.MemoryEntry` results
+            ranked by relevance score.
+        """
+        ...
+
+    async def list_episodes(self, workflow_id: str) -> list[Episode]:
+        """List recorded episodes for a workflow.
+
+        Args:
+            workflow_id: Identifier of the workflow to list episodes for.
+
+        Returns:
+            List of :class:`~beddel.domain.models.Episode` instances.
         """
         ...
 

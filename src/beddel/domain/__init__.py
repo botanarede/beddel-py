@@ -32,6 +32,7 @@ from beddel.domain.ports import (
     ILifecycleHook,
     ILLMProvider,
     IMCPClient,
+    IMemoryProvider,
     IPrimitive,
     StepRunner,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "ILifecycleHook",
     "ILLMProvider",
     "IMCPClient",
+    "IMemoryProvider",
     "IPrimitive",
     "ParseError",
     "PrimitiveError",
