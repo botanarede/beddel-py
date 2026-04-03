@@ -7,6 +7,7 @@ library — only stdlib, ``abc``, typing, and domain models are allowed.
 Ports defined here:
 
 - :class:`IAgentAdapter` — contract for external agent backend adapters.
+- :class:`IApprovalGate` — contract for HOTL approval gate implementations.
 - :class:`IExecutionStrategy` — contract for workflow execution strategies.
 - :class:`IPrimitive` — contract for all workflow primitives.
 - :class:`ILLMProvider` — contract for LLM provider adapters.
@@ -25,7 +26,15 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, runtime_checkable
 
-from beddel.domain.models import AgentResult, ExecutionContext, Step, Workflow
+from beddel.domain.models import (
+    AgentResult,
+    ApprovalResult,
+    ApprovalStatus,
+    ExecutionContext,
+    RiskLevel,
+    Step,
+    Workflow,
+)
 
 SpanT = TypeVar("SpanT")
 """Type variable for the opaque span handle used by :class:`ITracer` implementations."""
@@ -38,6 +47,7 @@ __all__ = [
     "SpanT",
     "ExecutionDependencies",
     "IAgentAdapter",
+    "IApprovalGate",
     "IBudgetEnforcer",
     "ICircuitBreaker",
     "IContextReducer",
@@ -148,6 +158,64 @@ class ExecutionDependencies(Protocol):
     @property
     def budget_enforcer(self) -> IBudgetEnforcer | None:
         """The budget enforcer for cost controls, or ``None`` if not configured."""
+        ...
+
+    @property
+    def approval_gate(self) -> IApprovalGate | None:
+        """The approval gate for HOTL approval flows, or ``None`` if not configured."""
+        ...
+
+
+class IApprovalGate(Protocol):
+    """Contract for human-on-the-loop (HOTL) approval gate implementations.
+
+    Provides the interface for requesting human approval of high-risk agent
+    actions and checking the status of pending approval requests.  The
+    executor consults the approval gate before executing steps that exceed
+    the auto-approve risk threshold.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`IEventStore`, :class:`ICircuitBreaker`, :class:`IBudgetEnforcer`,
+    and other domain ports.
+
+    [Source: docs/stories/epic-6/story-6.1.md — AC 1]
+    """
+
+    async def request_approval(self, action: str, risk_level: RiskLevel) -> ApprovalResult:
+        """Request human approval for an agent action.
+
+        Submits an approval request for the given action at the specified
+        risk level.  Depending on the implementation, this may block until
+        a human responds, auto-approve based on policy, or return a pending
+        result for later polling via :meth:`check_status`.
+
+        Args:
+            action: Description of the action requiring approval
+                (e.g. ``"delete_database"``, ``"write_config"``).
+            risk_level: The classified risk level of the action.
+
+        Returns:
+            An :class:`~beddel.domain.models.ApprovalResult` containing the
+            approval decision, request identifier, and metadata.
+        """
+        ...
+
+    async def check_status(self, request_id: str) -> ApprovalStatus:
+        """Check the current status of a pending approval request.
+
+        Polls the approval backend for the latest status of a previously
+        submitted request.  Used in the CIBA async pattern where the agent
+        continues low-risk work while awaiting approval for high-risk actions.
+
+        Args:
+            request_id: The unique identifier returned in the
+                :class:`~beddel.domain.models.ApprovalResult` from
+                :meth:`request_approval`.
+
+        Returns:
+            The current :class:`~beddel.domain.models.ApprovalStatus` of
+            the request.
+        """
         ...
 
 

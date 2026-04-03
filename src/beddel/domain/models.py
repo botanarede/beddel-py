@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from beddel.domain.ports import (
         IAgentAdapter,
+        IApprovalGate,
         IBudgetEnforcer,
         ICircuitBreaker,
         IContextReducer,
@@ -493,6 +494,8 @@ class DefaultDependencies:
             or ``None`` if not configured.  Defaults to ``None``.
         budget_enforcer: The budget enforcer for cost controls,
             or ``None`` if not configured.  Defaults to ``None``.
+        approval_gate: The approval gate for HOTL approval flows,
+            or ``None`` if not configured.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -512,6 +515,7 @@ class DefaultDependencies:
         "_mcp_registry",
         "_tier_router",
         "_budget_enforcer",
+        "_approval_gate",
     )
 
     def __init__(
@@ -532,6 +536,7 @@ class DefaultDependencies:
         mcp_registry: dict[str, Any] | None = None,
         tier_router: ITierRouter | None = None,
         budget_enforcer: IBudgetEnforcer | None = None,
+        approval_gate: IApprovalGate | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -549,6 +554,7 @@ class DefaultDependencies:
         self._mcp_registry = mcp_registry
         self._tier_router = tier_router
         self._budget_enforcer = budget_enforcer
+        self._approval_gate = approval_gate
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -629,6 +635,11 @@ class DefaultDependencies:
     def budget_enforcer(self) -> IBudgetEnforcer | None:
         """The budget enforcer for cost controls, or ``None`` if not configured."""
         return self._budget_enforcer
+
+    @property
+    def approval_gate(self) -> IApprovalGate | None:
+        """The approval gate for HOTL approval flows, or ``None`` if not configured."""
+        return self._approval_gate
 
 
 _log = logging.getLogger(__name__)

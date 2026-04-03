@@ -35,6 +35,7 @@ from beddel.domain.models import (
 from beddel.domain.ports import (
     ExecutionDependencies,
     IAgentAdapter,
+    IApprovalGate,
     IBudgetEnforcer,
     ICircuitBreaker,
     IEventStore,
@@ -124,6 +125,7 @@ __all__ = [
     "ExecutionError",
     "GoalOrientedStrategy",
     "IAgentAdapter",
+    "IApprovalGate",
     "IBudgetEnforcer",
     "ICircuitBreaker",
     "IEventStore",
