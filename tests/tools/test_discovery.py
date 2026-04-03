@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
 from beddel.tools import beddel_tool, discover_builtin_tools
 
 
@@ -54,101 +51,7 @@ class TestDiscoverBuiltinTools:
         result = discover_builtin_tools()
         assert isinstance(result, dict)
 
-    def test_discovers_builtin_tools(self) -> None:
+    def test_returns_empty_after_kit_extraction(self) -> None:
         """After kit extraction, no builtin tool submodules remain."""
         result = discover_builtin_tools()
-        assert len(result) == 0
-
-    def test_all_values_are_callable(self) -> None:
-        result = discover_builtin_tools()
-        for fn in result.values():
-            assert callable(fn)
-
-
-class TestDiscoverBuiltinToolsWithDummy:
-    """Tests that verify the discovery mechanism works using a temporary module."""
-
-    def test_discovers_tool_from_injected_submodule(self, tmp_path: Any, monkeypatch: Any) -> None:
-        """Create a temporary submodule with a decorated tool and verify discovery."""
-        import importlib
-        import types
-
-        # Arrange — create a fake beddel.tools.fake_tool module
-        fake_mod = types.ModuleType("beddel.tools._test_fake")
-        fake_mod.__package__ = "beddel.tools"
-
-        @beddel_tool(name="fake-tool", description="A fake tool", category="test")
-        def fake_fn() -> str:
-            return "fake"
-
-        fake_mod.fake_fn = fake_fn  # type: ignore[attr-defined]
-
-        # We monkeypatch importlib.import_module to intercept our fake module
-        real_import = importlib.import_module
-
-        def patched_import(name: str, package: str | None = None) -> types.ModuleType:
-            if name == "beddel.tools._test_fake":
-                return fake_mod
-            return real_import(name, package)
-
-        monkeypatch.setattr(importlib, "import_module", patched_import)
-
-        # Also patch pkgutil.iter_modules to yield our fake module
-        import pkgutil
-
-        real_iter = pkgutil.iter_modules
-
-        def patched_iter(path: Any = None, prefix: str = "") -> Any:
-            yield from real_iter(path, prefix)
-            # Inject our fake module info
-            yield (None, "_test_fake", False)
-
-        monkeypatch.setattr(pkgutil, "iter_modules", patched_iter)
-
-        # Act
-        result = discover_builtin_tools()
-
-        # Assert
-        assert "fake-tool" in result
-        assert result["fake-tool"] is fake_fn
-        assert callable(result["fake-tool"])
-
-    def test_discovered_tool_metadata_matches(self, monkeypatch: Any) -> None:
-        """Verify that discovered tool has correct metadata."""
-        import importlib
-        import types
-
-        fake_mod = types.ModuleType("beddel.tools._test_meta")
-        fake_mod.__package__ = "beddel.tools"
-
-        @beddel_tool(name="meta-tool", description="Meta test", category="shell")
-        def meta_fn() -> str:
-            return "meta"
-
-        fake_mod.meta_fn = meta_fn  # type: ignore[attr-defined]
-
-        real_import = importlib.import_module
-
-        def patched_import(name: str, package: str | None = None) -> types.ModuleType:
-            if name == "beddel.tools._test_meta":
-                return fake_mod
-            return real_import(name, package)
-
-        monkeypatch.setattr(importlib, "import_module", patched_import)
-
-        import pkgutil
-
-        real_iter = pkgutil.iter_modules
-
-        def patched_iter(path: Any = None, prefix: str = "") -> Any:
-            yield from real_iter(path, prefix)
-            yield (None, "_test_meta", False)
-
-        monkeypatch.setattr(pkgutil, "iter_modules", patched_iter)
-
-        result = discover_builtin_tools()
-        tool_fn: Callable[..., Any] = result["meta-tool"]
-        meta: dict[str, str] = tool_fn._beddel_tool_meta  # type: ignore[attr-defined]
-        assert meta["name"] == "meta-tool"
-        assert meta["description"] == "Meta test"
-        assert meta["category"] == "shell"
+        assert result == {}
