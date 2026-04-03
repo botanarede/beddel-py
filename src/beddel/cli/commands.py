@@ -842,10 +842,11 @@ def kit_list() -> None:
         click.echo("No kits found.")
         return
 
-    rows: list[tuple[str, str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str]] = []
     for manifest in result.manifests:
         name = manifest.kit.name
         version = manifest.kit.version
+        source = manifest.source
         path = str(manifest.root_path)
         try:
             load_kit(manifest)
@@ -854,9 +855,9 @@ def kit_list() -> None:
             status = "missing-deps"
         except (KitManifestError, Exception):
             status = "error"
-        rows.append((name, version, status, path))
+        rows.append((name, version, source, status, path))
 
-    headers = ("NAME", "VERSION", "STATUS", "PATH")
+    headers = ("NAME", "VERSION", "SOURCE", "STATUS", "PATH")
     widths = [max(len(h), max(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
     fmt = "  ".join(f"{{:<{w}}}" for w in widths)
     click.echo(fmt.format(*headers))
