@@ -82,7 +82,7 @@ def _build_tool_registry(
     if not no_kits:
         import os
 
-        from beddel.domain.errors import KitManifestError
+        from beddel.domain.errors import KitDependencyError, KitManifestError
         from beddel.domain.kit import KitDiscoveryResult
         from beddel.error_codes import KIT_RESOLUTION_AMBIGUOUS
         from beddel.tools.kits import discover_kits, load_kit
@@ -104,6 +104,13 @@ def _build_tool_registry(
             kit_name = manifest.kit.name
             try:
                 kit_tools = load_kit(manifest)
+            except KitDependencyError as exc:
+                logger.warning(
+                    "BEDDEL-KIT-658: Kit '%s' skipped — missing dependencies: %s",
+                    kit_name,
+                    exc.missing_packages,
+                )
+                continue
             except KitManifestError as exc:
                 logger.warning("Skipping kit '%s': %s", kit_name, exc.message)
                 continue
