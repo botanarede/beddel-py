@@ -17,6 +17,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+from beddel.domain.errors import StateError
+from beddel.error_codes import STATE_CORRUPTED
+
 if TYPE_CHECKING:
     from beddel.domain.ports import (
         IAgentAdapter,
@@ -731,6 +734,51 @@ class InterruptibleContext:
         self.suspended = data.get("suspended", False)
         if "event_store_position" in data:
             self.metadata["_event_store_position"] = data["event_store_position"]  # type: ignore[attr-defined]
+
+    async def checkpoint(self, state_store: IStateStore | None = None) -> None:
+        """Serialize context state and optionally persist via a state store.
+
+        Convenience wrapper around :meth:`serialize` + ``state_store.save()``.
+        Callers can also invoke those two methods directly for more control.
+
+        Args:
+            state_store: Optional state store to persist the checkpoint.
+                If ``None``, the method only serializes (no persistence).
+        """
+        serialized = self.serialize()
+        if state_store is not None:
+            workflow_id: str = getattr(self, "workflow_id", "")
+            await state_store.save(workflow_id, serialized)
+
+    async def restore_from_store(self, workflow_id: str, state_store: IStateStore) -> bool:
+        """Load persisted state from a store and restore context.
+
+        Convenience wrapper around ``state_store.load()`` + :meth:`restore`.
+
+        Args:
+            workflow_id: Identifier of the workflow whose state to load.
+            state_store: The state store to load from.
+
+        Returns:
+            ``True`` if state was found and restored, ``False`` if no
+            checkpoint exists for the given *workflow_id*.
+
+        Raises:
+            StateError: If the loaded state is corrupted (missing required keys).
+        """
+        loaded = await state_store.load(workflow_id)
+        if loaded is None:
+            return False
+        # Validate required keys before restoring
+        required_keys = {"workflow_id", "inputs", "step_results", "metadata"}
+        if not required_keys.issubset(loaded.keys()):
+            missing = required_keys - loaded.keys()
+            raise StateError(
+                STATE_CORRUPTED,
+                f"Corrupted state for workflow {workflow_id!r}: missing keys {missing}",
+            )
+        self.restore(loaded)
+        return True
 
 
 class ExecutionContext(InterruptibleContext, BaseModel):
