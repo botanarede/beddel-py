@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import logging
 from typing import Any
 
@@ -206,10 +207,11 @@ class LifecycleHookManager(IHookManager):
     async def on_decision(self, decision: Decision) -> None:
         """Dispatch decision event to all registered hooks.
 
-        Tries the new ``Decision`` dataclass signature first.  If a hook
-        still uses the old 3-arg ``(decision, alternatives, rationale)``
-        signature, the resulting ``TypeError`` is caught and the call is
-        retried with the legacy positional arguments.
+        Uses :func:`inspect.signature` to detect whether each hook uses the
+        new single-``Decision`` signature or the legacy 3-arg
+        ``(intent, options, reasoning)`` signature, then calls accordingly.
+        This avoids a broad ``except TypeError`` that would swallow
+        legitimate ``TypeError`` exceptions raised inside hook bodies.
 
         Args:
             decision: The structured :class:`Decision` record.
@@ -217,17 +219,17 @@ class LifecycleHookManager(IHookManager):
         async with self._lock:
             hooks = list(self._hooks)
         for hook in hooks:
-            try:
-                if asyncio.iscoroutinefunction(hook.on_decision):
-                    await hook.on_decision(decision)
-                else:
-                    hook.on_decision(decision)  # type: ignore[unused-coroutine]
-            except TypeError:
-                # Backward-compatible fallback for old 3-arg hooks
+            # Detect legacy 3-arg signature via inspect (before calling)
+            sig = inspect.signature(hook.on_decision)
+            params = [p for p in sig.parameters if p != "self"]
+            uses_legacy = len(params) >= 3
+
+            if uses_legacy:
+                # Old-style hook: decompose Decision into positional args
+                intent = decision.intent
+                options = decision.options
+                reasoning = decision.reasoning
                 try:
-                    intent = decision.intent
-                    options = decision.options
-                    reasoning = decision.reasoning
                     if asyncio.iscoroutinefunction(hook.on_decision):
                         await hook.on_decision(intent, options, reasoning)  # type: ignore[call-arg,arg-type]
                     else:
@@ -238,12 +240,19 @@ class LifecycleHookManager(IHookManager):
                         type(hook).__name__,
                         exc_info=True,
                     )
-            except Exception:
-                logger.warning(
-                    "Lifecycle hook %s.on_decision raised (ignored)",
-                    type(hook).__name__,
-                    exc_info=True,
-                )
+            else:
+                # New-style hook: pass Decision directly
+                try:
+                    if asyncio.iscoroutinefunction(hook.on_decision):
+                        await hook.on_decision(decision)
+                    else:
+                        hook.on_decision(decision)  # type: ignore[unused-coroutine]
+                except Exception:
+                    logger.warning(
+                        "Lifecycle hook %s.on_decision raised (ignored)",
+                        type(hook).__name__,
+                        exc_info=True,
+                    )
 
     async def on_budget_threshold(
         self, workflow_id: str, cumulative_cost: float, threshold: float

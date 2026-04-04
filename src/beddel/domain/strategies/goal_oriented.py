@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from beddel.domain.errors import ExecutionError
 from beddel.domain.models import BackoffType, Decision, ExecutionContext, Workflow
@@ -146,7 +148,7 @@ class GoalOrientedStrategy:
                 try:
                     await hooks.on_decision(
                         Decision(
-                            id="",
+                            id=str(uuid4()),
                             intent=decision_intent,
                             options=["goal_achieved", "goal_retry"],
                             chosen=decision_intent,
@@ -154,6 +156,9 @@ class GoalOrientedStrategy:
                                 f"Attempt {attempt}/{self._max_attempts}: "
                                 f"goal_met={goal_met}, resolved={resolved!r}"
                             ),
+                            step_id=context.current_step_id,
+                            workflow_id=context.workflow_id,
+                            timestamp=datetime.now(UTC).isoformat(),
                         ),
                     )
                 except Exception:

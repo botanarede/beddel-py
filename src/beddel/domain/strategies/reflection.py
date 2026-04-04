@@ -18,7 +18,9 @@ via structural subtyping (Protocol conformance).
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from beddel.domain.errors import ExecutionError
 from beddel.domain.models import Decision, ExecutionContext, Workflow
@@ -154,13 +156,16 @@ class ReflectionStrategy:
                 try:
                     await hooks.on_decision(
                         Decision(
-                            id="",
+                            id=str(uuid4()),
                             intent="reflection_converged" if converged else "reflection_continue",
                             options=["converge", "continue"],
                             chosen="converge" if converged else "continue",
                             reasoning=f"Iteration {iteration}/{self._max_iterations}: "
                             f"{'converged' if converged else 'not converged'} "
                             f"via {self._algorithm}",
+                            step_id=context.current_step_id,
+                            workflow_id=context.workflow_id,
+                            timestamp=datetime.now(UTC).isoformat(),
                         ),
                     )
                 except Exception:

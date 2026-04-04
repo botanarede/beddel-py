@@ -359,6 +359,10 @@ class TestReflectionOnDecision:
         # All calls have correct alternatives
         for d in recorder.decisions:
             assert d.options == ["converge", "continue"]
+            # Decision identity fields are populated
+            assert len(d.id) > 0
+            assert d.workflow_id == "wf-test"
+            assert d.timestamp is not None
         # Rationale contains iteration number and algorithm
         assert "1/5" in recorder.decisions[0].reasoning
         assert "exact-match" in recorder.decisions[0].reasoning
@@ -384,6 +388,9 @@ class TestReflectionOnDecision:
         await strategy.execute(wf, ctx, runner)
 
         assert recorder.decisions[-1].intent == "reflection_converged"
+        assert len(recorder.decisions[-1].id) > 0
+        assert recorder.decisions[-1].workflow_id == "wf-test"
+        assert recorder.decisions[-1].timestamp is not None
 
     @pytest.mark.asyncio
     async def test_reflection_on_decision_no_hooks(self) -> None:

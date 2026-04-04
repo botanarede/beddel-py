@@ -296,6 +296,10 @@ class TestOnDecisionHookFired:
         # All calls have correct alternatives
         for d in recorder.decisions:
             assert d.options == ["goal_achieved", "goal_retry"]
+            # Decision identity fields are populated
+            assert len(d.id) > 0
+            assert d.workflow_id == "wf-test"
+            assert d.timestamp is not None
         # Rationale contains attempt info
         assert "1/5" in recorder.decisions[0].reasoning
         assert "2/5" in recorder.decisions[1].reasoning
