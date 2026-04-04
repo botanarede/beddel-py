@@ -1092,7 +1092,12 @@ class IKnowledgeProvider(Protocol):
 
         Returns:
             List of :class:`~beddel.domain.models.KnowledgeEntry` results
-            ranked by confidence score.
+            ranked by confidence score (0.0–1.0, where 1.0 is an exact
+            match and 0.0 is no relevance).  Implementations MUST return
+            results sorted by confidence descending.  The confidence
+            semantics are adapter-specific (e.g. substring ratio for YAML,
+            cosine similarity for vector backends) but MUST be normalized
+            to the 0.0–1.0 range for cross-adapter comparability.
         """
         ...
 
