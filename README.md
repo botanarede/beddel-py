@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/hero-banner-github.png" alt="Beddel — Declarative YAML-based AI Workflow Engine" width="100%">
+  <img src="assets/hero-banner-github-py.png" alt="Beddel — Declarative YAML-based AI Workflow Engine" width="100%">
 </p>
 
 [![PyPI version](https://img.shields.io/pypi/v/beddel.svg)](https://pypi.org/project/beddel/)
