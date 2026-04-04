@@ -768,6 +768,7 @@ class DefaultDependencies:
         "_memory_provider",
         "_knowledge_provider",
         "_decision_store",
+        "_kit_manifests",
     )
 
     def __init__(
@@ -794,6 +795,7 @@ class DefaultDependencies:
         memory_provider: IMemoryProvider | None = None,
         knowledge_provider: IKnowledgeProvider | None = None,
         decision_store: IDecisionStore | None = None,
+        kit_manifests: list[Any] | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -817,6 +819,7 @@ class DefaultDependencies:
         self._memory_provider = memory_provider
         self._knowledge_provider = knowledge_provider
         self._decision_store = decision_store
+        self._kit_manifests = kit_manifests
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -927,6 +930,11 @@ class DefaultDependencies:
     def decision_store(self) -> IDecisionStore | None:
         """The decision store for decision capture, or ``None`` if not configured."""
         return self._decision_store
+
+    @property
+    def kit_manifests(self) -> list[Any] | None:
+        """Available kit manifests for skill resolution, or ``None``."""
+        return self._kit_manifests
 
 
 _log = logging.getLogger(__name__)

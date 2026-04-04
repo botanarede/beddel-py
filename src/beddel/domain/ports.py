@@ -206,6 +206,11 @@ class ExecutionDependencies(Protocol):
         """The decision store for decision capture, or ``None`` if not configured."""
         return None
 
+    @property
+    def kit_manifests(self) -> list[Any] | None:
+        """Available kit manifests for skill resolution, or ``None``."""
+        return None
+
 
 class IPIITokenizer(Protocol):
     """Port interface for PII tokenization.

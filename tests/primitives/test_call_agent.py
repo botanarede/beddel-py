@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from _helpers import make_context
 
 from beddel.constants import CALL_DEPTH_KEY
-from beddel.domain.errors import PrimitiveError
+from beddel.domain.errors import PrimitiveError, SkillError
 from beddel.domain.models import (
+    DefaultDependencies,
     ExecutionContext,
     Step,
     Workflow,
@@ -595,3 +598,351 @@ class TestPublicAPIUsage:
         assert private_refs == [], (
             "call_agent.py still accesses private _execute_step:\n" + "\n".join(private_refs)
         )
+
+
+# ---------------------------------------------------------------------------
+# Tests: Skill invocation via call-agent (Story 7.4, Task 3)
+# ---------------------------------------------------------------------------
+
+
+def _make_kit_manifest(
+    *,
+    kit_name: str = "software-development-kit",
+    kit_version: str = "0.2.0",
+    workflow_name: str = "create-epic",
+    workflow_path: str = "workflows/create-epic.yaml",
+    root_path: Path | None = None,
+) -> Any:
+    """Build a mock KitManifest for skill resolution tests."""
+    wf_decl = MagicMock()
+    wf_decl.name = workflow_name
+    wf_decl.path = workflow_path
+
+    kit = MagicMock()
+    kit.name = kit_name
+    kit.version = kit_version
+    kit.workflows = [wf_decl]
+
+    manifest = MagicMock()
+    manifest.kit = kit
+    manifest.root_path = root_path or Path("/kits/sdk")
+    return manifest
+
+
+def _make_skill_context(
+    *,
+    kit_manifests: list[Any] | None = None,
+    workflow_loader: Callable[[str], Any] | None = None,
+    registry: PrimitiveRegistry | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> ExecutionContext:
+    """Build an ExecutionContext with kit_manifests for skill tests."""
+    ctx = ExecutionContext(
+        workflow_id="wf-parent",
+        inputs={},
+        current_step_id="step-1",
+        metadata=metadata or {},
+    )
+    ctx.deps = DefaultDependencies(
+        workflow_loader=workflow_loader,
+        registry=registry,
+        kit_manifests=kit_manifests,
+    )
+    return ctx
+
+
+class TestSkillInvocationHappyPath:
+    """Tests for successful skill invocation via call-agent."""
+
+    async def test_skill_resolves_and_executes_sub_workflow(self) -> None:
+        """Verify skill config resolves to kit workflow and executes it."""
+        recorder = _RecorderPrimitive(result="skill-result")
+        registry = _make_registry(("echo", recorder))
+        child_wf = _make_workflow(
+            steps=[Step(id="s1", primitive="echo", config={"msg": "from-skill"})],
+        )
+        manifest = _make_kit_manifest()
+        loader = lambda wf_id: child_wf  # noqa: E731
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=loader,
+            registry=registry,
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "create-epic",
+                "version": ">=0.1.0",
+            },
+        }
+        result = await CallAgentPrimitive().execute(config, ctx)
+
+        assert result == {"s1": "skill-result"}
+
+    async def test_skill_loader_receives_resolved_path(self) -> None:
+        """Verify workflow_loader is called with the resolved path string."""
+        recorder = _RecorderPrimitive(result="ok")
+        registry = _make_registry(("echo", recorder))
+        child_wf = _make_workflow(
+            steps=[Step(id="s1", primitive="echo", config={})],
+        )
+        calls: list[str] = []
+
+        def tracking_loader(wf_id: str) -> Workflow:
+            calls.append(wf_id)
+            return child_wf
+
+        manifest = _make_kit_manifest(root_path=Path("/kits/sdk"))
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=tracking_loader,
+            registry=registry,
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "create-epic",
+                "version": ">=0.1.0",
+            },
+        }
+        await CallAgentPrimitive().execute(config, ctx)
+
+        assert len(calls) == 1
+        assert calls[0] == str(Path("/kits/sdk/workflows/create-epic.yaml"))
+
+    async def test_skill_passes_inputs_to_child(self) -> None:
+        """Verify inputs from config are passed to the skill sub-workflow."""
+        recorder = _RecorderPrimitive(result="ok")
+        registry = _make_registry(("echo", recorder))
+        child_wf = _make_workflow(
+            steps=[Step(id="s1", primitive="echo", config={})],
+        )
+        manifest = _make_kit_manifest()
+        loader = lambda wf_id: child_wf  # noqa: E731
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=loader,
+            registry=registry,
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "create-epic",
+                "version": ">=0.1.0",
+            },
+            "inputs": {"name": "test-epic"},
+        }
+        await CallAgentPrimitive().execute(config, ctx)
+
+        _, child_ctx = recorder.calls[0]
+        assert child_ctx.inputs["name"] == "test-epic"
+
+    async def test_skill_child_inherits_kit_manifests(self) -> None:
+        """Verify child context inherits kit_manifests for nested skill calls."""
+        recorder = _RecorderPrimitive(result="ok")
+        registry = _make_registry(("echo", recorder))
+        child_wf = _make_workflow(
+            steps=[Step(id="s1", primitive="echo", config={})],
+        )
+        manifest = _make_kit_manifest()
+        loader = lambda wf_id: child_wf  # noqa: E731
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=loader,
+            registry=registry,
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "create-epic",
+                "version": ">=0.1.0",
+            },
+        }
+        await CallAgentPrimitive().execute(config, ctx)
+
+        _, child_ctx = recorder.calls[0]
+        assert child_ctx.deps.kit_manifests is not None
+        assert len(child_ctx.deps.kit_manifests) == 1
+
+
+class TestSkillNotFound:
+    """Tests for skill resolution failures — kit not found."""
+
+    async def test_raises_skill_error_when_kit_not_found(self) -> None:
+        """Verify SkillError with BEDDEL-SKILL-1201 when kit is missing."""
+        registry = _make_registry()
+        manifest = _make_kit_manifest(kit_name="other-kit")
+        loader = lambda wf_id: _make_workflow()  # noqa: E731
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=loader,
+            registry=registry,
+        )
+
+        config = {
+            "skill": {
+                "kit": "nonexistent-kit",
+                "workflow": "create-epic",
+                "version": ">=0.1.0",
+            },
+        }
+        with pytest.raises(SkillError, match="BEDDEL-SKILL-1201"):
+            await CallAgentPrimitive().execute(config, ctx)
+
+    async def test_raises_skill_error_when_workflow_not_found(self) -> None:
+        """Verify SkillError with BEDDEL-SKILL-1202 when workflow is missing."""
+        registry = _make_registry()
+        manifest = _make_kit_manifest(workflow_name="other-workflow")
+        loader = lambda wf_id: _make_workflow()  # noqa: E731
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=loader,
+            registry=registry,
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "nonexistent-workflow",
+                "version": ">=0.1.0",
+            },
+        }
+        with pytest.raises(SkillError, match="BEDDEL-SKILL-1202"):
+            await CallAgentPrimitive().execute(config, ctx)
+
+
+class TestSkillVersionMismatch:
+    """Tests for skill version constraint failures."""
+
+    async def test_raises_skill_error_on_version_mismatch(self) -> None:
+        """Verify SkillError with BEDDEL-SKILL-1203 on version mismatch."""
+        registry = _make_registry()
+        manifest = _make_kit_manifest(kit_version="0.1.0")
+        loader = lambda wf_id: _make_workflow()  # noqa: E731
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=loader,
+            registry=registry,
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "create-epic",
+                "version": ">=1.0.0",
+            },
+        }
+        with pytest.raises(SkillError, match="BEDDEL-SKILL-1203"):
+            await CallAgentPrimitive().execute(config, ctx)
+
+
+class TestSkillGovernanceBlock:
+    """Tests for skill governance enforcement via call-agent."""
+
+    async def test_raises_skill_error_when_blocked_by_governance(self) -> None:
+        """Verify SkillError with BEDDEL-SKILL-1204 when kit is blocked."""
+        registry = _make_registry()
+        manifest = _make_kit_manifest()
+        loader = lambda wf_id: _make_workflow()  # noqa: E731
+        governance = {
+            "policy": "permissive",
+            "blocked": ["software-development-kit"],
+        }
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=loader,
+            registry=registry,
+            metadata={"_skill_governance": governance},
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "create-epic",
+                "version": ">=0.1.0",
+            },
+        }
+        with pytest.raises(SkillError, match="BEDDEL-SKILL-1204"):
+            await CallAgentPrimitive().execute(config, ctx)
+
+    async def test_raises_skill_error_when_not_in_allowed_list(self) -> None:
+        """Verify SkillError with BEDDEL-SKILL-1205 when kit not in allowed list."""
+        registry = _make_registry()
+        manifest = _make_kit_manifest()
+        loader = lambda wf_id: _make_workflow()  # noqa: E731
+        governance = {
+            "policy": "strict",
+            "allowed": ["other-kit-only"],
+        }
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=loader,
+            registry=registry,
+            metadata={"_skill_governance": governance},
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "create-epic",
+                "version": ">=0.1.0",
+            },
+        }
+        with pytest.raises(SkillError, match="BEDDEL-SKILL-1205"):
+            await CallAgentPrimitive().execute(config, ctx)
+
+    async def test_governance_propagated_to_child_context(self) -> None:
+        """Verify governance is stored in child context metadata for nested calls."""
+        recorder = _RecorderPrimitive(result="ok")
+        registry = _make_registry(("echo", recorder))
+        child_wf = _make_workflow(
+            steps=[Step(id="s1", primitive="echo", config={})],
+        )
+        manifest = _make_kit_manifest()
+        loader = lambda wf_id: child_wf  # noqa: E731
+        governance = {
+            "policy": "strict",
+            "allowed": ["software-development-kit"],
+        }
+        ctx = _make_skill_context(
+            kit_manifests=[manifest],
+            workflow_loader=loader,
+            registry=registry,
+            metadata={"_skill_governance": governance},
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "create-epic",
+                "version": ">=0.1.0",
+            },
+        }
+        await CallAgentPrimitive().execute(config, ctx)
+
+        _, child_ctx = recorder.calls[0]
+        assert child_ctx.metadata["_skill_governance"] == governance
+
+    async def test_missing_kit_manifests_raises_prim_error(self) -> None:
+        """Verify PrimitiveError when kit_manifests is None."""
+        registry = _make_registry()
+        loader = lambda wf_id: _make_workflow()  # noqa: E731
+        ctx = _make_skill_context(
+            kit_manifests=None,
+            workflow_loader=loader,
+            registry=registry,
+        )
+
+        config = {
+            "skill": {
+                "kit": "software-development-kit",
+                "workflow": "create-epic",
+                "version": ">=0.1.0",
+            },
+        }
+        with pytest.raises(PrimitiveError, match="kit_manifests"):
+            await CallAgentPrimitive().execute(config, ctx)
