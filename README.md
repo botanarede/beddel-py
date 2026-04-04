@@ -705,11 +705,7 @@ The `-Wd` flag turns `DeprecationWarning` into errors, catching deprecated API u
 
 ## Roadmap
 
-Epics 1–7 are complete (Adaptive Core, Primitives, Observability, Adaptive Execution, Agent Adapters, Kit Ecosystem, Enterprise Safety & Knowledge, Ecosystem Patterns). In progress and upcoming:
-
-- **Epic 7A** (in progress) — Pre-PyPI Corrective: audit remediation, doc/code sync, spec contracts, PyPI readiness
-- **Epic 8** (upcoming) — PyPI Publication
-- **Epic TS-1** (upcoming) — TypeScript SDK Port
+dev@bonar.digital
 
 ## Contributing
 
