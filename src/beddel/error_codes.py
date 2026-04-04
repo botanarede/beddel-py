@@ -29,6 +29,7 @@ Range       Prefix    Domain
 1050 – 1099  DECISION Decision-centric runtime errors
 1100 – 1149  COORD    Multi-agent coordination errors
 1150 – 1199  EVENT    Event-driven execution errors
+1200 – 1249  SKILL    Skill composition errors
 650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
 ==========  ========  ===========
 """
@@ -112,6 +113,9 @@ COORDINATION_RANGE: tuple[int, int] = (1100, 1149)
 
 EVENT_RANGE: tuple[int, int] = (1150, 1199)
 """Event-driven execution errors."""
+
+SKILL_RANGE: tuple[int, int] = (1200, 1249)
+"""Skill composition errors."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -596,6 +600,28 @@ EVENT_TRIGGER_NOT_CONFIGURED: str = "BEDDEL-EVENT-1155"
 """Trigger not configured."""
 
 # ---------------------------------------------------------------------------
+# Skill codes  (SKILL prefix, 1200 range)
+# ---------------------------------------------------------------------------
+
+SKILL_RESOLUTION_FAILED: str = "BEDDEL-SKILL-1200"
+"""Skill resolution failed."""
+
+SKILL_KIT_NOT_FOUND: str = "BEDDEL-SKILL-1201"
+"""Kit not found for skill."""
+
+SKILL_WORKFLOW_NOT_FOUND: str = "BEDDEL-SKILL-1202"
+"""Workflow not found in kit."""
+
+SKILL_VERSION_MISMATCH: str = "BEDDEL-SKILL-1203"
+"""Version constraint not satisfied."""
+
+SKILL_BLOCKED: str = "BEDDEL-SKILL-1204"
+"""Skill blocked by governance."""
+
+SKILL_NOT_ALLOWED: str = "BEDDEL-SKILL-1205"
+"""Skill not in allowed list."""
+
+# ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
 
@@ -747,6 +773,13 @@ ALL_CODES: dict[str, str] = {
     "EVENT_SSE_CONNECTION_FAILED": EVENT_SSE_CONNECTION_FAILED,
     "EVENT_WEBHOOK_HANDLER_FAILED": EVENT_WEBHOOK_HANDLER_FAILED,
     "EVENT_TRIGGER_NOT_CONFIGURED": EVENT_TRIGGER_NOT_CONFIGURED,
+    # Skill
+    "SKILL_RESOLUTION_FAILED": SKILL_RESOLUTION_FAILED,
+    "SKILL_KIT_NOT_FOUND": SKILL_KIT_NOT_FOUND,
+    "SKILL_WORKFLOW_NOT_FOUND": SKILL_WORKFLOW_NOT_FOUND,
+    "SKILL_VERSION_MISMATCH": SKILL_VERSION_MISMATCH,
+    "SKILL_BLOCKED": SKILL_BLOCKED,
+    "SKILL_NOT_ALLOWED": SKILL_NOT_ALLOWED,
     # Kit
     "KIT_MANIFEST_INVALID": KIT_MANIFEST_INVALID,
     "KIT_MANIFEST_NOT_FOUND": KIT_MANIFEST_NOT_FOUND,

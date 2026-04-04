@@ -141,6 +141,7 @@ class TestAllExports:
             "DecisionError",
             "CoordinationError",
             "EventDrivenError",
+            "SkillError",
         }
         assert set(errors.__all__) == expected
 

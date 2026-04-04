@@ -26,6 +26,7 @@ Prefix             Domain
 ``BEDDEL-DECISION-``  Decision-centric runtime errors
 ``BEDDEL-COORD-``  Multi-agent coordination errors
 ``BEDDEL-EVENT-``  Event-driven execution errors
+``BEDDEL-SKILL-``  Skill composition errors
 =================  ============================
 """
 
@@ -55,6 +56,7 @@ __all__ = [
     "DecisionError",
     "CoordinationError",
     "EventDrivenError",
+    "SkillError",
 ]
 
 
@@ -259,3 +261,7 @@ class CoordinationError(BeddelError):
 
 class EventDrivenError(BeddelError):
     """Event-driven execution errors. Error code prefix: BEDDEL-EVENT-"""
+
+
+class SkillError(BeddelError):
+    """Skill composition errors. Error code prefix: BEDDEL-SKILL-"""

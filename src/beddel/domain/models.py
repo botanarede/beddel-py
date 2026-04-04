@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from beddel.domain.errors import StateError
@@ -205,6 +206,28 @@ class TriggerEvent:
     payload: dict[str, Any] = field(default_factory=dict)
     timestamp: str = ""
     source: str = ""
+
+
+@dataclass(frozen=True)
+class SkillReference:
+    """A resolved reference to a reusable skill from a solution kit.
+
+    Represents a skill imported from a kit manifest's ``workflows:`` section.
+    The ``resolved_path`` is populated by :class:`SkillResolver` after
+    successful resolution.
+
+    Attributes:
+        kit: Name of the solution kit that provides the skill.
+        workflow: Name of the workflow within the kit.
+        version: Optional semver version constraint (e.g. ``">=0.1.0"``).
+        resolved_path: Filesystem path to the resolved workflow YAML,
+            populated after resolution.
+    """
+
+    kit: str
+    workflow: str
+    version: str = ""
+    resolved_path: Path | None = None
 
 
 @dataclass(frozen=True)

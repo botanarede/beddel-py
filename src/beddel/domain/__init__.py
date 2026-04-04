@@ -14,6 +14,7 @@ from beddel.domain.errors import (
     ParseError,
     PrimitiveError,
     ResolveError,
+    SkillError,
     StateError,
 )
 from beddel.domain.executor import WorkflowExecutor
@@ -27,6 +28,7 @@ from beddel.domain.models import (
     ExecutionContext,
     ExecutionStrategy,
     RetryConfig,
+    SkillReference,
     Step,
     StrategyType,
     TriggerConfig,
@@ -87,6 +89,8 @@ __all__ = [
     "PrimitiveRegistry",
     "ResolveError",
     "RetryConfig",
+    "SkillError",
+    "SkillReference",
     "StateError",
     "Step",
     "StepFilter",
