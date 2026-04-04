@@ -81,6 +81,7 @@ if TYPE_CHECKING:
     from beddel.adapters import LifecycleHookManager as LifecycleHookManager
     from beddel.adapters import SQLiteEventStore as SQLiteEventStore
     from beddel.adapters import StaticTierRouter as StaticTierRouter
+    from beddel.adapters import YAMLKnowledgeAdapter as YAMLKnowledgeAdapter
     from beddel.adapters.pii_middleware import PIIMiddleware as PIIMiddleware
     from beddel.adapters.pii_tokenizer import (
         DEFAULT_PII_PATTERNS as DEFAULT_PII_PATTERNS,
@@ -122,6 +123,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     ),
     "SQLiteEventStore": ("beddel.adapters", "SQLiteEventStore"),
     "StaticTierRouter": ("beddel.adapters", "StaticTierRouter"),
+    "YAMLKnowledgeAdapter": ("beddel.adapters", "YAMLKnowledgeAdapter"),
     "create_beddel_handler": (
         "beddel.integrations.fastapi",
         "create_beddel_handler",
@@ -210,6 +212,7 @@ __all__ = [
     "StepRunner",
     "TokenMap",
     "TracingError",
+    "YAMLKnowledgeAdapter",
     "create_beddel_handler",
     "error_codes",
 ]
