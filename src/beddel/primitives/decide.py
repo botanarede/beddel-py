@@ -99,6 +99,25 @@ class DecidePrimitive(IPrimitive):
                     exc_info=True,
                 )
 
+        # Log to tracer as event — duck typing (no adapter imports)
+        tracer = context.deps.tracer
+        if tracer is not None and hasattr(tracer, "log_event"):
+            try:
+                tracer.log_event(
+                    name="decision",
+                    metadata={
+                        "intent": decision.intent,
+                        "options": decision.options,
+                        "chosen": decision.chosen,
+                        "reasoning": decision.reasoning,
+                    },
+                )
+            except Exception:
+                logger.warning(
+                    "Tracer log_event failed (ignored)",
+                    exc_info=True,
+                )
+
         # Persist to decision store — fire-and-forget
         store = context.deps.decision_store
         if store is not None:
