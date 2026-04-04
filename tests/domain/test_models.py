@@ -835,6 +835,8 @@ class TestAllExports:
             "ExecutionStrategy",
             "GoalConfig",
             "InterruptibleContext",
+            "KnowledgeEntry",
+            "KnowledgeSource",
             "MemoryEntry",
             "PIIPattern",
             "ParallelConfig",

@@ -30,6 +30,7 @@ if TYPE_CHECKING:
         IEventStore,
         IExecutionStrategy,
         IHookManager,
+        IKnowledgeProvider,
         ILLMProvider,
         IMemoryProvider,
         IPIITokenizer,
@@ -76,6 +77,8 @@ __all__ = [
     "ExecutionStrategy",
     "GoalConfig",
     "InterruptibleContext",
+    "KnowledgeEntry",
+    "KnowledgeSource",
     "MemoryEntry",
     "PIIPattern",
     "ParallelConfig",
@@ -130,6 +133,38 @@ class Episode:
     duration_ms: float
     created_at: float
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class KnowledgeEntry:
+    """A single entry returned from a knowledge provider.
+
+    Attributes:
+        content: The knowledge content text.
+        source: Identifier of the knowledge source (e.g. filename).
+        confidence: Relevance confidence score (0.0–1.0).
+        metadata: Arbitrary metadata attached to the entry.
+    """
+
+    content: str
+    source: str
+    confidence: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class KnowledgeSource:
+    """A knowledge backend source descriptor.
+
+    Attributes:
+        name: Human-readable name of the knowledge source.
+        type: Source type identifier (e.g. ``"yaml"``, ``"neo4j"``).
+        description: Optional description of the source.
+    """
+
+    name: str
+    type: str
+    description: str = ""
 
 
 class _Skipped:
@@ -569,6 +604,8 @@ class DefaultDependencies:
             or ``None`` if not configured.  Defaults to ``None``.
         memory_provider: The memory provider for episodic memory,
             or ``None`` if not configured.  Defaults to ``None``.
+        knowledge_provider: The knowledge provider for domain knowledge,
+            or ``None`` if not configured.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -592,6 +629,7 @@ class DefaultDependencies:
         "_pii_tokenizer",
         "_state_store",
         "_memory_provider",
+        "_knowledge_provider",
     )
 
     def __init__(
@@ -616,6 +654,7 @@ class DefaultDependencies:
         pii_tokenizer: IPIITokenizer | None = None,
         state_store: IStateStore | None = None,
         memory_provider: IMemoryProvider | None = None,
+        knowledge_provider: IKnowledgeProvider | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -637,6 +676,7 @@ class DefaultDependencies:
         self._pii_tokenizer = pii_tokenizer
         self._state_store = state_store
         self._memory_provider = memory_provider
+        self._knowledge_provider = knowledge_provider
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -737,6 +777,11 @@ class DefaultDependencies:
     def memory_provider(self) -> IMemoryProvider | None:
         """The memory provider for episodic memory, or ``None`` if not configured."""
         return self._memory_provider
+
+    @property
+    def knowledge_provider(self) -> IKnowledgeProvider | None:
+        """The knowledge provider for domain knowledge, or ``None`` if not configured."""
+        return self._knowledge_provider
 
 
 _log = logging.getLogger(__name__)

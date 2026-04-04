@@ -17,6 +17,8 @@ Ports defined here:
 - :class:`ITierRouter` — contract for model tier routing strategies.
 - :class:`IBudgetEnforcer` — contract for per-workflow budget enforcement.
 - :class:`IStateStore` — contract for state persistence and checkpoints.
+- :class:`IMemoryProvider` — contract for episodic memory providers.
+- :class:`IKnowledgeProvider` — contract for domain knowledge providers.
 - :class:`ITracer` — contract for observability tracing.
 - :class:`NoOpTracer` — no-op tracer for testing and explicit opt-out.
 """
@@ -33,6 +35,8 @@ from beddel.domain.models import (
     ApprovalStatus,
     Episode,
     ExecutionContext,
+    KnowledgeEntry,
+    KnowledgeSource,
     MemoryEntry,
     RiskLevel,
     Step,
@@ -57,6 +61,7 @@ __all__ = [
     "IContextReducer",
     "IEventStore",
     "IExecutionStrategy",
+    "IKnowledgeProvider",
     "IMemoryProvider",
     "IStateStore",
     "IHookManager",
@@ -185,6 +190,11 @@ class ExecutionDependencies(Protocol):
     @property
     def memory_provider(self) -> IMemoryProvider | None:
         """The memory provider for episodic memory, or ``None`` if not configured."""
+        return None
+
+    @property
+    def knowledge_provider(self) -> IKnowledgeProvider | None:
+        """The knowledge provider for domain knowledge, or ``None`` if not configured."""
         return None
 
 
@@ -1054,6 +1064,57 @@ class IMemoryProvider(Protocol):
 
         Returns:
             List of :class:`~beddel.domain.models.Episode` instances.
+        """
+        ...
+
+
+class IKnowledgeProvider(Protocol):
+    """Contract for knowledge provider implementations.
+
+    Provides query-based knowledge retrieval, key-based lookup, and
+    source listing for domain knowledge access.  Implementations may
+    read from YAML files, Neo4j graphs, RDF ontologies, or other backends.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`IMemoryProvider`, :class:`IStateStore`, and other domain ports.
+
+    [Source: docs/stories/epic-6/story-6.5.md — AC 1]
+    """
+
+    async def query(
+        self, question: str, context: dict[str, Any] | None = None
+    ) -> list[KnowledgeEntry]:
+        """Query knowledge sources with a natural-language question.
+
+        Args:
+            question: The query string to search for.
+            context: Optional context dict for query refinement.
+
+        Returns:
+            List of :class:`~beddel.domain.models.KnowledgeEntry` results
+            ranked by confidence score.
+        """
+        ...
+
+    async def get(self, key: str) -> KnowledgeEntry | None:
+        """Retrieve a knowledge entry by key.
+
+        Args:
+            key: The knowledge key to look up (supports dot-notation
+                for nested access in some implementations).
+
+        Returns:
+            A :class:`~beddel.domain.models.KnowledgeEntry`, or ``None``
+            if the key does not exist.
+        """
+        ...
+
+    async def list_sources(self) -> list[KnowledgeSource]:
+        """List available knowledge sources.
+
+        Returns:
+            List of :class:`~beddel.domain.models.KnowledgeSource`
+            descriptors for all configured knowledge backends.
         """
         ...
 
