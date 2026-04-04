@@ -33,6 +33,8 @@ from beddel.domain.models import (
     AgentResult,
     ApprovalResult,
     ApprovalStatus,
+    CoordinationResult,
+    CoordinationTask,
     Decision,
     Episode,
     ExecutionContext,
@@ -1066,6 +1068,40 @@ class IDecisionStore(Protocol):
 
         Args:
             workflow_id: Identifier of the workflow execution to clear.
+        """
+        ...
+
+
+class ICoordinationStrategy(Protocol):
+    """Contract for multi-agent coordination strategy implementations.
+
+    Defines the structural contract for pluggable coordination patterns
+    (supervisor, handoff, parallel dispatch) that orchestrate work across
+    multiple agent adapters.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`IExecutionStrategy`, :class:`IDecisionStore`, and other
+    domain ports.
+
+    [Source: docs/stories/epic-7/story-7.2.md — AC 1]
+    """
+
+    async def coordinate(
+        self,
+        agents: dict[str, IAgentAdapter],
+        task: CoordinationTask,
+        context: ExecutionContext,
+    ) -> CoordinationResult:
+        """Coordinate work across multiple agents.
+
+        Args:
+            agents: Named agent adapters available for coordination.
+            task: The coordination task describing the work to distribute.
+            context: The current workflow execution context.
+
+        Returns:
+            A :class:`~beddel.domain.models.CoordinationResult` containing
+            the synthesized output and per-agent results.
         """
         ...
 

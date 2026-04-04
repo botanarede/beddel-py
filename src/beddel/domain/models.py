@@ -70,6 +70,8 @@ __all__ = [
     "BudgetStatus",
     "CircuitBreakerConfig",
     "CircuitState",
+    "CoordinationResult",
+    "CoordinationTask",
     "Decision",
     "DefaultDependencies",
     "Episode",
@@ -125,6 +127,46 @@ class Decision:
     step_id: str | None = None
     workflow_id: str | None = None
     timestamp: str | None = None
+
+
+@dataclass(frozen=True)
+class CoordinationTask:
+    """A task to be coordinated across multiple agents.
+
+    Describes the work to be distributed by an :class:`ICoordinationStrategy`
+    implementation.
+
+    Attributes:
+        prompt: The primary instruction or task description.
+        subtasks: Optional list of named subtask descriptions for decomposition.
+        context_data: Arbitrary context data passed to coordinating agents.
+        timeout: Optional timeout in seconds for the coordination operation.
+    """
+
+    prompt: str
+    subtasks: list[str] = field(default_factory=list)
+    context_data: dict[str, Any] = field(default_factory=dict)
+    timeout: float | None = None
+
+
+@dataclass(frozen=True)
+class CoordinationResult:
+    """Result of a multi-agent coordination operation.
+
+    Returned by :class:`ICoordinationStrategy` implementations after
+    coordinating work across multiple agents.
+
+    Attributes:
+        output: The synthesized final output from the coordination.
+        agent_results: Per-agent results keyed by agent name.
+        strategy_name: Name of the coordination strategy that produced this result.
+        metadata: Arbitrary metadata about the coordination execution.
+    """
+
+    output: str
+    agent_results: dict[str, AgentResult] = field(default_factory=dict)
+    strategy_name: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

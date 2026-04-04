@@ -24,6 +24,7 @@ Prefix             Domain
 ``BEDDEL-MEMORY-``  Episodic memory errors
 ``BEDDEL-KNOWLEDGE-``  Knowledge architecture errors
 ``BEDDEL-DECISION-``  Decision-centric runtime errors
+``BEDDEL-COORD-``  Multi-agent coordination errors
 =================  ============================
 """
 
@@ -51,6 +52,7 @@ __all__ = [
     "MemoryError",
     "KnowledgeError",
     "DecisionError",
+    "CoordinationError",
 ]
 
 
@@ -247,3 +249,7 @@ class KnowledgeError(BeddelError):
 
 class DecisionError(BeddelError):
     """Decision-centric runtime errors. Error code prefix: BEDDEL-DECISION-"""
+
+
+class CoordinationError(BeddelError):
+    """Multi-agent coordination errors. Error code prefix: BEDDEL-COORD-"""

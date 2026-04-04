@@ -27,6 +27,7 @@ Range       Prefix    Domain
 980 – 999   KNOWLEDGE Knowledge architecture errors (sub-range of 950-999)
 1000 – 1049  AUTH     Remote authentication errors
 1050 – 1099  DECISION Decision-centric runtime errors
+1100 – 1149  COORD    Multi-agent coordination errors
 650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
 ==========  ========  ===========
 """
@@ -104,6 +105,9 @@ AUTH_RANGE: tuple[int, int] = (1000, 1049)
 
 DECISION_RANGE: tuple[int, int] = (1050, 1099)
 """Decision-centric runtime errors."""
+
+COORDINATION_RANGE: tuple[int, int] = (1100, 1149)
+"""Multi-agent coordination errors."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -544,6 +548,28 @@ DECISION_DELETE_FAILED: str = "BEDDEL-DECISION-1052"
 """Decision store delete failed."""
 
 # ---------------------------------------------------------------------------
+# Coordination codes  (COORD prefix, 1100 range)
+# ---------------------------------------------------------------------------
+
+COORD_STRATEGY_FAILED: str = "BEDDEL-COORD-1100"
+"""Coordination strategy execution failed."""
+
+COORD_HANDOFF_FAILED: str = "BEDDEL-COORD-1101"
+"""Agent handoff failed."""
+
+COORD_PARALLEL_FAILED: str = "BEDDEL-COORD-1102"
+"""Parallel dispatch coordination failed."""
+
+COORD_SUPERVISOR_FAILED: str = "BEDDEL-COORD-1103"
+"""Supervisor decomposition or synthesis failed."""
+
+COORD_AGGREGATION_FAILED: str = "BEDDEL-COORD-1104"
+"""Result aggregation failed."""
+
+COORD_NO_AGENTS: str = "BEDDEL-COORD-1105"
+"""No agents configured for coordination."""
+
+# ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
 
@@ -681,6 +707,13 @@ ALL_CODES: dict[str, str] = {
     "DECISION_APPEND_FAILED": DECISION_APPEND_FAILED,
     "DECISION_QUERY_FAILED": DECISION_QUERY_FAILED,
     "DECISION_DELETE_FAILED": DECISION_DELETE_FAILED,
+    # Coordination
+    "COORD_STRATEGY_FAILED": COORD_STRATEGY_FAILED,
+    "COORD_HANDOFF_FAILED": COORD_HANDOFF_FAILED,
+    "COORD_PARALLEL_FAILED": COORD_PARALLEL_FAILED,
+    "COORD_SUPERVISOR_FAILED": COORD_SUPERVISOR_FAILED,
+    "COORD_AGGREGATION_FAILED": COORD_AGGREGATION_FAILED,
+    "COORD_NO_AGENTS": COORD_NO_AGENTS,
     # Kit
     "KIT_MANIFEST_INVALID": KIT_MANIFEST_INVALID,
     "KIT_MANIFEST_NOT_FOUND": KIT_MANIFEST_NOT_FOUND,
