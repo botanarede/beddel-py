@@ -11,6 +11,7 @@ from __future__ import annotations
 from beddel.adapters.approval import ConfigurableApprovalGate, InMemoryApprovalGate
 from beddel.adapters.budget_enforcer import InMemoryBudgetEnforcer
 from beddel.adapters.circuit_breaker import InMemoryCircuitBreaker
+from beddel.adapters.decision_store import InMemoryDecisionStore
 from beddel.adapters.event_store import InMemoryEventStore, SQLiteEventStore
 from beddel.adapters.hooks import LifecycleHookManager
 from beddel.adapters.knowledge_provider import YAMLKnowledgeAdapter
@@ -27,6 +28,7 @@ __all__ = [
     "InMemoryApprovalGate",
     "InMemoryBudgetEnforcer",
     "InMemoryCircuitBreaker",
+    "InMemoryDecisionStore",
     "InMemoryEventStore",
     "InMemoryMemoryProvider",
     "InMemoryStateStore",
