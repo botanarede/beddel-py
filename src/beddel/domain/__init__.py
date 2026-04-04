@@ -7,6 +7,7 @@ from beddel.domain.errors import (
     BeddelError,
     CoordinationError,
     DecisionError,
+    EventDrivenError,
     ExecutionError,
     KnowledgeError,
     MemoryError,
@@ -28,6 +29,8 @@ from beddel.domain.models import (
     RetryConfig,
     Step,
     StrategyType,
+    TriggerConfig,
+    TriggerEvent,
     Workflow,
 )
 from beddel.domain.parser import WorkflowParser
@@ -61,6 +64,7 @@ __all__ = [
     "Decision",
     "DecisionError",
     "DefaultDependencies",
+    "EventDrivenError",
     "EventType",
     "ExecutionContext",
     "ExecutionDependencies",
@@ -89,6 +93,8 @@ __all__ = [
     "StepFilterPredicate",
     "StepRunner",
     "StrategyType",
+    "TriggerConfig",
+    "TriggerEvent",
     "VariableResolver",
     "Workflow",
     "WorkflowExecutor",

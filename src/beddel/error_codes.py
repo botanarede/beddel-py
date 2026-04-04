@@ -28,6 +28,7 @@ Range       Prefix    Domain
 1000 – 1049  AUTH     Remote authentication errors
 1050 – 1099  DECISION Decision-centric runtime errors
 1100 – 1149  COORD    Multi-agent coordination errors
+1150 – 1199  EVENT    Event-driven execution errors
 650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
 ==========  ========  ===========
 """
@@ -108,6 +109,9 @@ DECISION_RANGE: tuple[int, int] = (1050, 1099)
 
 COORDINATION_RANGE: tuple[int, int] = (1100, 1149)
 """Multi-agent coordination errors."""
+
+EVENT_RANGE: tuple[int, int] = (1150, 1199)
+"""Event-driven execution errors."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -570,6 +574,28 @@ COORD_NO_AGENTS: str = "BEDDEL-COORD-1105"
 """No agents configured for coordination."""
 
 # ---------------------------------------------------------------------------
+# Event codes  (EVENT prefix, 1150 range)
+# ---------------------------------------------------------------------------
+
+EVENT_TRIGGER_REGISTRATION_FAILED: str = "BEDDEL-EVENT-1150"
+"""Trigger registration failed."""
+
+EVENT_TRIGGER_DISPATCH_FAILED: str = "BEDDEL-EVENT-1151"
+"""Trigger dispatch failed."""
+
+EVENT_SCHEDULE_PARSE_FAILED: str = "BEDDEL-EVENT-1152"
+"""Schedule expression parse failed."""
+
+EVENT_SSE_CONNECTION_FAILED: str = "BEDDEL-EVENT-1153"
+"""SSE connection failed."""
+
+EVENT_WEBHOOK_HANDLER_FAILED: str = "BEDDEL-EVENT-1154"
+"""Webhook handler failed."""
+
+EVENT_TRIGGER_NOT_CONFIGURED: str = "BEDDEL-EVENT-1155"
+"""Trigger not configured."""
+
+# ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
 
@@ -714,6 +740,13 @@ ALL_CODES: dict[str, str] = {
     "COORD_SUPERVISOR_FAILED": COORD_SUPERVISOR_FAILED,
     "COORD_AGGREGATION_FAILED": COORD_AGGREGATION_FAILED,
     "COORD_NO_AGENTS": COORD_NO_AGENTS,
+    # Event
+    "EVENT_TRIGGER_REGISTRATION_FAILED": EVENT_TRIGGER_REGISTRATION_FAILED,
+    "EVENT_TRIGGER_DISPATCH_FAILED": EVENT_TRIGGER_DISPATCH_FAILED,
+    "EVENT_SCHEDULE_PARSE_FAILED": EVENT_SCHEDULE_PARSE_FAILED,
+    "EVENT_SSE_CONNECTION_FAILED": EVENT_SSE_CONNECTION_FAILED,
+    "EVENT_WEBHOOK_HANDLER_FAILED": EVENT_WEBHOOK_HANDLER_FAILED,
+    "EVENT_TRIGGER_NOT_CONFIGURED": EVENT_TRIGGER_NOT_CONFIGURED,
     # Kit
     "KIT_MANIFEST_INVALID": KIT_MANIFEST_INVALID,
     "KIT_MANIFEST_NOT_FOUND": KIT_MANIFEST_NOT_FOUND,

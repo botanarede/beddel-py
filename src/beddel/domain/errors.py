@@ -25,6 +25,7 @@ Prefix             Domain
 ``BEDDEL-KNOWLEDGE-``  Knowledge architecture errors
 ``BEDDEL-DECISION-``  Decision-centric runtime errors
 ``BEDDEL-COORD-``  Multi-agent coordination errors
+``BEDDEL-EVENT-``  Event-driven execution errors
 =================  ============================
 """
 
@@ -53,6 +54,7 @@ __all__ = [
     "KnowledgeError",
     "DecisionError",
     "CoordinationError",
+    "EventDrivenError",
 ]
 
 
@@ -253,3 +255,7 @@ class DecisionError(BeddelError):
 
 class CoordinationError(BeddelError):
     """Multi-agent coordination errors. Error code prefix: BEDDEL-COORD-"""
+
+
+class EventDrivenError(BeddelError):
+    """Event-driven execution errors. Error code prefix: BEDDEL-EVENT-"""

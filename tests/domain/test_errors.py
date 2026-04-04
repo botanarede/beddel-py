@@ -140,6 +140,7 @@ class TestAllExports:
             "KnowledgeError",
             "DecisionError",
             "CoordinationError",
+            "EventDrivenError",
         }
         assert set(errors.__all__) == expected
 

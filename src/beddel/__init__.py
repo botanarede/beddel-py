@@ -15,6 +15,7 @@ from beddel.domain.errors import (
     CoordinationError,
     DecisionError,
     DurableError,
+    EventDrivenError,
     ExecutionError,
     KnowledgeError,
     MCPError,
@@ -46,6 +47,8 @@ from beddel.domain.models import (
     RiskLevel,
     RiskMatrix,
     TokenMap,
+    TriggerConfig,
+    TriggerEvent,
 )
 from beddel.domain.ports import (
     ExecutionDependencies,
@@ -179,6 +182,7 @@ __all__ = [
     "DurableError",
     "DurableExecutionStrategy",
     "Episode",
+    "EventDrivenError",
     "ExecutionDependencies",
     "ExecutionError",
     "GoalOrientedStrategy",
@@ -229,6 +233,8 @@ __all__ = [
     "StepRunner",
     "TokenMap",
     "TracingError",
+    "TriggerConfig",
+    "TriggerEvent",
     "YAMLKnowledgeAdapter",
     "create_beddel_handler",
     "error_codes",

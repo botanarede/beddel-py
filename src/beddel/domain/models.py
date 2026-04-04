@@ -170,6 +170,44 @@ class CoordinationResult:
 
 
 @dataclass(frozen=True)
+class TriggerConfig:
+    """Configuration for an event-driven workflow trigger.
+
+    Describes how a workflow should be triggered — via webhook, schedule,
+    or SSE stream.
+
+    Attributes:
+        type: Trigger type (``webhook``, ``schedule``, or ``sse``).
+        config: Type-specific configuration settings.
+        workflow_id: Optional workflow identifier to bind this trigger to.
+    """
+
+    type: str
+    config: dict[str, Any] = field(default_factory=dict)
+    workflow_id: str | None = None
+
+
+@dataclass(frozen=True)
+class TriggerEvent:
+    """An event received from an external trigger source.
+
+    Created by trigger handlers (webhook, schedule, SSE) and injected into
+    the execution context for downstream step access.
+
+    Attributes:
+        trigger_type: Type of trigger that produced this event.
+        payload: Event payload data.
+        timestamp: ISO-8601 timestamp of when the event was received.
+        source: Optional source identifier (URL, endpoint path, etc.).
+    """
+
+    trigger_type: str
+    payload: dict[str, Any] = field(default_factory=dict)
+    timestamp: str = ""
+    source: str = ""
+
+
+@dataclass(frozen=True)
 class MemoryEntry:
     """A single entry returned from a memory search.
 
