@@ -2,8 +2,6 @@
   <img src="assets/hero-banner-github.png" alt="Beddel — Declarative YAML-based AI Workflow Engine" width="100%">
 </p>
 
-# Beddel
-
 [![PyPI version](https://img.shields.io/pypi/v/beddel.svg)](https://pypi.org/project/beddel/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
