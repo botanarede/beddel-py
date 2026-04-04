@@ -214,6 +214,9 @@ PRIM_TOOL_USE_EXEC_FAILED: str = "BEDDEL-PRIM-312"
 TIER_UNKNOWN: str = "BEDDEL-PRIM-320"
 """Unknown model tier name — not found in tier-to-model mapping."""
 
+PRIM_DECIDE_MISSING_CONFIG: str = "BEDDEL-PRIM-400"
+"""Missing required config key for decide primitive."""
+
 # ---------------------------------------------------------------------------
 # Adapter codes  (ADAPT prefix, 400 range)
 # ---------------------------------------------------------------------------
@@ -587,6 +590,7 @@ ALL_CODES: dict[str, str] = {
     "PRIM_TOOL_USE_NOT_FOUND": PRIM_TOOL_USE_NOT_FOUND,
     "PRIM_TOOL_USE_EXEC_FAILED": PRIM_TOOL_USE_EXEC_FAILED,
     "TIER_UNKNOWN": TIER_UNKNOWN,
+    "PRIM_DECIDE_MISSING_CONFIG": PRIM_DECIDE_MISSING_CONFIG,
     # Adapter
     "ADAPT_AUTH_FAILURE": ADAPT_AUTH_FAILURE,
     "ADAPT_PROVIDER_ERROR": ADAPT_PROVIDER_ERROR,
