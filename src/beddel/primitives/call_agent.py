@@ -181,11 +181,9 @@ class CallAgentPrimitive(IPrimitive):
             ),
         )
 
-        hook_manager = context.deps.lifecycle_hooks
         child_executor = WorkflowExecutor(
             registry=registry,
-            provider=context.deps.llm_provider,
-            hooks=hook_manager,
+            deps=child_context.deps,
         )
         strategy = SequentialStrategy()
         await strategy.execute(workflow, child_context, child_executor.execute_step_with_context)
@@ -404,11 +402,9 @@ class CallAgentPrimitive(IPrimitive):
             ),
         )
 
-        hook_manager = context.deps.lifecycle_hooks
         child_executor = WorkflowExecutor(
             registry=registry,
-            provider=context.deps.llm_provider,
-            hooks=hook_manager,
+            deps=child_context.deps,
         )
         strategy = SequentialStrategy()
         await strategy.execute(workflow, child_context, child_executor.execute_step_with_context)

@@ -143,12 +143,12 @@ def create_beddel_handler(
 
             effective_hook_manager = LifecycleHookManager()
 
-        executor = WorkflowExecutor(
-            effective_registry,
-            provider=effective_provider,
-            hooks=effective_hook_manager,
+        fallback_deps = DefaultDependencies(
+            llm_provider=effective_provider,
+            lifecycle_hooks=effective_hook_manager,
             tracer=tracer,
         )
+        executor = WorkflowExecutor(effective_registry, deps=fallback_deps)
 
     router = APIRouter()
 

@@ -35,9 +35,7 @@ from beddel.domain.ports import (
     IExecutionStrategy,
     IHookManager,
     ILifecycleHook,
-    ILLMProvider,
     IPrimitive,
-    ITracer,
     StepRunner,
 )
 from beddel.domain.registry import PrimitiveRegistry
@@ -166,75 +164,63 @@ class WorkflowExecutor:
 
     Args:
         registry: Primitive registry used to look up step primitives.
-        provider: Optional LLM provider available via
-            ``context.deps.llm_provider``.
-        hooks: Optional :class:`IHookManager` instance injected via DI,
-            available via ``context.deps.lifecycle_hooks`` and called
-            during execution.
-        tracer: Optional tracer for OpenTelemetry span creation.
-            When provided, passed to ``DefaultDependencies`` so that
-            workflow, step, and primitive spans are emitted automatically.
         deps: Optional pre-built :class:`DefaultDependencies` instance.
             When provided, :meth:`execute` and :meth:`execute_stream` use
             it as the base dependency bag, overlaying only
             ``execution_strategy`` and ``lifecycle_hooks`` at runtime.
-            When ``None`` (default), dependencies are built from the
-            individual ``provider`` / ``hooks`` / ``tracer`` parameters
-            (backward-compatible behaviour).
+            When ``None`` (default), a minimal
+            :class:`DefaultDependencies` is created with only
+            ``lifecycle_hooks`` and ``execution_strategy``.
 
     Example::
 
-        executor = WorkflowExecutor(registry, provider=my_llm)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(
+            llm_provider=my_llm,
+        ))
         result = await executor.execute(workflow, {"topic": "AI"})
     """
 
     def __init__(
         self,
         registry: PrimitiveRegistry,
-        provider: ILLMProvider | None = None,
-        hooks: IHookManager | None = None,
-        tracer: ITracer | None = None,
         deps: DefaultDependencies | None = None,
     ) -> None:
         """Initialise the executor.
 
         Args:
             registry: Primitive registry for step primitive look-ups.
-            provider: Optional LLM provider for ``context.deps``.
-            hooks: Optional :class:`IHookManager` instance injected via DI.
-                When ``None``, a no-op ``IHookManager()`` is used as
-                fallback (all methods are no-ops by default).
-            tracer: Optional tracer injected into ``DefaultDependencies``
-                for automatic span creation.
             deps: Optional pre-built :class:`DefaultDependencies`.  When
                 provided, used as the base for ``context.deps`` in
                 :meth:`execute` and :meth:`execute_stream`, with
                 ``execution_strategy`` and ``lifecycle_hooks`` overlaid
-                at runtime.  Individual ``provider`` / ``tracer`` params
-                are ignored when ``deps`` is set.
+                at runtime.  When ``None``, a minimal
+                :class:`DefaultDependencies` is created.
         """
         self._registry = registry
-        self._provider = provider
-        self._hook_manager: IHookManager = hooks if hooks is not None else IHookManager()
-        self._tracer = tracer
+        self._hook_manager: IHookManager = (
+            deps.lifecycle_hooks if deps is not None and deps.lifecycle_hooks is not None
+            else IHookManager()
+        )
         self._deps = deps
         self._resolver = VariableResolver()
 
-    def _build_deps(
+    def _make_context_deps(
         self,
         execution_strategy: IExecutionStrategy | None = None,
     ) -> DefaultDependencies:
         """Build the :class:`DefaultDependencies` for a workflow run.
 
         When ``self._deps`` was provided at construction time, it is used
-        as the base dependency bag with ``execution_strategy`` overlaid
-        (the method parameter wins when non-``None``, otherwise the value
-        from ``self._deps`` is preserved).  ``lifecycle_hooks`` always
-        comes from ``self._hook_manager`` so that runtime-added hooks
-        (e.g. the streaming ``_Collector``) are visible.
+        as the base dependency bag with all fields forwarded.
+        ``execution_strategy`` is overlaid (the method parameter wins
+        when non-``None``, otherwise the value from ``self._deps`` is
+        preserved).  ``lifecycle_hooks`` always comes from
+        ``self._hook_manager`` so that runtime-added hooks (e.g. the
+        streaming ``_Collector``) are visible.
 
-        When ``self._deps`` is ``None``, dependencies are built from the
-        individual constructor parameters (backward-compatible path).
+        When ``self._deps`` is ``None``, a minimal
+        :class:`DefaultDependencies` is created with only
+        ``lifecycle_hooks`` and ``execution_strategy``.
 
         Args:
             execution_strategy: Optional execution strategy override.
@@ -260,13 +246,21 @@ class WorkflowExecutor:
                 agent_registry=self._deps.agent_registry,
                 context_reducer=self._deps.context_reducer,
                 circuit_breaker=self._deps.circuit_breaker,
+                event_store=self._deps.event_store,
                 mcp_registry=self._deps.mcp_registry,
+                tier_router=self._deps.tier_router,
+                budget_enforcer=self._deps.budget_enforcer,
+                approval_gate=self._deps.approval_gate,
+                pii_tokenizer=self._deps.pii_tokenizer,
+                state_store=self._deps.state_store,
+                memory_provider=self._deps.memory_provider,
+                knowledge_provider=self._deps.knowledge_provider,
+                decision_store=self._deps.decision_store,
+                kit_manifests=self._deps.kit_manifests,
             )
         return DefaultDependencies(
-            llm_provider=self._provider,
             lifecycle_hooks=self._hook_manager,
             execution_strategy=execution_strategy,
-            tracer=self._tracer,
         )
 
     async def execute(
@@ -287,8 +281,8 @@ class WorkflowExecutor:
         ``execution_strategy`` parameter is overlaid on top, and
         ``lifecycle_hooks`` always comes from the executor's hook manager
         (so that runtime-added hooks like the streaming collector are
-        visible).  When ``deps`` was not provided, dependencies are built
-        from the individual constructor parameters (backward-compatible).
+        visible).  When ``deps`` was not provided, a minimal
+        :class:`DefaultDependencies` is created.
 
         When ``context.deps.tracer`` is not ``None``, a
         ``beddel.workflow`` span wraps the entire execution with the
@@ -318,7 +312,7 @@ class WorkflowExecutor:
             inputs=effective_inputs,
         )
 
-        context.deps = self._build_deps(execution_strategy)
+        context.deps = self._make_context_deps(execution_strategy)
         context.metadata["_workflow_allowed_tools"] = workflow.allowed_tools
 
         tracer = context.deps.tracer
@@ -485,7 +479,7 @@ class WorkflowExecutor:
                 workflow_id=workflow.id,
                 inputs=effective_inputs,
             )
-            context.deps = self._build_deps(execution_strategy)
+            context.deps = self._make_context_deps(execution_strategy)
             context.metadata["_workflow_allowed_tools"] = workflow.allowed_tools
 
             tracer = context.deps.tracer
