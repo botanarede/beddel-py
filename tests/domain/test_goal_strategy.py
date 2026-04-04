@@ -8,6 +8,7 @@ import pytest
 
 from beddel.domain.errors import ExecutionError
 from beddel.domain.models import (
+    Decision,
     DefaultDependencies,
     ExecutionContext,
     GoalConfig,
@@ -55,10 +56,10 @@ class _RecordingHookManager:
     """Records on_decision calls for lifecycle hook verification."""
 
     def __init__(self) -> None:
-        self.decisions: list[tuple[str, list[str], str]] = []
+        self.decisions: list[Decision] = []
 
-    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
-        self.decisions.append((decision, alternatives, rationale))
+    async def on_decision(self, decision: Decision) -> None:
+        self.decisions.append(decision)
 
 
 class TestGoalMetFirstAttempt:
@@ -289,15 +290,15 @@ class TestOnDecisionHookFired:
 
         assert len(recorder.decisions) == 2
         # First attempt: goal not met
-        assert recorder.decisions[0][0] == "goal_retry"
+        assert recorder.decisions[0].intent == "goal_retry"
         # Second attempt: goal met
-        assert recorder.decisions[1][0] == "goal_achieved"
+        assert recorder.decisions[1].intent == "goal_achieved"
         # All calls have correct alternatives
-        for _, alts, _ in recorder.decisions:
-            assert alts == ["goal_achieved", "goal_retry"]
+        for d in recorder.decisions:
+            assert d.options == ["goal_achieved", "goal_retry"]
         # Rationale contains attempt info
-        assert "1/5" in recorder.decisions[0][2]
-        assert "2/5" in recorder.decisions[1][2]
+        assert "1/5" in recorder.decisions[0].reasoning
+        assert "2/5" in recorder.decisions[1].reasoning
 
 
 class TestGoalConditionEvaluationFailure:

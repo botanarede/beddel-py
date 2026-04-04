@@ -11,6 +11,7 @@ from beddel.domain.errors import ExecutionError, PrimitiveError
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
     BeddelEvent,
+    Decision,
     DefaultDependencies,
     ErrorSemantics,
     EventType,
@@ -601,7 +602,7 @@ class _MockHooks:
     async def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:
         pass
 
-    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+    async def on_decision(self, decision: Decision) -> None:
         pass
 
     async def add_hook(self, hook: Any) -> None:

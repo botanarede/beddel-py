@@ -6,6 +6,7 @@ import asyncio
 from typing import Any
 
 from beddel.adapters.hooks import LifecycleHookManager
+from beddel.domain.models import Decision
 from beddel.domain.ports import ILifecycleHook
 
 # ---------------------------------------------------------------------------
@@ -37,8 +38,8 @@ class _RecordingHook(ILifecycleHook):
     async def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:
         self.calls.append(("on_retry", (step_id, attempt, error)))
 
-    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
-        self.calls.append(("on_decision", (decision, alternatives, rationale)))
+    async def on_decision(self, decision: Decision) -> None:
+        self.calls.append(("on_decision", decision))
 
 
 class _SyncRecordingHook(ILifecycleHook):
@@ -65,8 +66,8 @@ class _SyncRecordingHook(ILifecycleHook):
     def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:  # type: ignore[override]
         self.calls.append(("on_retry", (step_id, attempt, error)))
 
-    def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:  # type: ignore[override]
-        self.calls.append(("on_decision", (decision, alternatives, rationale)))
+    def on_decision(self, decision: Decision) -> None:  # type: ignore[override]
+        self.calls.append(("on_decision", decision))
 
 
 class _MisbehavingHook(ILifecycleHook):
@@ -90,7 +91,7 @@ class _MisbehavingHook(ILifecycleHook):
     async def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:
         raise RuntimeError("boom")
 
-    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+    async def on_decision(self, decision: Decision) -> None:
         raise RuntimeError("boom")
 
 
@@ -156,7 +157,8 @@ class TestNoHooks:
 
     async def test_on_decision_no_hooks(self) -> None:
         manager = LifecycleHookManager()
-        await manager.on_decision("use-cache", ["skip-cache"], "faster")
+        d = Decision(id="", intent="use-cache", options=["skip-cache"], reasoning="faster")
+        await manager.on_decision(d)
 
 
 # ---------------------------------------------------------------------------
@@ -247,9 +249,10 @@ class TestMisbehavingHook:
         bad = _MisbehavingHook()
         good = _RecordingHook()
         manager = LifecycleHookManager([bad, good])
-        await manager.on_decision("pick-a", ["pick-b"], "reason")
+        d = Decision(id="", intent="pick-a", options=["pick-b"], reasoning="reason")
+        await manager.on_decision(d)
         assert len(good.calls) == 1
-        assert good.calls[0] == ("on_decision", ("pick-a", ["pick-b"], "reason"))
+        assert good.calls[0] == ("on_decision", d)
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +279,7 @@ class TestSyncHandlerSupport:
         await manager.on_step_end("s", "result")
         await manager.on_error("s", err)
         await manager.on_retry("s", 3, err)
-        await manager.on_decision("d", ["alt"], "why")
+        await manager.on_decision(Decision(id="", intent="d", options=["alt"], reasoning="why"))
         assert len(hook.calls) == 7
 
     async def test_sync_and_async_hooks_coexist(self) -> None:
@@ -312,7 +315,7 @@ class TestAsyncHandlerSupport:
         await manager.on_step_end("s", "result")
         await manager.on_error("s", err)
         await manager.on_retry("s", 3, err)
-        await manager.on_decision("d", ["alt"], "reason")
+        await manager.on_decision(Decision(id="", intent="d", options=["alt"], reasoning="reason"))
         method_names = [name for name, _ in hook.calls]
         assert method_names == [
             "on_workflow_start",
@@ -374,10 +377,14 @@ class TestAllEventMethods:
     async def test_on_decision_dispatches_args(self) -> None:
         hook = _RecordingHook()
         manager = LifecycleHookManager([hook])
-        await manager.on_decision("use-gpt4", ["use-claude", "use-llama"], "best quality")
-        assert hook.calls == [
-            ("on_decision", ("use-gpt4", ["use-claude", "use-llama"], "best quality"))
-        ]
+        d = Decision(
+            id="",
+            intent="use-gpt4",
+            options=["use-claude", "use-llama"],
+            reasoning="best quality",
+        )
+        await manager.on_decision(d)
+        assert hook.calls == [("on_decision", d)]
 
 
 # ---------------------------------------------------------------------------
@@ -502,3 +509,59 @@ class TestThreadSafety:
         await manager.on_step_start("s2", "chat")
         assert len(late.calls) == 1
         assert late.calls[0] == ("on_step_start", ("s2", "chat"))
+
+
+# ---------------------------------------------------------------------------
+# Tests: Backward-compatible on_decision (Story 7.1, Task 2 — AC #3)
+# ---------------------------------------------------------------------------
+
+
+class _OldStyleAsyncHook(ILifecycleHook):
+    """Hook using the old 3-arg on_decision signature."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[str], str]] = []
+
+    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:  # type: ignore[override]
+        self.calls.append((decision, alternatives, rationale))
+
+
+class _OldStyleSyncHook(ILifecycleHook):
+    """Sync hook using the old 3-arg on_decision signature."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[str], str]] = []
+
+    def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:  # type: ignore[override]
+        self.calls.append((decision, alternatives, rationale))
+
+
+class TestBackwardCompatibleOnDecision:
+    """Old-style hooks with 3-arg on_decision still work via TypeError fallback."""
+
+    async def test_old_style_async_hook_receives_decision(self) -> None:
+        old_hook = _OldStyleAsyncHook()
+        manager = LifecycleHookManager([old_hook])
+        d = Decision(id="d1", intent="use-cache", options=["skip-cache"], reasoning="faster")
+        await manager.on_decision(d)
+        assert len(old_hook.calls) == 1
+        assert old_hook.calls[0] == ("use-cache", ["skip-cache"], "faster")
+
+    async def test_old_style_sync_hook_receives_decision(self) -> None:
+        old_hook = _OldStyleSyncHook()
+        manager = LifecycleHookManager([old_hook])
+        d = Decision(id="d2", intent="pick-model", options=["gpt4", "claude"], reasoning="cost")
+        await manager.on_decision(d)
+        assert len(old_hook.calls) == 1
+        assert old_hook.calls[0] == ("pick-model", ["gpt4", "claude"], "cost")
+
+    async def test_mixed_old_and_new_hooks(self) -> None:
+        old_hook = _OldStyleAsyncHook()
+        new_hook = _RecordingHook()
+        manager = LifecycleHookManager([old_hook, new_hook])
+        d = Decision(id="d3", intent="route", options=["a", "b"], reasoning="perf")
+        await manager.on_decision(d)
+        # Old hook receives decomposed args
+        assert old_hook.calls == [("route", ["a", "b"], "perf")]
+        # New hook receives the Decision object
+        assert new_hook.calls == [("on_decision", d)]

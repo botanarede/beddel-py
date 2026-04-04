@@ -6,6 +6,7 @@ import asyncio
 
 import pytest
 
+from beddel.domain.models import Decision
 from beddel.domain.ports import ILifecycleHook, ITracer, NoOpTracer
 
 
@@ -91,7 +92,13 @@ class TestILifecycleHookOnDecision:
     def test_on_decision_is_async(self) -> None:
         """on_decision is a coroutine function."""
         hook = ILifecycleHook()
-        result = hook.on_decision("use-cache", ["skip-cache", "invalidate"], "faster")
+        d = Decision(
+            id="",
+            intent="use-cache",
+            options=["skip-cache", "invalidate"],
+            reasoning="faster",
+        )
+        result = hook.on_decision(d)
         assert asyncio.iscoroutine(result)
         # Clean up the coroutine to avoid RuntimeWarning
         result.close()
@@ -99,18 +106,26 @@ class TestILifecycleHookOnDecision:
     async def test_on_decision_noop_does_not_raise(self) -> None:
         """Default on_decision is a no-op and does not raise."""
         hook = ILifecycleHook()
-        await hook.on_decision("use-cache", ["skip-cache", "invalidate"], "faster")
+        d = Decision(
+            id="",
+            intent="use-cache",
+            options=["skip-cache", "invalidate"],
+            reasoning="faster",
+        )
+        await hook.on_decision(d)
 
     async def test_on_decision_returns_none(self) -> None:
         """Default on_decision returns None."""
         hook = ILifecycleHook()
-        result = await hook.on_decision("use-cache", [], "no alternatives")
+        d = Decision(id="", intent="use-cache", reasoning="no alternatives")
+        result = await hook.on_decision(d)
         assert result is None
 
     async def test_on_decision_accepts_empty_alternatives(self) -> None:
         """on_decision accepts an empty alternatives list."""
         hook = ILifecycleHook()
-        await hook.on_decision("proceed", [], "only option")
+        d = Decision(id="", intent="proceed", reasoning="only option")
+        await hook.on_decision(d)
 
 
 class TestIHookManager:

@@ -21,7 +21,7 @@ import logging
 from typing import Any
 
 from beddel.domain.errors import ExecutionError
-from beddel.domain.models import BackoffType, ExecutionContext, Workflow
+from beddel.domain.models import BackoffType, Decision, ExecutionContext, Workflow
 from beddel.domain.ports import StepRunner
 from beddel.domain.resolver import VariableResolver
 from beddel.error_codes import EXEC_GOAL_CONDITION_FAILED, EXEC_GOAL_MAX_ATTEMPTS
@@ -140,16 +140,20 @@ class GoalOrientedStrategy:
                 goal_met = bool(resolved)
 
             # Fire on_decision lifecycle hook
-            decision = "goal_achieved" if goal_met else "goal_retry"
+            decision_intent = "goal_achieved" if goal_met else "goal_retry"
             hooks = context.deps.lifecycle_hooks
             if hooks:
                 try:
                     await hooks.on_decision(
-                        decision=decision,
-                        alternatives=["goal_achieved", "goal_retry"],
-                        rationale=(
-                            f"Attempt {attempt}/{self._max_attempts}: "
-                            f"goal_met={goal_met}, resolved={resolved!r}"
+                        Decision(
+                            id="",
+                            intent=decision_intent,
+                            options=["goal_achieved", "goal_retry"],
+                            chosen=decision_intent,
+                            reasoning=(
+                                f"Attempt {attempt}/{self._max_attempts}: "
+                                f"goal_met={goal_met}, resolved={resolved!r}"
+                            ),
                         ),
                     )
                 except Exception:

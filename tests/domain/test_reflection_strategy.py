@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from beddel.domain.errors import ExecutionError
-from beddel.domain.models import ExecutionContext, Step, Workflow
+from beddel.domain.models import Decision, ExecutionContext, Step, Workflow
 from beddel.domain.ports import IPrimitive
 from beddel.domain.strategies.reflection import ReflectionStrategy
 
@@ -260,10 +260,10 @@ class _RecordingHookManager:
     """Records on_decision calls. Used as lifecycle_hooks in deps."""
 
     def __init__(self) -> None:
-        self.decisions: list[tuple[str, list[str], str]] = []
+        self.decisions: list[Decision] = []
 
-    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
-        self.decisions.append((decision, alternatives, rationale))
+    async def on_decision(self, decision: Decision) -> None:
+        self.decisions.append(decision)
 
 
 class _IntegrationPrimitive(IPrimitive):
@@ -353,16 +353,16 @@ class TestReflectionOnDecision:
 
         assert len(recorder.decisions) == 2
         # First iteration: previous is None → not converged
-        assert recorder.decisions[0][0] == "reflection_continue"
+        assert recorder.decisions[0].intent == "reflection_continue"
         # Second iteration: same eval → converged
-        assert recorder.decisions[1][0] == "reflection_converged"
+        assert recorder.decisions[1].intent == "reflection_converged"
         # All calls have correct alternatives
-        for _, alts, _ in recorder.decisions:
-            assert alts == ["converge", "continue"]
+        for d in recorder.decisions:
+            assert d.options == ["converge", "continue"]
         # Rationale contains iteration number and algorithm
-        assert "1/5" in recorder.decisions[0][2]
-        assert "exact-match" in recorder.decisions[0][2]
-        assert "2/5" in recorder.decisions[1][2]
+        assert "1/5" in recorder.decisions[0].reasoning
+        assert "exact-match" in recorder.decisions[0].reasoning
+        assert "2/5" in recorder.decisions[1].reasoning
 
     @pytest.mark.asyncio
     async def test_reflection_on_decision_converged_decision(self) -> None:
@@ -383,7 +383,7 @@ class TestReflectionOnDecision:
 
         await strategy.execute(wf, ctx, runner)
 
-        assert recorder.decisions[-1][0] == "reflection_converged"
+        assert recorder.decisions[-1].intent == "reflection_converged"
 
     @pytest.mark.asyncio
     async def test_reflection_on_decision_no_hooks(self) -> None:

@@ -630,17 +630,20 @@ class ILifecycleHook:
             error: The exception that triggered the retry.
         """
 
-    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+    async def on_decision(self, decision: Decision) -> None:
         """Called when the executor records a decision.
 
-        Prepares the hook surface for Gap #19 (decision capture in Epic 5).
-        Implementations can log, audit, or replay decisions made during
-        workflow execution.
+        Receives a :class:`~beddel.domain.models.Decision` dataclass
+        capturing the intent, options, chosen option, and reasoning.
+
+        .. versionchanged:: 0.2.0
+            Signature changed from ``(decision: str, alternatives: list[str],
+            rationale: str)`` to ``(decision: Decision)``.  The
+            :class:`LifecycleHookManager` provides a backward-compatible
+            wrapper for hooks still using the old 3-arg signature.
 
         Args:
-            decision: The decision that was made.
-            alternatives: Alternative options that were considered.
-            rationale: Explanation for why this decision was chosen.
+            decision: The structured decision record.
         """
 
     async def on_budget_threshold(

@@ -21,7 +21,7 @@ import logging
 from typing import Any
 
 from beddel.domain.errors import ExecutionError
-from beddel.domain.models import ExecutionContext, Workflow
+from beddel.domain.models import Decision, ExecutionContext, Workflow
 from beddel.domain.ports import StepRunner
 from beddel.domain.utils import StepFilter
 from beddel.error_codes import (
@@ -148,16 +148,20 @@ class ReflectionStrategy:
                 # exact-match: first iteration previous is None → never converges
                 converged = str(current_eval) == str(previous_eval)
 
-            # Fire on_decision hook
+            # Fire on_decision lifecycle hook
             hooks = context.deps.lifecycle_hooks
             if hooks:
                 try:
                     await hooks.on_decision(
-                        decision="reflection_converged" if converged else "reflection_continue",
-                        alternatives=["converge", "continue"],
-                        rationale=f"Iteration {iteration}/{self._max_iterations}: "
-                        f"{'converged' if converged else 'not converged'} "
-                        f"via {self._algorithm}",
+                        Decision(
+                            id="",
+                            intent="reflection_converged" if converged else "reflection_continue",
+                            options=["converge", "continue"],
+                            chosen="converge" if converged else "continue",
+                            reasoning=f"Iteration {iteration}/{self._max_iterations}: "
+                            f"{'converged' if converged else 'not converged'} "
+                            f"via {self._algorithm}",
+                        ),
                     )
                 except Exception:
                     _log.warning("on_decision hook failed", exc_info=True)

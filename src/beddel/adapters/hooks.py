@@ -16,7 +16,7 @@ import contextlib
 import logging
 from typing import Any
 
-from beddel.domain.models import ApprovalResult, RiskLevel
+from beddel.domain.models import ApprovalResult, Decision, RiskLevel
 from beddel.domain.ports import IHookManager, ILifecycleHook
 
 logger = logging.getLogger(__name__)
@@ -203,22 +203,41 @@ class LifecycleHookManager(IHookManager):
                     exc_info=True,
                 )
 
-    async def on_decision(self, decision: str, alternatives: list[str], rationale: str) -> None:
+    async def on_decision(self, decision: Decision) -> None:
         """Dispatch decision event to all registered hooks.
 
+        Tries the new ``Decision`` dataclass signature first.  If a hook
+        still uses the old 3-arg ``(decision, alternatives, rationale)``
+        signature, the resulting ``TypeError`` is caught and the call is
+        retried with the legacy positional arguments.
+
         Args:
-            decision: The decision that was made.
-            alternatives: Alternative options that were considered.
-            rationale: Explanation for why this decision was chosen.
+            decision: The structured :class:`Decision` record.
         """
         async with self._lock:
             hooks = list(self._hooks)
         for hook in hooks:
             try:
                 if asyncio.iscoroutinefunction(hook.on_decision):
-                    await hook.on_decision(decision, alternatives, rationale)
+                    await hook.on_decision(decision)
                 else:
-                    hook.on_decision(decision, alternatives, rationale)  # type: ignore[unused-coroutine]
+                    hook.on_decision(decision)  # type: ignore[unused-coroutine]
+            except TypeError:
+                # Backward-compatible fallback for old 3-arg hooks
+                try:
+                    intent = decision.intent
+                    options = decision.options
+                    reasoning = decision.reasoning
+                    if asyncio.iscoroutinefunction(hook.on_decision):
+                        await hook.on_decision(intent, options, reasoning)  # type: ignore[call-arg,arg-type]
+                    else:
+                        hook.on_decision(intent, options, reasoning)  # type: ignore[call-arg,arg-type,unused-coroutine]
+                except Exception:
+                    logger.warning(
+                        "Lifecycle hook %s.on_decision raised (ignored)",
+                        type(hook).__name__,
+                        exc_info=True,
+                    )
             except Exception:
                 logger.warning(
                     "Lifecycle hook %s.on_decision raised (ignored)",
