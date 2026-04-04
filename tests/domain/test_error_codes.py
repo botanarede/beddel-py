@@ -45,7 +45,7 @@ from beddel.error_codes import (
 )
 
 # Valid code pattern: BEDDEL-{PREFIX}-{NNN}
-_CODE_PATTERN = re.compile(r"^BEDDEL-[A-Z]+-\d{3}$")
+_CODE_PATTERN = re.compile(r"^BEDDEL-[A-Z]+-\d{3,4}$")
 
 
 class TestErrorCodeFormat:

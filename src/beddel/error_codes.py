@@ -26,6 +26,7 @@ Range       Prefix    Domain
 950 – 999   MCP       MCP integration errors
 980 – 999   KNOWLEDGE Knowledge architecture errors (sub-range of 950-999)
 1000 – 1049  AUTH     Remote authentication errors
+1050 – 1099  DECISION Decision-centric runtime errors
 650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
 ==========  ========  ===========
 """
@@ -100,6 +101,9 @@ string prefix BEDDEL-KIT- to avoid collision."""
 
 AUTH_RANGE: tuple[int, int] = (1000, 1049)
 """Remote authentication errors (string codes use BEDDEL-AUTH-9xx per PRD)."""
+
+DECISION_RANGE: tuple[int, int] = (1050, 1099)
+"""Decision-centric runtime errors."""
 
 # ---------------------------------------------------------------------------
 # Parser codes  (PARSE prefix, 100 range)
@@ -524,6 +528,19 @@ AUTH_USER_NOT_ALLOWED: str = "BEDDEL-AUTH-907"
 """Valid token but user not in allowed list."""
 
 # ---------------------------------------------------------------------------
+# Decision codes  (DECISION prefix, 1050 range)
+# ---------------------------------------------------------------------------
+
+DECISION_APPEND_FAILED: str = "BEDDEL-DECISION-1050"
+"""Decision store append failed."""
+
+DECISION_QUERY_FAILED: str = "BEDDEL-DECISION-1051"
+"""Decision store query failed."""
+
+DECISION_DELETE_FAILED: str = "BEDDEL-DECISION-1052"
+"""Decision store delete failed."""
+
+# ---------------------------------------------------------------------------
 # Integration codes
 # ---------------------------------------------------------------------------
 
@@ -656,6 +673,10 @@ ALL_CODES: dict[str, str] = {
     "AUTH_MISSING_HEADER": AUTH_MISSING_HEADER,
     "AUTH_INVALID_TOKEN": AUTH_INVALID_TOKEN,
     "AUTH_USER_NOT_ALLOWED": AUTH_USER_NOT_ALLOWED,
+    # Decision
+    "DECISION_APPEND_FAILED": DECISION_APPEND_FAILED,
+    "DECISION_QUERY_FAILED": DECISION_QUERY_FAILED,
+    "DECISION_DELETE_FAILED": DECISION_DELETE_FAILED,
     # Kit
     "KIT_MANIFEST_INVALID": KIT_MANIFEST_INVALID,
     "KIT_MANIFEST_NOT_FOUND": KIT_MANIFEST_NOT_FOUND,

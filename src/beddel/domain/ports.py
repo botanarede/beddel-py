@@ -33,6 +33,7 @@ from beddel.domain.models import (
     AgentResult,
     ApprovalResult,
     ApprovalStatus,
+    Decision,
     Episode,
     ExecutionContext,
     KnowledgeEntry,
@@ -59,6 +60,7 @@ __all__ = [
     "IBudgetEnforcer",
     "ICircuitBreaker",
     "IContextReducer",
+    "IDecisionStore",
     "IEventStore",
     "IExecutionStrategy",
     "IKnowledgeProvider",
@@ -195,6 +197,11 @@ class ExecutionDependencies(Protocol):
     @property
     def knowledge_provider(self) -> IKnowledgeProvider | None:
         """The knowledge provider for domain knowledge, or ``None`` if not configured."""
+        return None
+
+    @property
+    def decision_store(self) -> IDecisionStore | None:
+        """The decision store for decision capture, or ``None`` if not configured."""
         return None
 
 
@@ -1003,6 +1010,56 @@ class IStateStore(Protocol):
 
     async def delete(self, workflow_id: str) -> None:
         """Remove persisted execution state for a workflow.
+
+        Args:
+            workflow_id: Identifier of the workflow execution to clear.
+        """
+        ...
+
+
+class IDecisionStore(Protocol):
+    """Contract for decision store implementations.
+
+    Provides append-only decision logging per workflow, with query and
+    delete operations for decision analytics and lifecycle management.
+
+    Uses structural subtyping (``Protocol``) consistent with
+    :class:`IStateStore`, :class:`IEventStore`, and other domain ports.
+
+    [Source: docs/stories/epic-7/story-7.1.md — AC 4]
+    """
+
+    async def append(self, workflow_id: str, decision: Decision) -> None:
+        """Append a decision for a workflow.
+
+        Args:
+            workflow_id: Identifier of the workflow execution.
+            decision: The decision to persist.
+        """
+        ...
+
+    async def query(
+        self,
+        workflow_id: str | None = None,
+        step_id: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> list[Decision]:
+        """Query decisions with optional filters.
+
+        Args:
+            workflow_id: Filter by workflow identifier.
+            step_id: Filter by step identifier.
+            since: Filter decisions created at or after this ISO 8601 timestamp.
+            until: Filter decisions created at or before this ISO 8601 timestamp.
+
+        Returns:
+            List of matching :class:`~beddel.domain.models.Decision` instances.
+        """
+        ...
+
+    async def delete(self, workflow_id: str) -> None:
+        """Remove all decisions for a workflow.
 
         Args:
             workflow_id: Identifier of the workflow execution to clear.

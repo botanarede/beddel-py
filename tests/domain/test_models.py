@@ -828,6 +828,7 @@ class TestAllExports:
             "CircuitBreakerConfig",
             "CircuitState",
             "DefaultDependencies",
+            "Decision",
             "Episode",
             "ErrorSemantics",
             "EventType",

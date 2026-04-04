@@ -5,6 +5,7 @@ from __future__ import annotations
 from beddel.domain.errors import (
     AdapterError,
     BeddelError,
+    DecisionError,
     ExecutionError,
     KnowledgeError,
     MemoryError,
@@ -16,6 +17,7 @@ from beddel.domain.errors import (
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
     BeddelEvent,
+    Decision,
     DefaultDependencies,
     EventType,
     ExecutionContext,
@@ -30,6 +32,7 @@ from beddel.domain.ports import (
     ExecutionDependencies,
     ICircuitBreaker,
     IContextReducer,
+    IDecisionStore,
     IHookManager,
     ILifecycleHook,
     ILLMProvider,
@@ -48,6 +51,8 @@ __all__ = [
     "AgentDelegationStrategy",
     "BeddelError",
     "BeddelEvent",
+    "Decision",
+    "DecisionError",
     "DefaultDependencies",
     "EventType",
     "ExecutionContext",
@@ -56,6 +61,7 @@ __all__ = [
     "ExecutionStrategy",
     "ICircuitBreaker",
     "IContextReducer",
+    "IDecisionStore",
     "IHookManager",
     "ILifecycleHook",
     "ILLMProvider",

@@ -23,6 +23,7 @@ Prefix             Domain
 ``BEDDEL-STATE-``  State persistence errors
 ``BEDDEL-MEMORY-``  Episodic memory errors
 ``BEDDEL-KNOWLEDGE-``  Knowledge architecture errors
+``BEDDEL-DECISION-``  Decision-centric runtime errors
 =================  ============================
 """
 
@@ -49,6 +50,7 @@ __all__ = [
     "StateError",
     "MemoryError",
     "KnowledgeError",
+    "DecisionError",
 ]
 
 
@@ -241,3 +243,7 @@ class MemoryError(BeddelError):  # noqa: A001
 
 class KnowledgeError(BeddelError):
     """Knowledge architecture errors. Error code prefix: BEDDEL-KNOWLEDGE-"""
+
+
+class DecisionError(BeddelError):
+    """Decision-centric runtime errors. Error code prefix: BEDDEL-DECISION-"""

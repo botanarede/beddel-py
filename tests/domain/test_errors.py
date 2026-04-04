@@ -138,6 +138,7 @@ class TestAllExports:
             "StateError",
             "MemoryError",
             "KnowledgeError",
+            "DecisionError",
         }
         assert set(errors.__all__) == expected
 

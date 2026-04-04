@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         IBudgetEnforcer,
         ICircuitBreaker,
         IContextReducer,
+        IDecisionStore,
         IEventStore,
         IExecutionStrategy,
         IHookManager,
@@ -69,6 +70,7 @@ __all__ = [
     "BudgetStatus",
     "CircuitBreakerConfig",
     "CircuitState",
+    "Decision",
     "DefaultDependencies",
     "Episode",
     "ErrorSemantics",
@@ -93,6 +95,36 @@ __all__ = [
     "ToolDeclaration",
     "Workflow",
 ]
+
+
+@dataclass(frozen=True)
+class Decision:
+    """A structured record of an agent decision.
+
+    Captures the intent, options considered, chosen option, and reasoning
+    behind a decision made during workflow execution.
+
+    Attributes:
+        id: Unique identifier for this decision.
+        intent: What the decision is about.
+        options: Available options that were considered.
+        chosen: The option that was selected.
+        reasoning: Explanation for why this option was chosen.
+        outcome: Optional outcome of the decision after execution.
+        step_id: Identifier of the step that produced this decision.
+        workflow_id: Identifier of the workflow execution.
+        timestamp: ISO 8601 timestamp when the decision was made.
+    """
+
+    id: str
+    intent: str
+    options: list[str] = field(default_factory=list)
+    chosen: str = ""
+    reasoning: str = ""
+    outcome: str | None = None
+    step_id: str | None = None
+    workflow_id: str | None = None
+    timestamp: str | None = None
 
 
 @dataclass(frozen=True)
@@ -606,6 +638,8 @@ class DefaultDependencies:
             or ``None`` if not configured.  Defaults to ``None``.
         knowledge_provider: The knowledge provider for domain knowledge,
             or ``None`` if not configured.  Defaults to ``None``.
+        decision_store: The decision store for decision capture,
+            or ``None`` if not configured.  Defaults to ``None``.
     """
 
     __slots__ = (
@@ -630,6 +664,7 @@ class DefaultDependencies:
         "_state_store",
         "_memory_provider",
         "_knowledge_provider",
+        "_decision_store",
     )
 
     def __init__(
@@ -655,6 +690,7 @@ class DefaultDependencies:
         state_store: IStateStore | None = None,
         memory_provider: IMemoryProvider | None = None,
         knowledge_provider: IKnowledgeProvider | None = None,
+        decision_store: IDecisionStore | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -677,6 +713,7 @@ class DefaultDependencies:
         self._state_store = state_store
         self._memory_provider = memory_provider
         self._knowledge_provider = knowledge_provider
+        self._decision_store = decision_store
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -782,6 +819,11 @@ class DefaultDependencies:
     def knowledge_provider(self) -> IKnowledgeProvider | None:
         """The knowledge provider for domain knowledge, or ``None`` if not configured."""
         return self._knowledge_provider
+
+    @property
+    def decision_store(self) -> IDecisionStore | None:
+        """The decision store for decision capture, or ``None`` if not configured."""
+        return self._decision_store
 
 
 _log = logging.getLogger(__name__)
