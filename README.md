@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/hero-banner-github.png" alt="Beddel — Declarative YAML-based AI Workflow Engine" width="100%">
+</p>
+
 # Beddel
 
 [![PyPI version](https://img.shields.io/pypi/v/beddel.svg)](https://pypi.org/project/beddel/)
@@ -34,6 +38,9 @@ steps:
 - 4 agent adapters: OpenClaw, Claude, Codex, Kiro CLI
 - OpenTelemetry + Langfuse tracing with token usage tracking per step
 - Model tier selection, effort control, and budget enforcement
+- Enterprise safety: HOTL approval gates, PII tokenization, state persistence
+- Episodic memory and knowledge architecture ports
+- Multi-agent coordination, event-driven execution, skill composition
 - Lifecycle hooks for custom logging, metrics, and side effects
 - Expose workflows as HTTP/SSE endpoints with one function call
 - MCP client (stdio + SSE) for tool discovery and invocation
@@ -160,6 +167,8 @@ async def main():
     register_builtins(registry)
 
     executor = WorkflowExecutor(registry, provider=LiteLLMAdapter())
+    # Preferred: use deps= for full dependency injection
+    # executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=LiteLLMAdapter()))
     result = await executor.execute(workflow, inputs={"topic": "astronomy"})
 
     print(result["step_results"]["greet"]["content"])
@@ -267,18 +276,6 @@ class MyPrimitive(IPrimitive):
         return {"result": "custom logic here"}
 
 registry.register("my-custom-primitive", MyPrimitive())
-```
-
-Or use the `@primitive` decorator for module-level registration:
-
-```python
-from beddel.domain.ports import IPrimitive
-from beddel.domain.registry import primitive
-
-@primitive("my-custom-primitive")
-class MyPrimitive(IPrimitive):
-    async def execute(self, config, context):
-        return {"result": "custom logic here"}
 ```
 
 **LiteLLM Adapter** — Multi-provider LLM abstraction supporting OpenRouter, Google Gemini, AWS Bedrock, Anthropic, and all [LiteLLM-supported providers](https://docs.litellm.ai/docs/providers). Explicit API key resolution from environment variables for resilience against upstream library changes.
@@ -410,7 +407,7 @@ class MyHook(ILifecycleHook):
 executor = WorkflowExecutor(registry, provider=adapter, hooks=[MyHook()])
 ```
 
-Events: `on_workflow_start`, `on_workflow_end`, `on_step_start`, `on_step_end`, `on_error`, `on_retry`. Hook failures are silently caught — a misbehaving hook never breaks workflow execution.
+Events: `on_workflow_start`, `on_workflow_end`, `on_step_start`, `on_step_end`, `on_error`, `on_retry`, `on_decision`, `on_budget_threshold`, `on_approval_requested`, `on_approval_received`. Hook failures are silently caught — a misbehaving hook never breaks workflow execution.
 
 **FastAPI Integration** — Expose workflows as HTTP/SSE endpoints with one function call:
 
@@ -433,6 +430,113 @@ beddel serve -w workflow.yaml --port 8000
 Endpoints:
 - `POST /workflows/{id}` — Execute workflow (SSE response)
 - `GET /health` — Health check
+
+### Adaptive Execution Patterns (Epic 4)
+
+Advanced execution strategies beyond sequential flow.
+
+**Reflection Loops** — Generate → evaluate → converge cycles. The executor re-invokes the LLM with its own output and a critique prompt until a quality threshold is met or max iterations reached.
+
+**Parallel Execution** — Fan-out/fan-in with two collection strategies: `fail_fast` (abort on first error) and `collect_all` (gather all results, report errors inline). Steps declare `parallel: true` in their execution strategy.
+
+**Circuit Breaker** — Per-provider fault tolerance with 3-state machine (closed → open → half-open). Configurable failure threshold, reset timeout, and half-open probe count. Prevents cascading failures when an LLM provider is degraded.
+
+**Goal-Oriented Execution** — Loop-until-outcome with configurable backoff. Define a target condition; the executor retries the step sequence until the condition is satisfied or budget is exhausted.
+
+**Durable Execution** — SQLite-backed event store with exactly-once semantics. Workflows can crash and resume from the last committed step. Event log enables replay and audit.
+
+**MCP Client** — Connects to Model Context Protocol servers via stdio or SSE transport. Discovers tools at runtime and makes them available as `tool` primitive targets.
+
+**Function Calling** — Tool-use loop where the LLM requests tool invocations, the engine executes them, and re-invokes the LLM with results until the model produces a final response.
+
+```yaml
+steps:
+  - id: research
+    primitive: llm
+    config:
+      model: gemini/gemini-2.0-flash
+      prompt: "Find the latest stats on $input.topic"
+    execution_strategy:
+      type: reflection
+      reflection:
+        max_iterations: 3
+        convergence_threshold: 0.8
+```
+
+### Agent Adapters & Observability (Epic 5)
+
+Unified agent delegation and production cost controls.
+
+**Agent Adapters** — 4 adapters (OpenClaw, Claude, Codex, Kiro CLI) all implementing the `IAgentAdapter` port. The `agent-exec` primitive delegates to any adapter via a single YAML config — no code changes to switch agents.
+
+**Langfuse Tracer** — Drop-in adapter for [Langfuse](https://langfuse.com/) observability. Traces workflow execution with token usage, latency, and cost attribution per step.
+
+**Model Tier Selection** — Declare intent (`fast`, `balanced`, `powerful`) instead of hardcoding model names. The engine maps tiers to concrete models per provider, with effort control for cost/quality tradeoffs.
+
+**Budget Enforcement** — Per-workflow cost limits with degradation threshold. When spend reaches the threshold percentage, the engine downgrades model tier automatically. Hard cap stops execution.
+
+**Solution Kit Ecosystem** — Slim core (3 pip deps) + 15 isolated kits. Each kit has its own `kit.yaml` manifest, pip dependencies, and namespace. The `beddel kit install` CLI handles discovery, download, and dependency installation.
+
+```yaml
+steps:
+  - id: delegate-to-agent
+    primitive: agent-exec
+    config:
+      adapter: openclaw
+      message: "Analyze this codebase for security issues"
+      timeout: 120
+```
+
+### Enterprise Safety & Knowledge (Epic 6)
+
+Production safety controls, state management, and knowledge integration.
+
+**HOTL Approval Gates** — Human-on-the-loop gates with risk-based auto-approve for low-risk actions, CIBA-style async approval pattern for high-risk, and timeout escalation. Integrates with the lifecycle hook system via `on_approval_requested` / `on_approval_received`.
+
+**PII Tokenization** — Regex-based tokenize/detokenize pipeline with configurable patterns. Sensitive data is replaced with tokens before LLM invocation and restored in the output. Patterns are extensible per deployment.
+
+**State Persistence** — Pluggable state stores (in-memory for dev, JSON file for durable). Checkpoint/resume support — workflows can persist intermediate state and resume after restart.
+
+**Episodic Memory** — `IMemoryProvider` port with composite dual-backend routing. Short-term and long-term memory backends can be mixed (e.g., in-memory for session, SQLite for persistence). Workflows access memory via the `$memory.*` namespace.
+
+**Knowledge Architecture** — `IKnowledgeProvider` port with YAML adapter and dot-notation access. Load domain knowledge from YAML files and reference it in workflows via `$knowledge.domain.concept`. The port is backend-agnostic — swap YAML for a graph DB or API without changing workflows.
+
+```yaml
+steps:
+  - id: sensitive-action
+    primitive: llm
+    config:
+      prompt: "Process this request: $input.message"
+    approval:
+      required: true
+      risk_level: high
+      timeout: 300
+```
+
+### Ecosystem Patterns (Epic 7)
+
+Higher-order patterns for multi-agent and event-driven architectures.
+
+**Decision-Centric Runtime** — Structured decision capture with persistence and query. Every significant workflow decision (model selection, branch taken, approval outcome) is recorded with rationale, enabling audit trails and decision replay.
+
+**Multi-Agent Coordination** — Three coordination strategies: `supervisor` (central orchestrator), `handoff` (sequential delegation), and `parallel` (fan-out to multiple agents). The coordinator manages agent lifecycle, result aggregation, and failure handling.
+
+**Event-Driven Execution** — Trigger workflows from external events: webhooks (HTTP POST), cron schedules, and SSE stream listeners. Events are normalized into workflow inputs via configurable mappings.
+
+**Skill Composition** — Kit-based skill resolution with version constraints and governance policies. Workflows declare skill dependencies; the engine resolves them from installed kits, enforcing version compatibility and organizational policies.
+
+```yaml
+coordination:
+  strategy: supervisor
+  agents:
+    - adapter: openclaw
+      role: researcher
+    - adapter: claude
+      role: writer
+    - adapter: codex
+      role: reviewer
+  aggregation: sequential
+```
 
 
 ## CLI
@@ -545,6 +649,12 @@ Beddel follows Hexagonal Architecture (Ports & Adapters) with a Solution Kit eco
 
 ```
 ┌─────────────────────────────────────────────┐
+│           Ecosystem Patterns                 │
+│  Decisions · Coordination · Events · Skills  │
+├─────────────────────────────────────────────┤
+│           Enterprise Safety                  │
+│  HOTL · PII · State · Memory · Knowledge     │
+├─────────────────────────────────────────────┤
 │            Solution Kits (kits/)             │
 │  agent-openclaw · agent-claude · agent-codex │
 │  agent-kiro · provider-litellm               │
@@ -595,9 +705,11 @@ The `-Wd` flag turns `DeprecationWarning` into errors, catching deprecated API u
 
 ## Roadmap
 
-Epics 1–5.1 are complete (Adaptive Core, Primitives, Observability, Adaptive Execution, Agent Adapters, Kit Ecosystem). Upcoming:
+Epics 1–7 are complete (Adaptive Core, Primitives, Observability, Adaptive Execution, Agent Adapters, Kit Ecosystem, Enterprise Safety & Knowledge, Ecosystem Patterns). In progress and upcoming:
 
-- **Epic 6** — Enterprise Safety & Knowledge Architecture: HOTL approval gates, PII tokenization, state persistence, episodic memory, knowledge architecture port, decision-centric runtime, multi-agent coordination, event-driven execution, skill composition
+- **Epic 7A** (in progress) — Pre-PyPI Corrective: audit remediation, doc/code sync, spec contracts, PyPI readiness
+- **Epic 8** (upcoming) — PyPI Publication
+- **Epic TS-1** (upcoming) — TypeScript SDK Port
 
 ## Contributing
 
