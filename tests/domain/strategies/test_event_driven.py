@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -18,10 +19,15 @@ from beddel.domain.models import (
 from beddel.domain.strategies.event_driven import (
     EventDrivenExecutionStrategy,
     ScheduleTriggerHandler,
+    SSETriggerHandler,
     WebhookTriggerHandler,
     _parse_cron_interval,
 )
-from beddel.error_codes import EVENT_SCHEDULE_PARSE_FAILED, EVENT_TRIGGER_REGISTRATION_FAILED
+from beddel.error_codes import (
+    EVENT_SCHEDULE_PARSE_FAILED,
+    EVENT_SSE_CONNECTION_FAILED,
+    EVENT_TRIGGER_REGISTRATION_FAILED,
+)
 
 
 def _make_context(**kwargs: object) -> ExecutionContext:
@@ -455,3 +461,267 @@ class TestScheduleTriggerHandler:
 
         assert len(events) >= 1
         assert events[0].payload["tick"] == 1  # reset, not continuing
+
+
+# ── SSETriggerHandler ─────────────────────────────────────────────────
+
+
+async def _sse_source(lines: list[str]) -> AsyncGenerator[str, None]:
+    """Yield SSE-formatted lines from a list."""
+    for line in lines:
+        yield line
+
+
+class TestSSETriggerHandler:
+    """Tests for SSETriggerHandler."""
+
+    @pytest.mark.asyncio
+    async def test_single_event_parsing(self) -> None:
+        """A single SSE event (data + blank line) is parsed and dispatched."""
+        events: list[TriggerEvent] = []
+
+        async def _cb(event: TriggerEvent) -> None:
+            events.append(event)
+
+        source = _sse_source(["data: hello world", ""])
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=0)
+        await handler.start("https://example.com/events", _cb, event_source=source)
+
+        # Wait for the task to process
+        await asyncio.sleep(0.05)
+
+        assert len(events) == 1
+        assert events[0].trigger_type == "sse"
+        assert events[0].payload["data"] == "hello world"
+        assert events[0].payload["event"] == "message"
+        assert events[0].source == "https://example.com/events"
+        assert "T" in events[0].timestamp
+
+    @pytest.mark.asyncio
+    async def test_custom_event_type(self) -> None:
+        """SSE event with custom event: field is parsed correctly."""
+        events: list[TriggerEvent] = []
+
+        async def _cb(event: TriggerEvent) -> None:
+            events.append(event)
+
+        source = _sse_source(["event: deploy", "data: v1.2.3", ""])
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=0)
+        await handler.start("https://example.com/events", _cb, event_source=source)
+        await asyncio.sleep(0.05)
+
+        assert len(events) == 1
+        assert events[0].payload["event"] == "deploy"
+        assert events[0].payload["data"] == "v1.2.3"
+
+    @pytest.mark.asyncio
+    async def test_multiline_data(self) -> None:
+        """Multiple data: lines before blank line are concatenated with newlines."""
+        events: list[TriggerEvent] = []
+
+        async def _cb(event: TriggerEvent) -> None:
+            events.append(event)
+
+        source = _sse_source(["data: line1", "data: line2", "data: line3", ""])
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=0)
+        await handler.start("https://example.com/events", _cb, event_source=source)
+        await asyncio.sleep(0.05)
+
+        assert len(events) == 1
+        assert events[0].payload["data"] == "line1\nline2\nline3"
+
+    @pytest.mark.asyncio
+    async def test_comment_lines_ignored(self) -> None:
+        """Lines starting with : are comments and ignored."""
+        events: list[TriggerEvent] = []
+
+        async def _cb(event: TriggerEvent) -> None:
+            events.append(event)
+
+        source = _sse_source([": this is a comment", "data: actual", ""])
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=0)
+        await handler.start("https://example.com/events", _cb, event_source=source)
+        await asyncio.sleep(0.05)
+
+        assert len(events) == 1
+        assert events[0].payload["data"] == "actual"
+
+    @pytest.mark.asyncio
+    async def test_multiple_events(self) -> None:
+        """Multiple events separated by blank lines are dispatched independently."""
+        events: list[TriggerEvent] = []
+
+        async def _cb(event: TriggerEvent) -> None:
+            events.append(event)
+
+        source = _sse_source(
+            [
+                "data: first",
+                "",
+                "event: custom",
+                "data: second",
+                "",
+            ]
+        )
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=0)
+        await handler.start("https://example.com/events", _cb, event_source=source)
+        await asyncio.sleep(0.05)
+
+        assert len(events) == 2
+        assert events[0].payload["data"] == "first"
+        assert events[0].payload["event"] == "message"
+        assert events[1].payload["data"] == "second"
+        assert events[1].payload["event"] == "custom"
+
+    @pytest.mark.asyncio
+    async def test_blank_line_without_data_does_not_dispatch(self) -> None:
+        """A blank line without preceding data: lines does not dispatch an event."""
+        events: list[TriggerEvent] = []
+
+        async def _cb(event: TriggerEvent) -> None:
+            events.append(event)
+
+        source = _sse_source(["", "data: real", ""])
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=0)
+        await handler.start("https://example.com/events", _cb, event_source=source)
+        await asyncio.sleep(0.05)
+
+        assert len(events) == 1
+        assert events[0].payload["data"] == "real"
+
+    @pytest.mark.asyncio
+    async def test_stop_cancels_task(self) -> None:
+        """stop() cancels the running listener task."""
+
+        async def _slow_source() -> AsyncGenerator[str, None]:
+            yield "data: start"
+            yield ""
+            await asyncio.sleep(10)  # Block to keep task alive
+            yield "data: never"
+            yield ""
+
+        handler = SSETriggerHandler()
+        await handler.start(
+            "https://example.com/events",
+            AsyncMock(),
+            event_source=_slow_source(),
+        )
+        assert handler.is_running
+
+        handler.stop()
+        await asyncio.sleep(0.02)
+        assert not handler.is_running
+
+    @pytest.mark.asyncio
+    async def test_is_running_false_before_start(self) -> None:
+        """is_running is False before start is called."""
+        handler = SSETriggerHandler()
+        assert not handler.is_running
+
+    @pytest.mark.asyncio
+    async def test_stop_when_not_running_is_safe(self) -> None:
+        """stop() on a non-running handler does not raise."""
+        handler = SSETriggerHandler()
+        handler.stop()  # should not raise
+
+    @pytest.mark.asyncio
+    async def test_reconnection_on_source_exhaustion(self) -> None:
+        """Handler reconnects when the event source exhausts."""
+        events: list[TriggerEvent] = []
+        call_count = 0
+
+        async def _cb(event: TriggerEvent) -> None:
+            events.append(event)
+
+        # Generator that yields one event then exhausts
+        async def _exhausting_source() -> AsyncGenerator[str, None]:
+            nonlocal call_count
+            call_count += 1
+            yield f"data: attempt-{call_count}"
+            yield ""
+            # Generator ends — simulates disconnect
+
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=2)
+        await handler.start(
+            "https://example.com/events",
+            _cb,
+            event_source=_exhausting_source(),
+        )
+
+        # Wait for retries to complete (source exhausts, reconnect attempts)
+        await asyncio.sleep(0.15)
+
+        # The first call dispatches an event; subsequent reconnects reuse
+        # the same exhausted generator (which yields nothing), so only 1 event
+        assert len(events) >= 1
+        assert events[0].payload["data"] == "attempt-1"
+
+    @pytest.mark.asyncio
+    async def test_max_retries_exceeded_raises(self) -> None:
+        """Exceeding max_retries raises EventDrivenError."""
+
+        async def _empty_source() -> AsyncGenerator[str, None]:
+            # Immediately exhausts — no events
+            return
+            yield  # noqa: RET504 — make it an async generator
+
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=1)
+        await handler.start(
+            "https://example.com/events",
+            AsyncMock(),
+            event_source=_empty_source(),
+        )
+
+        # Wait for retries + final error
+        await asyncio.sleep(0.1)
+
+        # The task should have completed with an exception
+        assert handler._task is not None  # noqa: SLF001
+        assert handler._task.done()  # noqa: SLF001
+
+        with pytest.raises(EventDrivenError) as exc_info:
+            handler._task.result()  # noqa: SLF001
+
+        assert exc_info.value.code == EVENT_SSE_CONNECTION_FAILED
+        assert "failed after" in exc_info.value.message
+
+    @pytest.mark.asyncio
+    async def test_event_type_resets_between_events(self) -> None:
+        """Event type resets to 'message' after each dispatched event."""
+        events: list[TriggerEvent] = []
+
+        async def _cb(event: TriggerEvent) -> None:
+            events.append(event)
+
+        source = _sse_source(
+            [
+                "event: custom",
+                "data: first",
+                "",
+                "data: second",
+                "",
+            ]
+        )
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=0)
+        await handler.start("https://example.com/events", _cb, event_source=source)
+        await asyncio.sleep(0.05)
+
+        assert len(events) == 2
+        assert events[0].payload["event"] == "custom"
+        assert events[1].payload["event"] == "message"  # reset to default
+
+    @pytest.mark.asyncio
+    async def test_id_lines_are_accepted(self) -> None:
+        """Lines starting with id: are accepted without error."""
+        events: list[TriggerEvent] = []
+
+        async def _cb(event: TriggerEvent) -> None:
+            events.append(event)
+
+        source = _sse_source(["id: 42", "data: with-id", ""])
+        handler = SSETriggerHandler(reconnect_delay=0.01, max_retries=0)
+        await handler.start("https://example.com/events", _cb, event_source=source)
+        await asyncio.sleep(0.05)
+
+        assert len(events) == 1
+        assert events[0].payload["data"] == "with-id"

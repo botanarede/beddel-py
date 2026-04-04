@@ -19,14 +19,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from beddel.domain.errors import EventDrivenError
 from beddel.domain.models import ExecutionContext, TriggerConfig, TriggerEvent, Workflow
 from beddel.domain.ports import StepRunner
-from beddel.error_codes import EVENT_SCHEDULE_PARSE_FAILED, EVENT_TRIGGER_REGISTRATION_FAILED
+from beddel.error_codes import (
+    EVENT_SCHEDULE_PARSE_FAILED,
+    EVENT_SSE_CONNECTION_FAILED,
+    EVENT_TRIGGER_REGISTRATION_FAILED,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -339,4 +343,221 @@ class ScheduleTriggerHandler:
     @property
     def is_running(self) -> bool:
         """Return ``True`` if the scheduler task is active."""
+        return self._task is not None and not self._task.done()
+
+
+class SSETriggerHandler:
+    """SSE stream listener for event-driven workflow triggers.
+
+    Connects to an external Server-Sent Events endpoint and dispatches
+    parsed events as :class:`~beddel.domain.models.TriggerEvent` instances
+    to a callback.
+
+    For testability, accepts an optional ``event_source`` async generator
+    that yields SSE-formatted lines.  When provided, the handler reads from
+    the generator instead of opening a network connection.
+
+    SSE format (line-based):
+
+    - ``data: <payload>`` — event data (multi-line: concatenated with newlines)
+    - ``event: <type>`` — event type (default ``"message"``)
+    - ``id: <id>`` — event ID (stored but unused)
+    - Empty line — delimits events (triggers dispatch)
+    - Lines starting with ``:`` — comments (ignored)
+
+    Usage::
+
+        handler = SSETriggerHandler()
+        await handler.start("https://example.com/events", callback, event_source=gen)
+        # ... later ...
+        handler.stop()
+    """
+
+    def __init__(
+        self,
+        *,
+        reconnect_delay: float = 5.0,
+        max_retries: int = 3,
+    ) -> None:
+        self._task: asyncio.Task[None] | None = None
+        self._reconnect_delay = reconnect_delay
+        self._max_retries = max_retries
+
+    async def start(
+        self,
+        url: str,
+        callback: Callable[..., Any],
+        *,
+        event_source: AsyncGenerator[str, None] | None = None,
+    ) -> None:
+        """Start listening for SSE events.
+
+        If *event_source* is provided, reads from it (for testing).
+        Otherwise, would connect to the URL via ``asyncio.open_connection``
+        (production use).
+
+        Args:
+            url: The SSE endpoint URL.
+            callback: Async callable invoked with a :class:`TriggerEvent`
+                for each complete SSE event.
+            event_source: Optional async generator yielding SSE-formatted
+                lines.  Used for testing without real HTTP connections.
+        """
+
+        async def _listen() -> None:
+            retries = 0
+            while retries <= self._max_retries:
+                try:
+                    source = event_source if event_source is not None else self._connect(url)
+                    await self._consume(source, url, callback)
+                    # Source exhausted cleanly — treat as disconnect
+                    retries += 1
+                    if retries <= self._max_retries:
+                        _log.warning(
+                            "SSE source disconnected, reconnecting in %.1fs (attempt %d/%d)",
+                            self._reconnect_delay,
+                            retries,
+                            self._max_retries,
+                        )
+                        await asyncio.sleep(self._reconnect_delay)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    retries += 1
+                    if retries <= self._max_retries:
+                        _log.warning(
+                            "SSE error, reconnecting in %.1fs (attempt %d/%d)",
+                            self._reconnect_delay,
+                            retries,
+                            self._max_retries,
+                            exc_info=True,
+                        )
+                        await asyncio.sleep(self._reconnect_delay)
+
+            # All retries exhausted
+            raise EventDrivenError(
+                EVENT_SSE_CONNECTION_FAILED,
+                f"SSE connection failed after {self._max_retries} retries: {url}",
+            )
+
+        self._task = asyncio.create_task(_listen())
+        _log.info("Started SSE listener for %s", url)
+
+    @staticmethod
+    async def _connect(url: str) -> AsyncGenerator[str, None]:
+        """Connect to an SSE endpoint via ``asyncio.open_connection``.
+
+        Parses the URL to extract host and port, sends a minimal HTTP GET
+        request, and yields response lines.
+
+        Args:
+            url: The SSE endpoint URL (``http://`` or ``https://``).
+
+        Yields:
+            Individual lines from the SSE stream.
+        """
+        # Minimal URL parsing for host:port
+        stripped = url.split("://", 1)[-1]
+        path_sep = stripped.find("/")
+        if path_sep == -1:
+            host_port = stripped
+            path = "/"
+        else:
+            host_port = stripped[:path_sep]
+            path = stripped[path_sep:]
+
+        if ":" in host_port:
+            host, port_str = host_port.rsplit(":", 1)
+            port = int(port_str)
+        else:
+            host = host_port
+            port = 443 if url.startswith("https") else 80
+
+        ssl_ctx = url.startswith("https") or None
+        reader, writer = await asyncio.open_connection(host, port, ssl=ssl_ctx)
+
+        # Send HTTP GET request
+        request = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            f"Accept: text/event-stream\r\n"
+            f"Cache-Control: no-cache\r\n"
+            f"Connection: keep-alive\r\n"
+            f"\r\n"
+        )
+        writer.write(request.encode())
+        await writer.drain()
+
+        # Skip HTTP response headers
+        while True:
+            header_line = await reader.readline()
+            if header_line in (b"\r\n", b"\n", b""):
+                break
+
+        # Yield body lines
+        try:
+            while True:
+                raw = await reader.readline()
+                if not raw:
+                    break
+                yield raw.decode("utf-8", errors="replace").rstrip("\r\n")
+        finally:
+            writer.close()
+
+    @staticmethod
+    async def _consume(
+        source: AsyncGenerator[str, None],
+        url: str,
+        callback: Callable[..., Any],
+    ) -> None:
+        """Consume SSE lines from *source* and dispatch complete events.
+
+        Args:
+            source: Async generator yielding SSE-formatted lines.
+            url: The SSE endpoint URL (used as ``TriggerEvent.source``).
+            callback: Async callable invoked with each parsed
+                :class:`TriggerEvent`.
+        """
+        data_lines: list[str] = []
+        event_type: str = "message"
+
+        async for line in source:
+            if line.startswith(":"):
+                # Comment — ignore
+                continue
+
+            if line == "":
+                # Blank line — dispatch accumulated event
+                if data_lines:
+                    event = TriggerEvent(
+                        trigger_type="sse",
+                        payload={
+                            "data": "\n".join(data_lines),
+                            "event": event_type,
+                        },
+                        timestamp=datetime.now(UTC).isoformat(),
+                        source=url,
+                    )
+                    await callback(event)
+                # Reset accumulators
+                data_lines = []
+                event_type = "message"
+                continue
+
+            if line.startswith("data:"):
+                data_lines.append(line[5:].lstrip(" "))
+            elif line.startswith("event:"):
+                event_type = line[6:].strip()
+            elif line.startswith("id:"):
+                pass  # Store but don't use
+
+    def stop(self) -> None:
+        """Cancel the listener task."""
+        if self._task and not self._task.done():
+            self._task.cancel()
+            _log.info("Stopped SSE listener")
+
+    @property
+    def is_running(self) -> bool:
+        """Return ``True`` if the listener task is active."""
         return self._task is not None and not self._task.done()
