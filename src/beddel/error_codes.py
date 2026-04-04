@@ -24,6 +24,7 @@ Range       Prefix    Domain
 920 – 939   PII       PII tokenization errors
 940 – 959   STATE     State persistence errors
 950 – 999   MCP       MCP integration errors
+980 – 999   KNOWLEDGE Knowledge architecture errors (sub-range of 950-999)
 1000 – 1049  AUTH     Remote authentication errors
 650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
 ==========  ========  ===========
@@ -85,6 +86,12 @@ MEMORY_RANGE: tuple[int, int] = (960, 979)
 
 MCP_RANGE: tuple[int, int] = (950, 999)
 """MCP integration errors."""
+
+KNOWLEDGE_RANGE: tuple[int, int] = (980, 999)
+"""Knowledge architecture errors — sub-range within the 950-999 numeric band.
+MCP_RANGE covers 950-999 for allocation tracking; KNOWLEDGE uses a distinct
+string prefix BEDDEL-KNOWLEDGE- to avoid collision (same pattern as KIT_RANGE
+sharing the 600-699 band with RESOLVE_RANGE)."""
 
 KIT_RANGE: tuple[int, int] = (650, 699)
 """Kit manifest errors — sub-range within the 600-699 numeric band.
@@ -416,6 +423,22 @@ MEMORY_NOT_CONFIGURED: str = "BEDDEL-MEMORY-964"
 """Memory provider not configured."""
 
 # ---------------------------------------------------------------------------
+# Knowledge codes  (KNOWLEDGE prefix, 980 sub-range)
+# ---------------------------------------------------------------------------
+
+KNOWLEDGE_QUERY_FAILED: str = "BEDDEL-KNOWLEDGE-980"
+"""Knowledge query operation failed."""
+
+KNOWLEDGE_GET_FAILED: str = "BEDDEL-KNOWLEDGE-981"
+"""Knowledge get operation failed."""
+
+KNOWLEDGE_LIST_FAILED: str = "BEDDEL-KNOWLEDGE-982"
+"""Knowledge list sources operation failed."""
+
+KNOWLEDGE_NOT_CONFIGURED: str = "BEDDEL-KNOWLEDGE-983"
+"""Knowledge provider not configured."""
+
+# ---------------------------------------------------------------------------
 # MCP codes  (MCP prefix, 950 range)
 # ---------------------------------------------------------------------------
 
@@ -614,6 +637,11 @@ ALL_CODES: dict[str, str] = {
     "MEMORY_SEARCH_FAILED": MEMORY_SEARCH_FAILED,
     "MEMORY_EPISODE_FAILED": MEMORY_EPISODE_FAILED,
     "MEMORY_NOT_CONFIGURED": MEMORY_NOT_CONFIGURED,
+    # Knowledge
+    "KNOWLEDGE_QUERY_FAILED": KNOWLEDGE_QUERY_FAILED,
+    "KNOWLEDGE_GET_FAILED": KNOWLEDGE_GET_FAILED,
+    "KNOWLEDGE_LIST_FAILED": KNOWLEDGE_LIST_FAILED,
+    "KNOWLEDGE_NOT_CONFIGURED": KNOWLEDGE_NOT_CONFIGURED,
     # MCP
     "MCP_CONNECTION_FAILED": MCP_CONNECTION_FAILED,
     "MCP_TOOL_NOT_FOUND": MCP_TOOL_NOT_FOUND,

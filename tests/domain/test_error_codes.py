@@ -34,6 +34,11 @@ from beddel.error_codes import (
     EXEC_GOAL_MAX_ATTEMPTS,
     EXEC_RANGE,
     GUARD_RANGE,
+    KNOWLEDGE_GET_FAILED,
+    KNOWLEDGE_LIST_FAILED,
+    KNOWLEDGE_NOT_CONFIGURED,
+    KNOWLEDGE_QUERY_FAILED,
+    KNOWLEDGE_RANGE,
     PARSE_RANGE,
     PRIM_RANGE,
     RESOLVE_RANGE,
@@ -450,3 +455,51 @@ class TestAuthCodes:
         """Exactly 7 AUTH codes exist in ALL_CODES."""
         auth_codes = {k: v for k, v in ALL_CODES.items() if k.startswith("AUTH_")}
         assert len(auth_codes) == 7
+
+
+class TestKnowledgeCodes:
+    """Tests for KNOWLEDGE error codes (Story 6.5)."""
+
+    def test_knowledge_query_failed_value(self) -> None:
+        """KNOWLEDGE_QUERY_FAILED maps to BEDDEL-KNOWLEDGE-980."""
+        assert KNOWLEDGE_QUERY_FAILED == "BEDDEL-KNOWLEDGE-980"
+
+    def test_knowledge_get_failed_value(self) -> None:
+        """KNOWLEDGE_GET_FAILED maps to BEDDEL-KNOWLEDGE-981."""
+        assert KNOWLEDGE_GET_FAILED == "BEDDEL-KNOWLEDGE-981"
+
+    def test_knowledge_list_failed_value(self) -> None:
+        """KNOWLEDGE_LIST_FAILED maps to BEDDEL-KNOWLEDGE-982."""
+        assert KNOWLEDGE_LIST_FAILED == "BEDDEL-KNOWLEDGE-982"
+
+    def test_knowledge_not_configured_value(self) -> None:
+        """KNOWLEDGE_NOT_CONFIGURED maps to BEDDEL-KNOWLEDGE-983."""
+        assert KNOWLEDGE_NOT_CONFIGURED == "BEDDEL-KNOWLEDGE-983"
+
+    def test_knowledge_range_value(self) -> None:
+        """KNOWLEDGE_RANGE is (980, 999)."""
+        assert KNOWLEDGE_RANGE == (980, 999)
+
+    def test_all_knowledge_codes_in_all_codes(self) -> None:
+        """All 4 KNOWLEDGE codes are registered in ALL_CODES."""
+        knowledge_keys = [
+            "KNOWLEDGE_QUERY_FAILED",
+            "KNOWLEDGE_GET_FAILED",
+            "KNOWLEDGE_LIST_FAILED",
+            "KNOWLEDGE_NOT_CONFIGURED",
+        ]
+        for key in knowledge_keys:
+            assert key in ALL_CODES, f"{key} missing from ALL_CODES"
+
+    def test_knowledge_codes_match_pattern(self) -> None:
+        """All KNOWLEDGE codes match BEDDEL-KNOWLEDGE-9XX pattern."""
+        pattern = re.compile(r"^BEDDEL-KNOWLEDGE-9\d{2}$")
+        assert pattern.match(ALL_CODES["KNOWLEDGE_QUERY_FAILED"])
+        assert pattern.match(ALL_CODES["KNOWLEDGE_GET_FAILED"])
+        assert pattern.match(ALL_CODES["KNOWLEDGE_LIST_FAILED"])
+        assert pattern.match(ALL_CODES["KNOWLEDGE_NOT_CONFIGURED"])
+
+    def test_knowledge_codes_count(self) -> None:
+        """Exactly 4 KNOWLEDGE codes exist in ALL_CODES."""
+        knowledge_codes = {k: v for k, v in ALL_CODES.items() if k.startswith("KNOWLEDGE_")}
+        assert len(knowledge_codes) == 4

@@ -22,6 +22,7 @@ Prefix             Domain
 ``BEDDEL-PII-``  PII tokenization errors
 ``BEDDEL-STATE-``  State persistence errors
 ``BEDDEL-MEMORY-``  Episodic memory errors
+``BEDDEL-KNOWLEDGE-``  Knowledge architecture errors
 =================  ============================
 """
 
@@ -47,6 +48,7 @@ __all__ = [
     "PIIError",
     "StateError",
     "MemoryError",
+    "KnowledgeError",
 ]
 
 
@@ -235,3 +237,7 @@ class StateError(BeddelError):
 
 class MemoryError(BeddelError):  # noqa: A001
     """Episodic memory errors. Error code prefix: BEDDEL-MEMORY-"""
+
+
+class KnowledgeError(BeddelError):
+    """Knowledge architecture errors. Error code prefix: BEDDEL-KNOWLEDGE-"""
