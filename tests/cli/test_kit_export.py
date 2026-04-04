@@ -260,3 +260,109 @@ class TestExportIntegration:
         # README.md — version defaults to "1.0" (simple.yaml has no version field)
         readme_content = readme_md.read_text()
         assert "1.0" in readme_content
+
+
+class TestExportSkillMetadata:
+    """Tests for SKILL.md skill_metadata enrichment (Story 7.4, Task 4)."""
+
+    def test_skill_md_contains_metadata_section(self, tmp_path: Path) -> None:
+        """Exported SKILL.md includes a '## Skill Metadata' section."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["kit", "export", str(FIXTURE), "--format", "skill", "-o", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+
+        skill_dir = tmp_path / ".agents" / "skills" / "simple-llm-workflow"
+        skill_content = (skill_dir / "SKILL.md").read_text()
+
+        assert "## Skill Metadata" in skill_content
+
+    def test_skill_md_metadata_has_dependencies(self, tmp_path: Path) -> None:
+        """Metadata section contains a dependencies field."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["kit", "export", str(FIXTURE), "--format", "skill", "-o", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+
+        skill_dir = tmp_path / ".agents" / "skills" / "simple-llm-workflow"
+        skill_content = (skill_dir / "SKILL.md").read_text()
+
+        assert "dependencies:" in skill_content
+
+    def test_skill_md_metadata_has_governance(self, tmp_path: Path) -> None:
+        """Metadata section contains governance with default permissive policy."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["kit", "export", str(FIXTURE), "--format", "skill", "-o", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+
+        skill_dir = tmp_path / ".agents" / "skills" / "simple-llm-workflow"
+        skill_content = (skill_dir / "SKILL.md").read_text()
+
+        assert "governance:" in skill_content
+        assert "policy: permissive" in skill_content
+
+    def test_skill_md_metadata_has_version_constraint(self, tmp_path: Path) -> None:
+        """Metadata section contains version_constraint derived from workflow version."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["kit", "export", str(FIXTURE), "--format", "skill", "-o", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+
+        skill_dir = tmp_path / ".agents" / "skills" / "simple-llm-workflow"
+        skill_content = (skill_dir / "SKILL.md").read_text()
+
+        # simple.yaml has no version → defaults to "1.0"
+        assert 'version_constraint: ">=1.0"' in skill_content
+
+    def test_skill_md_metadata_in_yaml_code_block(self, tmp_path: Path) -> None:
+        """Metadata section is wrapped in a YAML code block for readability."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["kit", "export", str(FIXTURE), "--format", "skill", "-o", str(tmp_path)],
+        )
+
+        assert result.exit_code == 0, result.output
+
+        skill_dir = tmp_path / ".agents" / "skills" / "simple-llm-workflow"
+        skill_content = (skill_dir / "SKILL.md").read_text()
+
+        # Find the metadata section and verify it has yaml code fences
+        meta_idx = skill_content.index("## Skill Metadata")
+        meta_section = skill_content[meta_idx:]
+        assert "```yaml" in meta_section
+        assert meta_section.count("```") >= 2
+
+    def test_skill_md_metadata_with_dependencies(self, tmp_path: Path) -> None:
+        """When workflow_meta has dependencies, they appear in the metadata."""
+        from beddel.cli.export import export_skill
+
+        meta: dict[str, object] = {
+            "name": "Test Workflow",
+            "description": "A test",
+            "version": "0.2.0",
+            "id": "test-wf",
+            "steps": [],
+            "dependencies": ["software-development-kit", "qa-toolkit"],
+        }
+
+        skill_path = export_skill(meta, tmp_path)  # type: ignore[arg-type]
+        skill_content = skill_path.read_text()
+
+        assert "## Skill Metadata" in skill_content
+        assert "- software-development-kit" in skill_content
+        assert "- qa-toolkit" in skill_content
+        assert 'version_constraint: ">=0.2.0"' in skill_content

@@ -60,6 +60,29 @@ def export_skill(workflow_meta: dict[str, Any], output_dir: Path) -> Path:
         else:
             step_lines += f"{i}. **{step_id}** (`{primitive}`)\n"
 
+    # -- Skill metadata enrichment -----------------------------------------
+    dependencies: list[str] = workflow_meta.get("dependencies", [])
+    version_constraint = f">={version}"
+
+    dep_lines = ""
+    if dependencies:
+        for dep in dependencies:
+            dep_lines += f"  - {dep}\n"
+    else:
+        dep_lines = "  # none\n"
+
+    metadata_block = (
+        f"## Skill Metadata\n"
+        f"\n"
+        f"```yaml\n"
+        f"dependencies:\n"
+        f"{dep_lines}"
+        f"governance:\n"
+        f"  policy: permissive\n"
+        f'version_constraint: "{version_constraint}"\n'
+        f"```\n"
+    )
+
     skill_md = (
         f"---\n"
         f"name: {name}\n"
@@ -73,6 +96,8 @@ def export_skill(workflow_meta: dict[str, Any], output_dir: Path) -> Path:
         f"## Steps\n"
         f"\n"
         f"{step_lines}"
+        f"\n"
+        f"{metadata_block}"
     )
 
     skill_path = skill_dir / "SKILL.md"
