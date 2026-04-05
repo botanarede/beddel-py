@@ -198,7 +198,8 @@ class WorkflowExecutor:
         """
         self._registry = registry
         self._hook_manager: IHookManager = (
-            deps.lifecycle_hooks if deps is not None and deps.lifecycle_hooks is not None
+            deps.lifecycle_hooks
+            if deps is not None and deps.lifecycle_hooks is not None
             else IHookManager()
         )
         self._deps = deps
