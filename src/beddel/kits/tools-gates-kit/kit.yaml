@@ -4,15 +4,19 @@ description: "Validation gate tools (pytest, ruff, mypy) via shell_exec"
 author: "Beddel Team"
 tools:
   - name: pytest_run
+    target: "beddel_tools_gates.tools:pytest_run"
     description: "Run pytest"
     category: gates
   - name: ruff_check
+    target: "beddel_tools_gates.tools:ruff_check"
     description: "Run ruff check"
     category: gates
   - name: ruff_format
+    target: "beddel_tools_gates.tools:ruff_format"
     description: "Run ruff format check"
     category: gates
   - name: mypy_check
+    target: "beddel_tools_gates.tools:mypy_check"
     description: "Run mypy type check"
     category: gates
 

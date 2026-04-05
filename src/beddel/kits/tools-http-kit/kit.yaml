@@ -4,6 +4,7 @@ description: "HTTP request tool via httpx"
 author: "Beddel Team"
 tools:
   - name: http_request
+    target: "beddel_tools_http.http:http_request"
     description: "HTTP request"
     category: http
 

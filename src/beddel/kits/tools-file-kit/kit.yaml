@@ -4,9 +4,11 @@ description: "File I/O tools (read, write) with path validation"
 author: "Beddel Team"
 tools:
   - name: file_read
+    target: "beddel_tools_file.tools:file_read"
     description: "Read file content"
     category: file
   - name: file_write
+    target: "beddel_tools_file.tools:file_write"
     description: "Write file content"
     category: file
 

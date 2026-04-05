@@ -4,6 +4,7 @@ description: "Shell command execution tool via SafeSubprocessRunner"
 author: "Beddel Team"
 tools:
   - name: shell_exec
+    target: "beddel_tools_shell.tools:shell_exec"
     description: "Execute shell command safely"
     category: shell
 
