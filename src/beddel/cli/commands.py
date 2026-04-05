@@ -266,8 +266,8 @@ def run(
 ) -> None:
     """Execute a workflow and print results."""
     _ensure_kit_paths()
-    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter  # type: ignore[import-not-found]
-    from beddel_provider_litellm.adapter import LiteLLMAdapter  # type: ignore[import-not-found]
+    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter
+    from beddel_provider_litellm.adapter import LiteLLMAdapter
 
     from beddel.domain.errors import BeddelError
     from beddel.domain.executor import WorkflowExecutor
@@ -535,7 +535,7 @@ def serve(
 ) -> None:
     """Start a FastAPI server exposing workflows as SSE endpoints."""
     try:
-        import uvicorn  # type: ignore[import-not-found]
+        import uvicorn
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
     except ImportError:
@@ -548,8 +548,8 @@ def serve(
     from beddel import __version__
 
     _ensure_kit_paths()
-    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter  # type: ignore[import-not-found]
-    from beddel_provider_litellm.adapter import LiteLLMAdapter  # type: ignore[import-not-found]
+    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter
+    from beddel_provider_litellm.adapter import LiteLLMAdapter
 
     from beddel.domain.errors import BeddelError
     from beddel.domain.models import DefaultDependencies, Workflow

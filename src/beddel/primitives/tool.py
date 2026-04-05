@@ -38,7 +38,7 @@ try:
         validate_tool_arguments as _validate_tool_arguments,
     )
 except ImportError:
-    _validate_tool_arguments = None  # type: ignore[assignment]
+    _validate_tool_arguments = None
 
 __all__ = [
     "ToolPrimitive",

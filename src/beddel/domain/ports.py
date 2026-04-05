@@ -826,7 +826,7 @@ class IAgentAdapter(Protocol):
         ...  # pragma: no cover
         # yield is required for the type checker to recognise this as an
         # async generator; the ellipsis body is the Protocol convention.
-        yield {}  # type: ignore[misc]  # pragma: no cover
+        yield {}  # pragma: no cover
 
 
 class IContextReducer(Protocol):

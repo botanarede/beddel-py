@@ -146,7 +146,7 @@ def create_auth_middleware(
     class _TokenValidationMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next: Any) -> Response:
             if not request.url.path.startswith("/api/"):
-                return await call_next(request)  # type: ignore[no-any-return]
+                return await call_next(request)
 
             auth_header = request.headers.get("Authorization")
             if not auth_header or not auth_header.startswith("Bearer "):
@@ -181,6 +181,6 @@ def create_auth_middleware(
                     },
                 )
 
-            return await call_next(request)  # type: ignore[no-any-return]
+            return await call_next(request)
 
     return _TokenValidationMiddleware

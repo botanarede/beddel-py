@@ -23,6 +23,7 @@ Range       Prefix    Domain
 900 – 919   APPROVAL  Approval gate errors (shared band with DURABLE, distinct prefix)
 920 – 939   PII       PII tokenization errors
 940 – 959   STATE     State persistence errors
+960 – 979   MEMORY    Episodic memory errors
 950 – 999   MCP       MCP integration errors
 980 – 999   KNOWLEDGE Knowledge architecture errors (sub-range of 950-999)
 1000 – 1049  AUTH     Remote authentication errors
@@ -61,7 +62,7 @@ RESOLVE_RANGE: tuple[int, int] = (600, 699)
 AGENT_RANGE: tuple[int, int] = (700, 799)
 """Agent adapter errors."""
 
-CB_RANGE: tuple[int, int] = (500, 549)
+CB_RANGE: tuple[int, int] = (800, 849)
 """Circuit breaker errors."""
 
 CODEX_RANGE: tuple[int, int] = (800, 849)

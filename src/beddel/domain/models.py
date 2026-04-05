@@ -34,6 +34,7 @@ if TYPE_CHECKING:
         IHookManager,
         IKnowledgeProvider,
         ILLMProvider,
+        IMCPClient,
         IMemoryProvider,
         IPIITokenizer,
         IStateStore,
@@ -786,7 +787,7 @@ class DefaultDependencies:
         context_reducer: IContextReducer | None = None,
         circuit_breaker: ICircuitBreaker | None = None,
         event_store: IEventStore | None = None,
-        mcp_registry: dict[str, Any] | None = None,
+        mcp_registry: dict[str, IMCPClient] | None = None,
         tier_router: ITierRouter | None = None,
         budget_enforcer: IBudgetEnforcer | None = None,
         approval_gate: IApprovalGate | None = None,
@@ -887,7 +888,7 @@ class DefaultDependencies:
         return self._event_store
 
     @property
-    def mcp_registry(self) -> dict[str, Any] | None:
+    def mcp_registry(self) -> dict[str, IMCPClient] | None:
         """Registry of named MCP clients, or ``None`` if not configured."""
         return self._mcp_registry
 
@@ -977,14 +978,14 @@ class InterruptibleContext:
 
     def restore(self, data: dict[str, Any]) -> None:
         """Reconstruct context state from a previously serialized dictionary."""
-        self.workflow_id = data.get("workflow_id", "")  # type: ignore[attr-defined]
-        self.inputs = data.get("inputs", {})  # type: ignore[attr-defined]
-        self.step_results = data.get("step_results", {})  # type: ignore[attr-defined]
-        self.metadata = data.get("metadata", {})  # type: ignore[attr-defined]
-        self.current_step_id = data.get("current_step_id")  # type: ignore[attr-defined]
+        self.workflow_id = data.get("workflow_id", "")
+        self.inputs = data.get("inputs", {})
+        self.step_results = data.get("step_results", {})
+        self.metadata = data.get("metadata", {})
+        self.current_step_id = data.get("current_step_id")
         self.suspended = data.get("suspended", False)
         if "event_store_position" in data:
-            self.metadata["_event_store_position"] = data["event_store_position"]  # type: ignore[attr-defined]
+            self.metadata["_event_store_position"] = data["event_store_position"]
 
     async def checkpoint(self, state_store: IStateStore | None = None) -> None:
         """Serialize context state and optionally persist via a state store.

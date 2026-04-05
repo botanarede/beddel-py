@@ -142,7 +142,7 @@ class JSONFileStateStore:
                     f"Failed to read state for workflow {workflow_id!r}: {exc}",
                 ) from exc
             try:
-                return json.loads(data)  # type: ignore[no-any-return]
+                return json.loads(data)
             except json.JSONDecodeError as exc:
                 raise StateError(
                     STATE_CORRUPTED,

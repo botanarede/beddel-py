@@ -129,7 +129,7 @@ def create_beddel_handler(
             _kit_src = str(_proj_root / "kits" / "provider-litellm-kit" / "src")
             if _kit_src not in _sys.path:
                 _sys.path.insert(0, _kit_src)
-            from beddel_provider_litellm.adapter import (  # type: ignore[import-not-found]
+            from beddel_provider_litellm.adapter import (
                 LiteLLMAdapter,
             )
 

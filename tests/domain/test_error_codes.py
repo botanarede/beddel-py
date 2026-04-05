@@ -345,8 +345,8 @@ class TestCircuitBreakerCodes:
         assert CB_RECOVERY_PROBE_FAILED == "BEDDEL-CB-502"
 
     def test_cb_range_value(self) -> None:
-        """CB_RANGE is (500, 549)."""
-        assert CB_RANGE == (500, 549)
+        """CB_RANGE is (800, 849)."""
+        assert CB_RANGE == (800, 849)
 
     def test_cb_circuit_open_in_all_codes(self) -> None:
         """CB_CIRCUIT_OPEN is registered in ALL_CODES."""
