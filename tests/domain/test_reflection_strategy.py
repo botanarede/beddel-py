@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from beddel.domain.errors import ExecutionError
-from beddel.domain.models import Decision, ExecutionContext, Step, Workflow
+from beddel.domain.models import Decision, DefaultDependencies, ExecutionContext, Step, Workflow
 from beddel.domain.ports import IPrimitive
 from beddel.domain.strategies.reflection import ReflectionStrategy
 
@@ -321,7 +321,9 @@ class TestReflectionIntegration:
         wf = _workflow(gen, ev)
 
         strategy = ReflectionStrategy({"max_iterations": 2})
-        executor = WorkflowExecutor(registry=registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry=registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf, execution_strategy=strategy):
             events.append(event)

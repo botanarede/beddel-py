@@ -164,8 +164,8 @@ class TestMCPRegistryInDefaultDeps:
 
         assert deps.mcp_registry is None
 
-    def test_mcp_registry_survives_build_deps(self) -> None:
-        """mcp_registry is preserved through WorkflowExecutor._build_deps."""
+    def test_mcp_registry_survives_deps_passthrough(self) -> None:
+        """mcp_registry is preserved through WorkflowExecutor deps passthrough."""
         mock_client = AsyncMock()
         deps = DefaultDependencies(mcp_registry={"srv": mock_client})
 
@@ -173,10 +173,10 @@ class TestMCPRegistryInDefaultDeps:
         register_builtins(registry)
         executor = WorkflowExecutor(registry, deps=deps)
 
-        # Access the internal _build_deps to verify passthrough
-        built = executor._build_deps()
-        assert built.mcp_registry is not None
-        assert built.mcp_registry["srv"] is mock_client
+        # Verify deps is stored and mcp_registry is accessible
+        assert executor._deps is not None
+        assert executor._deps.mcp_registry is not None
+        assert executor._deps.mcp_registry["srv"] is mock_client
 
 
 class TestSSEMCPToolFullPath:

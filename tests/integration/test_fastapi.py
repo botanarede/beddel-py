@@ -163,10 +163,10 @@ class TestFactoryDefaults:
         assert data["data"]["result"]["status"] == "ok"
 
     def test_tracer_forwarded_to_executor(self) -> None:
-        """Factory forwards the ``tracer`` parameter to WorkflowExecutor.
+        """Factory forwards the ``tracer`` parameter to WorkflowExecutor via deps.
 
         Verifies AC5: create_beddel_handler accepts an optional tracer and
-        passes it through to the executor constructor.
+        passes it through to the executor constructor inside DefaultDependencies.
         """
         from unittest.mock import MagicMock, patch
 
@@ -184,7 +184,8 @@ class TestFactoryDefaults:
 
         mock_executor_cls.assert_called_once()
         call_kwargs = mock_executor_cls.call_args
-        assert call_kwargs.kwargs["tracer"] is mock_tracer
+        deps = call_kwargs.kwargs["deps"]
+        assert deps.tracer is mock_tracer
 
     def test_tracer_defaults_to_none(self) -> None:
         """Factory passes ``tracer=None`` when no tracer is provided.
@@ -204,7 +205,8 @@ class TestFactoryDefaults:
 
         mock_executor_cls.assert_called_once()
         call_kwargs = mock_executor_cls.call_args
-        assert call_kwargs.kwargs["tracer"] is None
+        deps = call_kwargs.kwargs["deps"]
+        assert deps.tracer is None
 
     def test_create_handler_with_deps(self) -> None:
         """When ``deps`` is provided, executor is constructed with ``deps`` kwarg.
@@ -237,10 +239,11 @@ class TestFactoryDefaults:
         assert "tracer" not in call_kwargs.kwargs
 
     def test_create_handler_without_deps_backward_compat(self) -> None:
-        """When ``deps`` is omitted, executor uses individual params (backward-compat).
+        """When ``deps`` is omitted, executor uses fallback DefaultDependencies (backward-compat).
 
         Verifies AC6: existing callers without ``deps`` continue to work
-        unchanged — provider, hooks, and tracer are forwarded individually.
+        unchanged — provider, hooks, and tracer are wrapped in DefaultDependencies
+        and forwarded via deps=.
         """
         from unittest.mock import MagicMock, patch
 
@@ -258,12 +261,11 @@ class TestFactoryDefaults:
 
         mock_executor_cls.assert_called_once()
         call_kwargs = mock_executor_cls.call_args
-        # Individual params should be present
-        assert "provider" in call_kwargs.kwargs
-        assert "hooks" in call_kwargs.kwargs
-        assert call_kwargs.kwargs["tracer"] is mock_tracer
-        # deps should NOT be passed
-        assert "deps" not in call_kwargs.kwargs
+        # deps should be present with the individual params wrapped inside
+        deps = call_kwargs.kwargs["deps"]
+        assert deps.tracer is mock_tracer
+        assert deps.llm_provider is not None
+        assert deps.lifecycle_hooks is not None
 
 
 # ---------------------------------------------------------------------------

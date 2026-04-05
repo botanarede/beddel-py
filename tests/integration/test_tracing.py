@@ -18,6 +18,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from beddel.adapters.hooks import LifecycleHookManager
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
+    DefaultDependencies,
     EventType,
     ExecutionContext,
     ExecutionStrategy,
@@ -75,7 +76,8 @@ def _build_executor(
     if failing_primitives:
         for name in failing_primitives:
             registry.register(name, _FailingPrimitive())
-    return WorkflowExecutor(registry, tracer=tracer)
+    deps = DefaultDependencies(tracer=tracer) if tracer is not None else None
+    return WorkflowExecutor(registry, deps=deps)
 
 
 def _simple_workflow(
@@ -135,7 +137,7 @@ class TestWorkflowTracingSpans:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})
@@ -153,7 +155,7 @@ class TestWorkflowTracingSpans:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"s1": "r1", "s2": "r2"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _multi_step_workflow()
 
         await executor.execute(workflow, inputs={})
@@ -173,7 +175,7 @@ class TestWorkflowTracingSpans:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})
@@ -216,7 +218,7 @@ class TestTokenUsageAttributes:
                 }
             ),
         )
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})
@@ -235,7 +237,7 @@ class TestTokenUsageAttributes:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "plain text"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})
@@ -263,7 +265,7 @@ class TestCustomAttributes:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow(workflow_id="my-wf")
 
         await executor.execute(workflow, inputs={})
@@ -280,7 +282,7 @@ class TestCustomAttributes:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})
@@ -299,7 +301,7 @@ class TestCustomAttributes:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow(model="openai/gpt-4o")
 
         await executor.execute(workflow, inputs={})
@@ -318,7 +320,7 @@ class TestCustomAttributes:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow(model="gpt-4o")
 
         await executor.execute(workflow, inputs={})
@@ -387,7 +389,7 @@ class TestErrorSpans:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _FailingPrimitive())
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow(strategy_type=StrategyType.SKIP)
 
         result = await executor.execute(workflow, inputs={})
@@ -408,7 +410,7 @@ class TestErrorSpans:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _FailingPrimitive())
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow(strategy_type=StrategyType.SKIP)
 
         await executor.execute(workflow, inputs={})
@@ -428,7 +430,7 @@ class TestErrorSpans:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _FailingPrimitive())
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow(strategy_type=StrategyType.FAIL)
 
         with pytest.raises(ExecutionError):
@@ -456,7 +458,10 @@ class TestStreamingTracing:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry,
+            deps=DefaultDependencies(tracer=adapter, lifecycle_hooks=LifecycleHookManager()),
+        )
         workflow = _simple_workflow()
 
         events = []
@@ -474,7 +479,10 @@ class TestStreamingTracing:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry,
+            deps=DefaultDependencies(tracer=adapter, lifecycle_hooks=LifecycleHookManager()),
+        )
         workflow = _simple_workflow()
 
         async for _ in executor.execute_stream(workflow, inputs={}):
@@ -492,7 +500,10 @@ class TestStreamingTracing:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry,
+            deps=DefaultDependencies(tracer=adapter, lifecycle_hooks=LifecycleHookManager()),
+        )
         workflow = _simple_workflow(workflow_id="stream-wf")
 
         async for _ in executor.execute_stream(workflow, inputs={}):
@@ -510,7 +521,10 @@ class TestStreamingTracing:
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry,
+            deps=DefaultDependencies(tracer=adapter, lifecycle_hooks=LifecycleHookManager()),
+        )
         workflow = _simple_workflow()
 
         events = []
@@ -532,11 +546,11 @@ class TestTracerDI:
 
     @pytest.mark.asyncio
     async def test_constructor_tracer_produces_spans(self) -> None:
-        """WorkflowExecutor(registry, tracer=adapter) produces spans without patching."""
+        """Tracer via deps= produces spans without patching."""
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=adapter))
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})
@@ -550,11 +564,14 @@ class TestTracerDI:
 
     @pytest.mark.asyncio
     async def test_constructor_tracer_stream_produces_spans(self) -> None:
-        """WorkflowExecutor(registry, tracer=adapter) produces spans in streaming mode."""
+        """Tracer via deps= produces spans in streaming mode."""
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=adapter, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry,
+            deps=DefaultDependencies(tracer=adapter, lifecycle_hooks=LifecycleHookManager()),
+        )
         workflow = _simple_workflow()
 
         async for _ in executor.execute_stream(workflow, inputs={}):
@@ -569,11 +586,11 @@ class TestTracerDI:
 
     @pytest.mark.asyncio
     async def test_constructor_tracer_none_produces_no_spans(self) -> None:
-        """WorkflowExecutor(registry, tracer=None) produces no spans."""
+        """WorkflowExecutor(registry) produces no spans."""
         adapter, exporter = _make_adapter()
         registry = PrimitiveRegistry()
         registry.register("llm", _StepDispatchPrimitive({"step-1": "ok"}))
-        executor = WorkflowExecutor(registry, tracer=None)
+        executor = WorkflowExecutor(registry)
         workflow = _simple_workflow()
 
         result = await executor.execute(workflow, inputs={})

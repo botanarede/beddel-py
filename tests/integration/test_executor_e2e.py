@@ -16,7 +16,7 @@ import pytest
 
 from beddel.adapters.hooks import LifecycleHookManager
 from beddel.domain.executor import WorkflowExecutor
-from beddel.domain.models import BeddelEvent, EventType, ExecutionContext
+from beddel.domain.models import BeddelEvent, DefaultDependencies, EventType, ExecutionContext
 from beddel.domain.parser import WorkflowParser
 from beddel.domain.ports import IPrimitive
 from beddel.domain.registry import PrimitiveRegistry
@@ -75,7 +75,9 @@ def _build_executor(step_results: dict[str, Any]) -> WorkflowExecutor:
     """Build a WorkflowExecutor with a single mock 'llm' primitive."""
     registry = PrimitiveRegistry()
     registry.register("llm", StepDispatchPrimitive(step_results))
-    return WorkflowExecutor(registry, hooks=LifecycleHookManager())
+    return WorkflowExecutor(
+        registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ from typing import Any
 from beddel.adapters.hooks import LifecycleHookManager
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
+    DefaultDependencies,
     EventType,
     ExecutionContext,
     ExecutionStrategy,
@@ -145,7 +146,8 @@ def _build_executor(
         for name in failing_primitives:
             registry.register(name, _FailingPrimitive())
     hook_manager = LifecycleHookManager(hooks) if hooks is not None else None
-    return WorkflowExecutor(registry, hooks=hook_manager)
+    deps = DefaultDependencies(lifecycle_hooks=hook_manager) if hook_manager is not None else None
+    return WorkflowExecutor(registry, deps=deps)
 
 
 def _simple_workflow(
@@ -299,7 +301,9 @@ class TestErrorHook:
         hook = _RecordingHook()
         registry = PrimitiveRegistry()
         registry.register("llm", _FailingPrimitive())
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([hook]))
+        )
         workflow = _simple_workflow(strategy_type=StrategyType.SKIP)
 
         await executor.execute(workflow, inputs={})
@@ -338,7 +342,9 @@ class TestRetryHook:
         prim = _FailNTimesPrimitive(fail_count=1, success_value="recovered")
         registry = PrimitiveRegistry()
         registry.register("llm", prim)
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([hook]))
+        )
         retry_cfg = RetryConfig(
             max_attempts=2,
             backoff_base=0.0,
@@ -483,7 +489,9 @@ class TestLifecycleHooksDI:
         registry = PrimitiveRegistry()
         registry.register("llm", capture_prim)
         hook = _RecordingHook()
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([hook]))
+        )
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})
@@ -497,7 +505,9 @@ class TestLifecycleHooksDI:
         registry = PrimitiveRegistry()
         registry.register("llm", capture_prim)
         hook = _RecordingHook()
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([hook]))
+        )
         workflow = _simple_workflow()
 
         await executor.execute(workflow, inputs={})

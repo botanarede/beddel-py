@@ -809,7 +809,9 @@ class TestLifecycleHookOrder:
         registry, _ = _registry_with_stub(return_value="ok")
         hook = _TrackingHook()
         wf = _make_workflow([_make_step("s1")])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([hook]))
+        )
 
         await executor.execute(wf)
 
@@ -839,7 +841,9 @@ class TestLifecycleHookOrder:
         registry, _ = _registry_with_stub(return_value="ok")
         hook = _TrackingHook()
         wf = _make_workflow([_make_step("s1"), _make_step("s2")])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([hook]))
+        )
 
         await executor.execute(wf)
 
@@ -866,7 +870,9 @@ class TestLifecycleHookOrder:
         hook = _TrackingHook()
         step = _make_step("err-s", strategy_type=StrategyType.SKIP)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([hook]))
+        )
 
         await executor.execute(wf)
 
@@ -882,7 +888,9 @@ class TestLifecycleHookOrder:
 
         registry, _ = _registry_with_stub(return_value="ok")
         wf = _make_workflow([_make_step("s1")])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([_BadHook()]))
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([_BadHook()]))
+        )
 
         result = await executor.execute(wf)
 
@@ -892,7 +900,9 @@ class TestLifecycleHookOrder:
         """Executor uses a LifecycleHookManager instance as the sole dispatch mechanism."""
         hook = AsyncMock(spec=ILifecycleHook)
         registry, _ = _registry_with_stub(return_value="ok")
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([hook]))
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([hook]))
+        )
 
         # The executor's internal dispatcher is a LifecycleHookManager
         assert isinstance(executor._hook_manager, LifecycleHookManager)
@@ -918,7 +928,9 @@ class TestExecuteStream:
     async def test_event_sequence_single_step(self) -> None:
         registry, _ = _registry_with_stub(return_value="result")
         wf = _make_workflow([_make_step("s1")])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf):
@@ -935,7 +947,9 @@ class TestExecuteStream:
     async def test_event_sequence_multi_step(self) -> None:
         registry, _ = _registry_with_stub(return_value="ok")
         wf = _make_workflow([_make_step("s1"), _make_step("s2")])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf):
@@ -954,7 +968,9 @@ class TestExecuteStream:
     async def test_stream_events_contain_correct_data(self) -> None:
         registry, _ = _registry_with_stub(return_value="hello")
         wf = _make_workflow([_make_step("s1")], workflow_id="wf-stream")
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf):
@@ -978,7 +994,9 @@ class TestExecuteStream:
         registry, _ = _registry_with_stub(side_effect=RuntimeError("oops"))
         step = _make_step("err-s", strategy_type=StrategyType.SKIP)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf):
@@ -1008,7 +1026,9 @@ class TestExecuteStream:
         retry_cfg = RetryConfig(max_attempts=3, backoff_base=2.0, jitter=True)
         step = _make_step("retry-s", strategy_type=StrategyType.RETRY, retry=retry_cfg)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf):
@@ -1038,7 +1058,9 @@ class TestExecuteStream:
 
         step = _make_step("stream-s", stream=True)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf):
@@ -1052,7 +1074,10 @@ class TestExecuteStream:
         registry, _ = _registry_with_stub(return_value="ok")
         original_hook = ILifecycleHook()
         wf = _make_workflow([_make_step("s1")])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([original_hook]))
+        executor = WorkflowExecutor(
+            registry,
+            deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([original_hook])),
+        )
 
         async for _ in executor.execute_stream(wf):
             pass
@@ -1065,7 +1090,10 @@ class TestExecuteStream:
         original_hook = ILifecycleHook()
         step = _make_step("fail-s", strategy_type=StrategyType.FAIL)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager([original_hook]))
+        executor = WorkflowExecutor(
+            registry,
+            deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager([original_hook])),
+        )
 
         with pytest.raises(ExecutionError):
             async for _ in executor.execute_stream(wf):
@@ -1101,7 +1129,9 @@ class TestExecuteStream:
             _make_step("s3", config={"id": "third"}),
         ]
         wf = _make_workflow(steps)
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf, execution_strategy=ReverseStrategy()):
@@ -1116,7 +1146,9 @@ class TestExecuteStream:
         registry, _ = _registry_with_stub(return_value="ok")
         steps = [_make_step("a"), _make_step("b"), _make_step("c")]
         wf = _make_workflow(steps)
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf):
@@ -1141,7 +1173,9 @@ class TestExecuteStream:
         """Generator terminates cleanly after sentinel; no extra events after WORKFLOW_END."""
         registry, _ = _registry_with_stub(return_value="done")
         wf = _make_workflow([_make_step("only")])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf):
@@ -1170,7 +1204,9 @@ class TestExecuteStream:
         registry, _ = _registry_with_stub(return_value="ok")
         steps = [_make_step("s1"), _make_step("s2"), _make_step("s3")]
         wf = _make_workflow(steps)
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf, execution_strategy=_ReverseStrategy()):
@@ -1195,10 +1231,12 @@ class TestExecuteStream:
                     await step_runner(step, context)
 
         registry, _ = _registry_with_stub(return_value="ok")
-        injected_deps = DefaultDependencies(execution_strategy=_ReverseStrategy())
+        injected_deps = DefaultDependencies(
+            execution_strategy=_ReverseStrategy(), lifecycle_hooks=LifecycleHookManager()
+        )
         steps = [_make_step("s1"), _make_step("s2"), _make_step("s3")]
         wf = _make_workflow(steps)
-        executor = WorkflowExecutor(registry, deps=injected_deps, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(registry, deps=injected_deps)
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf):
@@ -1231,10 +1269,12 @@ class TestExecuteStream:
                     await step_runner(step, context)
 
         registry, _ = _registry_with_stub(return_value="ok")
-        injected_deps = DefaultDependencies(execution_strategy=_ReverseStrategy())
+        injected_deps = DefaultDependencies(
+            execution_strategy=_ReverseStrategy(), lifecycle_hooks=LifecycleHookManager()
+        )
         steps = [_make_step("s1"), _make_step("s2"), _make_step("s3")]
         wf = _make_workflow(steps)
-        executor = WorkflowExecutor(registry, deps=injected_deps, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(registry, deps=injected_deps)
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf, execution_strategy=_SkipFirstStrategy()):
@@ -1283,7 +1323,9 @@ class TestExecuteStream:
         s2 = _make_step("s2", primitive="stream-prim", stream=True)
         s3 = _make_step("s3", primitive="test-prim")
         wf = _make_workflow([s1, s2, s3])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf, execution_strategy=_ReverseStrategy()):
@@ -1318,7 +1360,9 @@ class TestExecuteStream:
 
         registry, _ = _registry_with_stub(side_effect=_slow_exec)
         wf = _make_workflow([_make_step("s1"), _make_step("s2")])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         # Consume only the first event (WORKFLOW_START), then abandon.
         async for event in executor.execute_stream(wf):
@@ -1341,7 +1385,9 @@ class TestExecuteStream:
         registry, _ = _registry_with_stub(side_effect=RuntimeError("fatal"))
         step = _make_step("fail-s", strategy_type=StrategyType.FAIL)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         with pytest.raises(ExecutionError):
@@ -1545,7 +1591,7 @@ class TestDelegateStrategy:
 
         step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, provider=mock_provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=mock_provider))
 
         result = await executor.execute(wf)
 
@@ -1561,7 +1607,7 @@ class TestDelegateStrategy:
 
         step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, provider=mock_provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=mock_provider))
 
         result = await executor.execute(wf)
 
@@ -1598,7 +1644,7 @@ class TestDelegateStrategy:
             fallback_step=fb_step,
         )
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, provider=mock_provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=mock_provider))
 
         result = await executor.execute(wf)
 
@@ -1613,7 +1659,7 @@ class TestDelegateStrategy:
 
         step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, provider=mock_provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=mock_provider))
 
         with pytest.raises(ExecutionError) as exc_info:
             await executor.execute(wf)
@@ -1629,7 +1675,7 @@ class TestDelegateStrategy:
 
         step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, provider=mock_provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=mock_provider))
 
         with pytest.raises(ExecutionError) as exc_info:
             await executor.execute(wf)
@@ -1663,7 +1709,7 @@ class TestDelegateStrategy:
             fallback_step=None,
         )
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, provider=mock_provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=mock_provider))
 
         with pytest.raises(ExecutionError) as exc_info:
             await executor.execute(wf)
@@ -1697,7 +1743,7 @@ class TestDelegateStrategy:
             retry=original_retry,
         )
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, provider=mock_provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=mock_provider))
 
         await executor.execute(wf)
 
@@ -1725,7 +1771,7 @@ class TestDelegateStrategy:
         registry, _ = _registry_with_stub(side_effect=RuntimeError("boom"))
         step = _make_step("del-s", strategy_type=StrategyType.DELEGATE)
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, provider=mock_provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=mock_provider))
 
         # Act
         await executor.execute(wf)
@@ -1855,7 +1901,7 @@ class TestLLMProviderDepsInjection:
 
         step = _make_step("s1", primitive="test-prim")
         wf = _make_workflow([step])
-        executor = WorkflowExecutor(registry, provider=provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=provider))
 
         await executor.execute(wf)
 
@@ -1892,7 +1938,7 @@ class TestLifecycleHooksDepsInjection:
         step = _make_step("s1", primitive="test-prim")
         wf = _make_workflow([step])
         manager = LifecycleHookManager([hook])
-        executor = WorkflowExecutor(registry, hooks=manager)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(lifecycle_hooks=manager))
 
         await executor.execute(wf)
 
@@ -1937,7 +1983,10 @@ class TestExecutorPopulatesDeps:
         step = _make_step("s1", primitive="test-prim")
         wf = _make_workflow([step])
         executor = WorkflowExecutor(
-            registry, provider=mock_provider, hooks=LifecycleHookManager([mock_hook])
+            registry,
+            deps=DefaultDependencies(
+                llm_provider=mock_provider, lifecycle_hooks=LifecycleHookManager([mock_hook])
+            ),
         )
 
         # Act
@@ -2078,7 +2127,7 @@ class TestTracingErrorHandling:
         step = _make_step("s1")
         wf = _make_workflow([step])
 
-        executor = WorkflowExecutor(registry, tracer=_FailSilentTracer())  # type: ignore[arg-type]
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=_FailSilentTracer()))  # type: ignore[arg-type]
         result = await executor.execute(wf)
 
         assert result["step_results"]["s1"] == "ok"
@@ -2103,7 +2152,7 @@ class TestTracingErrorHandling:
         step = _make_step("s1")
         wf = _make_workflow([step])
 
-        executor = WorkflowExecutor(registry, tracer=_FatalTracer())  # type: ignore[arg-type]
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(tracer=_FatalTracer()))  # type: ignore[arg-type]
 
         with pytest.raises(TracingError, match="fatal tracing error"):
             await executor.execute(wf)
@@ -2133,7 +2182,9 @@ class TestTracingErrorHandling:
         s2 = _make_step("s2", primitive="test-prim")
         wf = _make_workflow([s1, s2])
 
-        executor = WorkflowExecutor(registry, tracer=_AllFailSilentTracer())  # type: ignore[arg-type]
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(tracer=_AllFailSilentTracer())
+        )  # type: ignore[arg-type]
         result = await executor.execute(wf)
 
         assert result["step_results"]["s1"] == {"answer": 42}
@@ -2167,13 +2218,13 @@ class TestDepsParameterInjection:
         ctx = captured[0]
         assert ctx.deps.agent_registry is mock_agent_registry
 
-    async def test_execute_without_deps_uses_legacy_path(self) -> None:
-        """Construct executor without deps (existing pattern); verify behaviour
-        unchanged — context.deps is built from individual constructor params."""
+    async def test_execute_without_deps_uses_default(self) -> None:
+        """Construct executor with deps containing provider; verify behaviour
+        unchanged — context.deps contains the provider."""
         registry, captured = _capture_registry()
         provider = AsyncMock(spec=ILLMProvider)
 
-        executor = WorkflowExecutor(registry, provider=provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=provider))
 
         wf = _make_workflow([_make_step()])
         await executor.execute(wf)
@@ -2223,11 +2274,12 @@ class TestDepsParameterInjection:
         registry, captured = _capture_registry()
         mock_agent_registry: dict[str, Any] = {"kiro-cli": MagicMock()}
 
-        injected_deps = DefaultDependencies(agent_registry=mock_agent_registry)
+        injected_deps = DefaultDependencies(
+            agent_registry=mock_agent_registry, lifecycle_hooks=LifecycleHookManager()
+        )
         executor = WorkflowExecutor(
             registry,
             deps=injected_deps,
-            hooks=LifecycleHookManager(),
         )
 
         wf = _make_workflow([_make_step()])

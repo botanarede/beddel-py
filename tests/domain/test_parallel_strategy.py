@@ -770,7 +770,9 @@ class TestExecuteStreamWithParallelStrategy:
         s1 = _step("s1", parallel=False)
         wf = _workflow(s1, p1, p2)
 
-        executor = WorkflowExecutor(registry, hooks=LifecycleHookManager())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(lifecycle_hooks=LifecycleHookManager())
+        )
 
         events: list[BeddelEvent] = []
         async for event in executor.execute_stream(wf, execution_strategy=strategy):

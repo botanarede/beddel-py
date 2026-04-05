@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from beddel.domain.executor import WorkflowExecutor
+from beddel.domain.models import DefaultDependencies
 from beddel.domain.parser import WorkflowParser
 from beddel.domain.ports import ILLMProvider
 from beddel.domain.registry import PrimitiveRegistry
@@ -130,7 +131,7 @@ class TestHelloWorkflowExecution:
         registry = PrimitiveRegistry()
         register_builtins(registry)
         mock_provider = MockLLMProvider()
-        executor = WorkflowExecutor(registry, provider=mock_provider)
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(llm_provider=mock_provider))
 
         result = await executor.execute(workflow, inputs={"topic": "astronomy"})
 
@@ -146,7 +147,9 @@ class TestHelloWorkflowExecution:
 
         registry = PrimitiveRegistry()
         register_builtins(registry)
-        executor = WorkflowExecutor(registry, provider=MockLLMProvider())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(llm_provider=MockLLMProvider())
+        )
 
         result = await executor.execute(workflow, inputs={"topic": "astronomy"})
 
@@ -167,7 +170,9 @@ class TestHelloWorkflowExecution:
 
         registry = PrimitiveRegistry()
         register_builtins(registry)
-        executor = WorkflowExecutor(registry, provider=MockLLMProvider())
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(llm_provider=MockLLMProvider())
+        )
 
         result = await executor.execute(workflow, inputs={"topic": "quantum physics"})
 
