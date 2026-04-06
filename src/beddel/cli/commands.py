@@ -495,6 +495,8 @@ def connect(*, show_status: bool, logout: bool, server: str | None, listen: bool
             if session_id:
                 browser_url = f"{dashboard_url}/auth/callback?code={session_id}"
         except Exception as exc:
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
             click.echo(
                 f"Warning: Could not establish browser session: {exc}",
                 err=True,
