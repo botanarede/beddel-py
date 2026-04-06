@@ -468,9 +468,11 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
         )
         click.echo(f"Authenticated as {user}.")
 
+        import contextlib
         import webbrowser
 
-        webbrowser.open(dashboard_url)
+        with contextlib.suppress(Exception):
+            webbrowser.open(dashboard_url)
         click.echo(f"Dashboard: {dashboard_url}")
     except BeddelError as exc:
         click.echo(f"Error [{exc.code}]: {exc.message}", err=True)
