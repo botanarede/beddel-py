@@ -481,7 +481,7 @@ def connect(*, show_status: bool, logout: bool, server: str | None, listen: bool
             import httpx
 
             async def _exchange() -> str | None:
-                async with httpx.AsyncClient(timeout=10.0) as http:
+                async with httpx.AsyncClient(timeout=30.0) as http:
                     resp = await http.post(
                         f"{dashboard_url}/api/auth/exchange",
                         json={"access_token": token},
@@ -494,7 +494,7 @@ def connect(*, show_status: bool, logout: bool, server: str | None, listen: bool
             session_id = asyncio.run(_exchange())
             if session_id:
                 browser_url = f"{dashboard_url}/auth/callback?code={session_id}"
-        except (OSError, ValueError, RuntimeError) as exc:
+        except Exception as exc:
             click.echo(
                 f"Warning: Could not establish browser session: {exc}",
                 err=True,
