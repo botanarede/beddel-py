@@ -468,11 +468,36 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
         )
         click.echo(f"Authenticated as {user}.")
 
+        # Token exchange: establish browser session on dashboard
+        browser_url = dashboard_url  # fallback: open dashboard root
+        try:
+            import httpx
+
+            async def _exchange() -> str | None:
+                async with httpx.AsyncClient(timeout=10.0) as http:
+                    resp = await http.post(
+                        f"{dashboard_url}/api/auth/exchange",
+                        json={"access_token": token},
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return data.get("session_id")
+                    return None
+
+            session_id = asyncio.run(_exchange())
+            if session_id:
+                browser_url = f"{dashboard_url}/auth/callback?code={session_id}"
+        except Exception as exc:
+            click.echo(
+                f"Warning: Could not establish browser session: {exc}",
+                err=True,
+            )
+
         import contextlib
         import webbrowser
 
         with contextlib.suppress(Exception):
-            webbrowser.open(dashboard_url)
+            webbrowser.open(browser_url)
         click.echo(f"Dashboard: {dashboard_url}")
     except BeddelError as exc:
         click.echo(f"Error [{exc.code}]: {exc.message}", err=True)
