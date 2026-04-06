@@ -386,7 +386,8 @@ def status() -> None:
 @click.option("--status", "show_status", is_flag=True, help="Show auth status.")
 @click.option("--logout", is_flag=True, help="Remove stored credentials.")
 @click.option("--server", type=str, default=None, help="Set dashboard server URL.")
-def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
+@click.option("--listen", is_flag=True, help="Listen for commands from dashboard.")
+def connect(*, show_status: bool, logout: bool, server: str | None, listen: bool) -> None:
     """Authenticate with GitHub for remote dashboard access."""
     import datetime
     import os
@@ -430,6 +431,16 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
         creds["server_url"] = server
         save_credentials(creds)
         click.echo(f"Server URL updated to {server}")
+        return
+
+    if listen:
+        creds = load_credentials()
+        if creds is None:
+            click.echo("Not authenticated. Run `beddel connect` first.", err=True)
+            raise SystemExit(1)
+        pat = creds["access_token"]
+        srv = creds.get("server_url") or "https://connect.beddel.com.br"
+        asyncio.run(_listen_loop(srv, pat))
         return
 
     # Default: full Device Flow
@@ -502,6 +513,173 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
     except BeddelError as exc:
         click.echo(f"Error [{exc.code}]: {exc.message}", err=True)
         raise SystemExit(1) from None
+
+
+# ---------------------------------------------------------------------------
+# SSE listen-mode helpers (Task 6 — Epic D10)
+# ---------------------------------------------------------------------------
+
+
+async def _listen_loop(server_url: str, token: str) -> None:
+    """Listen for commands from dashboard via SSE."""
+    import signal
+
+    import httpx
+
+    stop_event = asyncio.Event()
+
+    def _handle_signal(*_: object) -> None:
+        click.echo("\nDisconnecting...")
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    backoff = 1.0
+    max_backoff = 30.0
+
+    while not stop_event.is_set():
+        try:
+            click.echo(f"Listening for commands from {server_url}...")
+            async with httpx.AsyncClient(timeout=None) as client:  # noqa: SIM117
+                async with client.stream(
+                    "GET",
+                    f"{server_url}/api/sse/connect",
+                    headers={"Authorization": f"Bearer {token}"},
+                ) as response:
+                    if response.status_code != 200:
+                        click.echo(
+                            f"SSE connect failed: {response.status_code}",
+                            err=True,
+                        )
+                        break
+
+                    backoff = 1.0  # Reset on successful connect
+                    buffer = ""
+                    async for chunk in response.aiter_text():
+                        if stop_event.is_set():
+                            break
+                        buffer += chunk
+                        while "\n\n" in buffer:
+                            event_str, buffer = buffer.split("\n\n", 1)
+                            await _handle_sse_event(event_str, server_url, token)
+
+        except (
+            httpx.ConnectError,
+            httpx.ReadError,
+            httpx.RemoteProtocolError,
+        ) as exc:
+            if stop_event.is_set():
+                break
+            click.echo(
+                f"Connection lost: {exc}. Retrying in {backoff:.0f}s...",
+                err=True,
+            )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, max_backoff)
+        except Exception as exc:
+            click.echo(f"Unexpected error: {exc}", err=True)
+            break
+
+    click.echo("Disconnected.")
+
+
+async def _handle_sse_event(event_str: str, server_url: str, token: str) -> None:
+    """Handle a single SSE event from the dashboard."""
+    # Parse SSE data lines
+    data_lines: list[str] = []
+    for line in event_str.strip().split("\n"):
+        if line.startswith("data: "):
+            data_lines.append(line[6:])
+    if not data_lines:
+        return
+
+    try:
+        data = json.loads("".join(data_lines))
+    except json.JSONDecodeError:
+        return
+
+    event_type = data.get("type")
+
+    if event_type == "heartbeat":
+        return  # Silent heartbeat
+
+    if event_type == "connected":
+        click.echo(f"Connected as {data.get('username', 'unknown')}.")
+        return
+
+    if event_type == "command" and data.get("action") == "run":
+        workflow_id: str = data.get("workflow_id", "unknown")
+        inputs: dict[str, Any] = data.get("inputs", {})
+        click.echo(f"Received: run workflow {workflow_id}")
+        await _execute_and_stream(workflow_id, inputs, server_url, token)
+
+
+async def _execute_and_stream(
+    workflow_id: str,
+    inputs: dict[str, Any],
+    server_url: str,
+    token: str,
+) -> None:
+    """Execute a workflow and stream events back to dashboard."""
+    import contextlib
+
+    import httpx
+
+    try:
+        _ensure_kit_paths()
+        from beddel.domain.executor import WorkflowExecutor
+        from beddel.domain.parser import WorkflowParser
+        from beddel.domain.registry import PrimitiveRegistry
+        from beddel.primitives import register_builtins
+
+        # Try to find the workflow file
+        workflow_path = Path(workflow_id)
+        if not workflow_path.exists():
+            for prefix in [Path("."), Path("workflows"), Path("agents")]:
+                candidate = prefix / f"{workflow_id}.yaml"
+                if candidate.exists():
+                    workflow_path = candidate
+                    break
+                candidate = prefix / f"{workflow_id}.yml"
+                if candidate.exists():
+                    workflow_path = candidate
+                    break
+
+        if not workflow_path.exists():
+            click.echo(f"Workflow not found: {workflow_id}", err=True)
+            return
+
+        workflow = WorkflowParser.parse(workflow_path.read_text())
+        registry = PrimitiveRegistry()
+        register_builtins(registry)
+        executor = WorkflowExecutor(registry)
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            async for event in executor.execute_stream(workflow, inputs):
+                payload: dict[str, Any] = {
+                    "type": "event",
+                    "event_type": (
+                        event.event_type.value
+                        if hasattr(event.event_type, "value")
+                        else str(event.event_type)
+                    ),
+                    "payload": (
+                        event.model_dump()
+                        if hasattr(event, "model_dump")
+                        else {"data": str(event)}
+                    ),
+                }
+                with contextlib.suppress(httpx.HTTPError):
+                    await client.post(
+                        f"{server_url}/api/sse/events",
+                        json=payload,
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+
+        click.echo(f"Workflow {workflow_id} completed.")
+    except Exception as exc:
+        click.echo(f"Workflow execution error: {exc}", err=True)
 
 
 @cli.command()

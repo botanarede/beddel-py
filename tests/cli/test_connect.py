@@ -144,6 +144,26 @@ class TestConnectFullFlow:
             lambda d: saved.append(d),
         )
 
+        # Mock httpx to prevent real network calls during token exchange
+        import unittest.mock
+
+        mock_response = unittest.mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"session_id": "test-session-id"}
+
+        async def _mock_post(*_args: Any, **_kwargs: Any) -> Any:
+            return mock_response
+
+        mock_client = unittest.mock.MagicMock()
+        mock_client.post = _mock_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        monkeypatch.setattr("httpx.AsyncClient", lambda **_kw: mock_client)
+
+        # Mock webbrowser.open to prevent browser launch
+        monkeypatch.setattr("webbrowser.open", lambda _url: True)
+
         runner = CliRunner()
         result = runner.invoke(cli, ["connect"])
         assert result.exit_code == 0
