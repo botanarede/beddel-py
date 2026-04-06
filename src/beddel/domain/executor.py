@@ -408,9 +408,10 @@ class WorkflowExecutor:
             """Internal hook that pushes events to a queue for real-time streaming.
 
             Note: ``on_decision`` is intentionally not overridden — decision
-            events are not surfaced in the SSE stream.  When Gap #19
-            (decision capture, Epic 5) lands, add an ``on_decision``
-            override here to emit a ``DECISION`` BeddelEvent.
+            events are not surfaced in the SSE stream.  Decision capture was
+            delivered in Epic 7 Story 7.1 (decision-centric runtime).  To
+            surface decisions in SSE, add an ``on_decision`` override here
+            to emit a ``DECISION`` BeddelEvent.
             """
 
             def __init__(self, q: asyncio.Queue[BeddelEvent | None]) -> None:

@@ -293,7 +293,7 @@ EXEC_GOAL_CONDITION_FAILED: str = "BEDDEL-EXEC-041"
 """Goal condition evaluation failed during resolution."""
 
 # ---------------------------------------------------------------------------
-# Circuit Breaker codes  (CB prefix, 500 range)
+# Circuit Breaker codes  (CB prefix, 800 range)
 # ---------------------------------------------------------------------------
 
 CB_CIRCUIT_OPEN: str = "BEDDEL-CB-500"

@@ -184,32 +184,32 @@ class ExecutionDependencies(Protocol):
     @property
     def pii_tokenizer(self) -> IPIITokenizer | None:
         """The PII tokenizer for data protection, or ``None`` if not configured."""
-        return None
+        ...
 
     @property
     def state_store(self) -> IStateStore | None:
         """The state store for checkpoint persistence, or ``None`` if not configured."""
-        return None
+        ...
 
     @property
     def memory_provider(self) -> IMemoryProvider | None:
         """The memory provider for episodic memory, or ``None`` if not configured."""
-        return None
+        ...
 
     @property
     def knowledge_provider(self) -> IKnowledgeProvider | None:
         """The knowledge provider for domain knowledge, or ``None`` if not configured."""
-        return None
+        ...
 
     @property
     def decision_store(self) -> IDecisionStore | None:
         """The decision store for decision capture, or ``None`` if not configured."""
-        return None
+        ...
 
     @property
     def kit_manifests(self) -> list[Any] | None:
         """Available kit manifests for skill resolution, or ``None``."""
-        return None
+        ...
 
 
 class IPIITokenizer(Protocol):

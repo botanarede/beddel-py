@@ -669,7 +669,7 @@ class Step(BaseModel):
         execution_strategy: Error-handling strategy for this step.
         timeout: Optional timeout in seconds for step execution.
         stream: Whether to stream output from this step.
-        parallel: Reserved for Epic 4 — parallel execution flag.
+        parallel: Flag for parallel execution grouping by ParallelExecutionStrategy.
         metadata: Arbitrary metadata attached to the step.
         tags: Optional tags for step-level filtering by execution strategies.
     """
@@ -1075,10 +1075,10 @@ class EventType(StrEnum):
         TEXT_CHUNK: Emitted for each streamed text chunk.
         ERROR: Emitted when an error occurs.
         RETRY: Emitted when a step retry is attempted.
-        REFLECTION_START: Will be emitted when a reflection loop iteration begins (planned).
-        REFLECTION_END: Will be emitted when a reflection loop iteration completes (planned).
-        PARALLEL_START: Will be emitted when a parallel fan-out begins (planned).
-        PARALLEL_END: Will be emitted when a parallel fan-in completes (planned).
+        REFLECTION_START: Emitted when a reflection loop iteration begins.
+        REFLECTION_END: Emitted when a reflection loop iteration completes.
+        PARALLEL_START: Emitted when a parallel fan-out begins.
+        PARALLEL_END: Emitted when a parallel fan-in completes.
     """
 
     WORKFLOW_START = "workflow_start"
