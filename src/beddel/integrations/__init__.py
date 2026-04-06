@@ -1,6 +1,6 @@
 """Beddel integrations — framework-specific bindings."""
 
-__all__ = ["BeddelSSEAdapter", "create_beddel_handler", "create_dashboard_router"]
+__all__ = ["BeddelSSEAdapter", "create_beddel_handler"]
 
 
 def __getattr__(name: str) -> object:
@@ -17,8 +17,4 @@ def __getattr__(name: str) -> object:
         from beddel.integrations.fastapi import create_beddel_handler
 
         return create_beddel_handler
-    if name == "create_dashboard_router":
-        from beddel.integrations.dashboard import create_dashboard_router
-
-        return create_dashboard_router
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -371,7 +371,7 @@ def status() -> None:
         click.echo("Not connected to any remote server.")
         return
 
-    click.echo(f"Server: {creds.get('server_url') or '(not set)'}")
+    click.echo(f"Server: {creds.get('server_url') or 'https://connect.beddel.com.br'}")
     click.echo(f"User: {creds['github_user']}")
     click.echo(f"Created: {creds['created_at']}")
 
@@ -410,7 +410,7 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
             click.echo("Not authenticated. Run `beddel connect` to authenticate.")
             return
         click.echo(f"User: {creds['github_user']}")
-        click.echo(f"Server: {creds.get('server_url') or '(not set)'}")
+        click.echo(f"Server: {creds.get('server_url') or 'https://connect.beddel.com.br'}")
         click.echo(f"Created: {creds['created_at']}")
         return
 
@@ -457,15 +457,21 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
 
         user = asyncio.run(get_github_user(token))
 
+        dashboard_url = "https://connect.beddel.com.br"
         save_credentials(
             CredentialData(
                 access_token=token,
                 github_user=user,
-                server_url=None,
+                server_url=dashboard_url,
                 created_at=datetime.datetime.now(datetime.UTC).isoformat(),
             )
         )
         click.echo(f"Authenticated as {user}.")
+
+        import webbrowser
+
+        webbrowser.open(dashboard_url)
+        click.echo(f"Dashboard: {dashboard_url}")
     except BeddelError as exc:
         click.echo(f"Error [{exc.code}]: {exc.message}", err=True)
         raise SystemExit(1) from None
@@ -497,30 +503,6 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
 )
 @click.option("--no-kits", is_flag=True, default=False, help="Disable kit discovery.")
 @click.option(
-    "--dashboard",
-    is_flag=True,
-    default=False,
-    help="Mount Dashboard Server Protocol endpoints at /api.",
-)
-@click.option(
-    "--remote",
-    is_flag=True,
-    default=False,
-    help="Enable token validation middleware for remote access.",
-)
-@click.option(
-    "--allowed-users",
-    type=str,
-    default=None,
-    help="Comma-separated list of allowed GitHub usernames.",
-)
-@click.option(
-    "--tunnel-domain",
-    type=str,
-    default=None,
-    help="Cloudflare tunnel domain for CORS.",
-)
-@click.option(
     "--mcp",
     is_flag=True,
     default=False,
@@ -548,22 +530,11 @@ def serve(
     mcp: bool,
     transport: str,
     server_name: str,
-    dashboard: bool,
-    remote: bool,
     no_kits: bool,
-    allowed_users: str | None,
-    tunnel_domain: str | None,
 ) -> None:
     """Start a FastAPI server exposing workflows as SSE endpoints."""
     # MCP mode — branch early, skip FastAPI
     if mcp:
-        if dashboard or remote:
-            click.echo(
-                "Error: --mcp cannot be combined with --dashboard or --remote.",
-                err=True,
-            )
-            raise SystemExit(1)
-
         _ensure_kit_paths()
         from beddel_serve_mcp.server import BeddelMCPServer
 
@@ -612,40 +583,14 @@ def serve(
     from beddel.integrations.fastapi import create_beddel_handler
     from beddel.primitives import register_builtins
 
-    if allowed_users and not remote:
-        click.echo("Warning: --allowed-users ignored without --remote.", err=True)
-
-    if remote and not tunnel_domain:
-        click.echo(
-            "Error: --tunnel-domain is required when --remote is set.",
-            err=True,
-        )
-        raise SystemExit(1)
-
     app = FastAPI(title="Beddel", version=__version__)
-
-    # Determine CORS origins based on mode
-    cors_origins = [f"https://{tunnel_domain}"] if remote else ["http://localhost:3000"]
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=cors_origins,
+        allow_origins=["http://localhost:3000"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # Add auth middleware AFTER CORS (Starlette LIFO: auth runs first)
-    if remote:
-        from beddel.integrations.dashboard.auth_middleware import (
-            create_auth_middleware,
-        )
-
-        parsed_users: list[str] | None = None
-        if allowed_users:
-            parsed_users = [u.strip() for u in allowed_users.split(",") if u.strip()]
-        middleware_cls = create_auth_middleware(allowed_users=parsed_users)
-        app.add_middleware(middleware_cls)
-        click.echo("Remote mode enabled — token validation active")
 
     registry = PrimitiveRegistry()
     register_builtins(registry)
@@ -700,19 +645,6 @@ def serve(
         all_workflows[workflow.id] = workflow
         loaded += 1
 
-    if dashboard and all_workflows:
-        from beddel.domain.executor import WorkflowExecutor
-        from beddel.integrations.dashboard import create_dashboard_router
-
-        dashboard_deps = DefaultDependencies(
-            llm_provider=adapter,
-            agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
-            registry=registry,
-        )
-        shared_executor = WorkflowExecutor(registry, deps=dashboard_deps)
-        dashboard_router = create_dashboard_router(all_workflows, shared_executor)
-        app.include_router(dashboard_router)
-
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
@@ -720,8 +652,6 @@ def serve(
     click.echo(f"Beddel v{__version__} — {loaded} workflow(s)")
     click.echo(f"Listening on http://{host}:{port}")
     click.echo(f"Health: http://{host}:{port}/health")
-    if dashboard:
-        click.echo(f"Dashboard API: http://{host}:{port}/api")
 
     uvicorn.run(app, host=host, port=port, log_level="info")
 

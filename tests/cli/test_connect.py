@@ -155,34 +155,6 @@ class TestConnectFullFlow:
 
 
 # ---------------------------------------------------------------------------
-# Tests for ``beddel serve`` remote options (Story 4.0A.2, Task 3)
-# ---------------------------------------------------------------------------
-
-
-class TestServeHelpShowsRemoteOptions:
-    """``beddel serve --help`` includes --remote, --allowed-users, --tunnel-domain."""
-
-    def test_serve_help_shows_remote_options(self) -> None:
-        runner = CliRunner()
-        result = runner.invoke(cli, ["serve", "--help"])
-        assert result.exit_code == 0
-        assert "--remote" in result.output
-        assert "--allowed-users" in result.output
-        assert "--tunnel-domain" in result.output
-
-
-class TestServeRemoteFlagAccepted:
-    """``--remote`` flag is accepted without error (uvicorn mocked)."""
-
-    def test_serve_remote_flag_accepted(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("uvicorn.run", lambda *a, **kw: None)
-        runner = CliRunner()
-        result = runner.invoke(cli, ["serve", "--remote", "--tunnel-domain", "dash.example.com"])
-        assert result.exit_code == 0
-        assert "Remote mode enabled" in result.output
-
-
-# ---------------------------------------------------------------------------
 # Tests for ``beddel status`` command (Story 4.0A.4, Task 2)
 # ---------------------------------------------------------------------------
 

@@ -65,26 +65,6 @@ def _fake_serve_mcp(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return result
 
 
-class TestMcpDashboardMutualExclusion:
-    """3.1 — ``--mcp`` with ``--dashboard`` produces error exit."""
-
-    def test_mcp_with_dashboard_errors(self) -> None:
-        runner = CliRunner()
-        result = runner.invoke(cli, ["serve", "--mcp", "--dashboard"])
-        assert result.exit_code != 0
-        assert "Error" in result.output
-
-
-class TestMcpRemoteMutualExclusion:
-    """3.2 — ``--mcp`` with ``--remote`` produces error exit."""
-
-    def test_mcp_with_remote_errors(self) -> None:
-        runner = CliRunner()
-        result = runner.invoke(cli, ["serve", "--mcp", "--remote"])
-        assert result.exit_code != 0
-        assert "Error" in result.output
-
-
 class TestMcpWithWorkflowFlag:
     """3.3 — ``--mcp`` with ``-w`` invokes BeddelMCPServer and its run method."""
 
