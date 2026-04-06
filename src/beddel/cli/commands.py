@@ -520,6 +520,24 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
     default=None,
     help="Cloudflare tunnel domain for CORS.",
 )
+@click.option(
+    "--mcp",
+    is_flag=True,
+    default=False,
+    help="Start as MCP server instead of FastAPI.",
+)
+@click.option(
+    "--transport",
+    type=click.Choice(["stdio", "streamable-http"]),
+    default="stdio",
+    help="MCP transport (default: stdio).",
+)
+@click.option(
+    "--name",
+    "server_name",
+    default="Beddel Workflows",
+    help="MCP server name.",
+)
 def serve(
     host: str,
     port: int,
@@ -527,6 +545,9 @@ def serve(
     tools: tuple[str, ...],
     kit: tuple[Path, ...],
     *,
+    mcp: bool,
+    transport: str,
+    server_name: str,
     dashboard: bool,
     remote: bool,
     no_kits: bool,
@@ -534,6 +555,39 @@ def serve(
     tunnel_domain: str | None,
 ) -> None:
     """Start a FastAPI server exposing workflows as SSE endpoints."""
+    # MCP mode — branch early, skip FastAPI
+    if mcp:
+        if dashboard or remote:
+            click.echo(
+                "Error: --mcp cannot be combined with --dashboard or --remote.",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        _ensure_kit_paths()
+        from beddel_serve_mcp.server import BeddelMCPServer
+
+        from beddel.domain.parser import WorkflowParser
+
+        if workflow_paths:
+            server = BeddelMCPServer(server_name)
+            for wf_path in workflow_paths:
+                workflow = WorkflowParser.parse(wf_path.read_text())
+                server.register_workflow(workflow)
+        else:
+            from beddel_serve_mcp.server import create_mcp_server
+
+            server = create_mcp_server(Path("."), name=server_name)
+
+        click.echo(f"Beddel MCP Server: {server_name}", err=True)
+        click.echo(f"  Workflows: {server.tool_count}", err=True)
+        click.echo(f"  Transport: {transport}", err=True)
+        if transport != "stdio":
+            click.echo(f"  Listening: http://{host}:{port}", err=True)
+
+        server.run(transport=transport, host=host, port=port)
+        return
+
     try:
         import uvicorn
         from fastapi import FastAPI
