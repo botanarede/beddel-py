@@ -1,0 +1,17 @@
+name: serve-mcp-kit
+version: "0.1.0"
+description: "Expose Beddel YAML workflows as MCP servers — any MCP-compatible agent can discover and execute workflows"
+author: "Beddel Team"
+integrations:
+  - name: BeddelMCPServer
+    module: server
+    description: "Wraps Beddel workflows as MCP tools via FastMCP"
+  - name: create_mcp_server
+    module: server
+    description: "Factory: scan YAML directory, expose all workflows as MCP tools"
+
+targets:
+  python:
+    module: "beddel_serve_mcp"
+    dependencies:
+      - "mcp>=1.0"
