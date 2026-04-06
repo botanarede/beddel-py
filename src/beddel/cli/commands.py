@@ -487,7 +487,7 @@ def connect(*, show_status: bool, logout: bool, server: str | None) -> None:
             session_id = asyncio.run(_exchange())
             if session_id:
                 browser_url = f"{dashboard_url}/auth/callback?code={session_id}"
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             click.echo(
                 f"Warning: Could not establish browser session: {exc}",
                 err=True,
