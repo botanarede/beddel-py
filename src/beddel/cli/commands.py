@@ -444,13 +444,9 @@ def connect(*, show_status: bool, logout: bool, server: str | None, listen: bool
         return
 
     # Default: full Device Flow
-    client_id = os.environ.get("BEDDEL_GITHUB_CLIENT_ID")
-    if not client_id:
-        click.echo(
-            "BEDDEL_GITHUB_CLIENT_ID environment variable is required.",
-            err=True,
-        )
-        raise SystemExit(1)
+    # Client ID is public (same pattern as GitHub CLI — safe to embed).
+    # Override via env var for self-hosted GitHub Apps.
+    client_id = os.environ.get("BEDDEL_GITHUB_CLIENT_ID", "Ov23lieA07aQzUjKcAHk")
 
     try:
         flow = asyncio.run(initiate_device_flow(client_id))

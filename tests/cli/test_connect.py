@@ -21,15 +21,63 @@ def _sample_creds() -> CredentialData:
     )
 
 
-class TestConnectNoClientId:
-    """Default flow without BEDDEL_GITHUB_CLIENT_ID set."""
+class TestConnectDefaultClientId:
+    """Default flow uses hardcoded client_id when env var is not set."""
 
-    def test_connect_no_client_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_connect_uses_default_client_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("BEDDEL_GITHUB_CLIENT_ID", raising=False)
+
+        # Mock the device flow to capture the client_id used
+        captured_client_ids: list[str] = []
+
+        async def _mock_initiate(client_id: str) -> dict[str, Any]:
+            captured_client_ids.append(client_id)
+            return {
+                "device_code": "dc_test",
+                "user_code": "TEST-CODE",
+                "verification_uri": "https://github.com/login/device",
+                "expires_in": 900,
+                "interval": 5,
+            }
+
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.initiate_device_flow",
+            _mock_initiate,
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.poll_for_token",
+            AsyncMock(return_value="gho_test"),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.get_github_user",
+            AsyncMock(return_value="testuser"),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.save_credentials",
+            lambda _d: None,
+        )
+
+        import unittest.mock
+
+        mock_response = unittest.mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"session_id": "s"}
+
+        async def _mock_post(*_a: Any, **_k: Any) -> Any:
+            return mock_response
+
+        mock_client = unittest.mock.MagicMock()
+        mock_client.post = _mock_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        monkeypatch.setattr("httpx.AsyncClient", lambda **_kw: mock_client)
+        monkeypatch.setattr("webbrowser.open", lambda _url: True)
+
         runner = CliRunner()
         result = runner.invoke(cli, ["connect"])
-        assert result.exit_code != 0
-        assert "BEDDEL_GITHUB_CLIENT_ID" in result.output
+        assert result.exit_code == 0
+        assert len(captured_client_ids) == 1
+        assert captured_client_ids[0] == "Ov23lieA07aQzUjKcAHk"
 
 
 class TestConnectStatusNoCredentials:
