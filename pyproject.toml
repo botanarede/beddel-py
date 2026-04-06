@@ -58,7 +58,6 @@ default = [
     "httpx>=0.27",
     "fastapi>=0.100",
     "sse-starlette>=2.0",
-    "mcp>=1.0",
 ]
 dev = [
     "beddel[default]",
