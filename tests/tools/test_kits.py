@@ -19,8 +19,8 @@ from beddel.domain.kit import (
     SolutionKit,
     parse_kit_manifest,
 )
-from beddel.error_codes import KIT_LOAD_FAILED
-from beddel.tools.kits import discover_kits, load_kit
+from beddel.error_codes import KIT_DEPENDENCY_MISSING, KIT_LOAD_FAILED
+from beddel.tools.kits import discover_kits, load_kit, load_kit_adapters
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -49,6 +49,7 @@ def _minimal_kit(name: str, *, tools: list[dict[str, str]] | None = None) -> dic
 def _make_manifest(
     name: str = "test-kit",
     tools: list[KitToolDeclaration] | None = None,
+    targets: dict[str, Any] | None = None,
 ) -> KitManifest:
     """Build a KitManifest directly (no YAML file needed)."""
     from datetime import UTC, datetime
@@ -58,6 +59,7 @@ def _make_manifest(
         version="0.1.0",
         description=f"Test kit {name}",
         tools=tools or [],
+        targets=targets or {},
     )
     return KitManifest(
         kit=kit,
@@ -631,3 +633,139 @@ class TestNoKitsFlag:
 
         assert "inline" in result
         assert "cli" in result
+
+
+# ---------------------------------------------------------------------------
+# load_kit_adapters — adapter resolution from targets.python
+# ---------------------------------------------------------------------------
+
+
+class TestLoadKitAdapters:
+    """Tests for load_kit_adapters() — AC #1, #6, #10."""
+
+    @staticmethod
+    def _make_adapter_manifest(
+        name: str = "adapter-kit",
+        adapters: list[dict[str, Any]] | None = None,
+        dependencies: list[str] | None = None,
+        *,
+        include_targets: bool = True,
+    ) -> KitManifest:
+        """Build a KitManifest with targets.python.adapters populated."""
+        targets: dict[str, Any] = {}
+        if include_targets and adapters is not None:
+            python_block: dict[str, Any] = {
+                "module": "fake_kit",
+                "adapters": adapters,
+            }
+            if dependencies is not None:
+                python_block["dependencies"] = dependencies
+            targets["python"] = python_block
+        return _make_manifest(name=name, targets=targets)
+
+    def test_loads_adapter_from_targets_python(self) -> None:
+        """AC #1: importlib resolves adapter class and instantiates it."""
+        from beddel.tools.kits import load_kit_adapters
+
+        class _FakeAgentAdapter:
+            pass
+
+        fake_module = MagicMock()
+        fake_module.FakeAgentAdapter = _FakeAgentAdapter
+
+        manifest = self._make_adapter_manifest(
+            adapters=[
+                {
+                    "name": "my-adapter",
+                    "target": "fake_kit.adapters:FakeAgentAdapter",
+                    "port": "IAgentAdapter",
+                },
+            ],
+        )
+
+        with patch("importlib.import_module", return_value=fake_module) as mock_import:
+            result = load_kit_adapters(manifest)
+
+        mock_import.assert_called_once_with("fake_kit.adapters")
+        assert ("IAgentAdapter", "my-adapter") in result
+        assert isinstance(result[("IAgentAdapter", "my-adapter")], _FakeAgentAdapter)
+
+    def test_missing_name_raises_kit_manifest_error(self) -> None:
+        """AC #6: adapter without name field raises KitManifestError."""
+        from beddel.tools.kits import load_kit_adapters
+
+        manifest = self._make_adapter_manifest(
+            adapters=[
+                {
+                    "implementation": "SomeAdapter",
+                    "port": "IAgentAdapter",
+                },
+            ],
+        )
+
+        with pytest.raises(KitManifestError) as exc_info:
+            load_kit_adapters(manifest)
+
+        assert exc_info.value.code == KIT_LOAD_FAILED
+        assert "name" in exc_info.value.message.lower()
+
+    def test_missing_target_raises_kit_manifest_error(self) -> None:
+        """AC #6: adapter without target field raises KitManifestError."""
+        from beddel.tools.kits import load_kit_adapters
+
+        manifest = self._make_adapter_manifest(
+            adapters=[
+                {
+                    "name": "no-target-adapter",
+                    "implementation": "SomeAdapter",
+                    "port": "IAgentAdapter",
+                },
+            ],
+        )
+
+        with pytest.raises(KitManifestError) as exc_info:
+            load_kit_adapters(manifest)
+
+        assert exc_info.value.code == KIT_LOAD_FAILED
+        assert "target" in exc_info.value.message.lower()
+
+    def test_missing_deps_raises_kit_dependency_error(self) -> None:
+        """AC #10: missing dependencies raise KitDependencyError."""
+        from beddel.tools.kits import load_kit_adapters
+
+        manifest = self._make_adapter_manifest(
+            adapters=[
+                {
+                    "name": "dep-adapter",
+                    "target": "some_pkg.mod:Cls",
+                    "port": "IAgentAdapter",
+                },
+            ],
+            dependencies=["nonexistent-pkg-xyz>=1.0"],
+        )
+
+        with pytest.raises(KitDependencyError) as exc_info:
+            load_kit_adapters(manifest)
+
+        assert exc_info.value.code == "BEDDEL-KIT-653"
+        assert "nonexistent-pkg-xyz>=1.0" in exc_info.value.missing_packages
+
+    def test_empty_adapters_returns_empty_dict(self) -> None:
+        """Kit with empty adapters list returns {}."""
+        from beddel.tools.kits import load_kit_adapters
+
+        manifest = self._make_adapter_manifest(adapters=[])
+
+        result = load_kit_adapters(manifest)
+
+        assert result == {}
+
+    def test_no_targets_python_returns_empty_dict(self) -> None:
+        """Kit without targets.python section returns {}."""
+        from beddel.tools.kits import load_kit_adapters
+
+        manifest = self._make_adapter_manifest(include_targets=False)
+
+        result = load_kit_adapters(manifest)
+
+        assert result == {}
