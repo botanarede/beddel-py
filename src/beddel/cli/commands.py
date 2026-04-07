@@ -188,6 +188,79 @@ def _parse_tool_flags(tools: tuple[str, ...]) -> dict[str, Callable[..., Any]]:
     return registry
 
 
+def _build_adapter_registries(
+    discovery_result: Any,
+    *,
+    no_kits: bool = False,
+) -> tuple[dict[str, Any], Any]:
+    """Build agent and LLM provider registries from discovered kit adapters.
+
+    Iterates kit manifests, calls :func:`load_kit_adapters` for each, and
+    collects ``IAgentAdapter`` entries into ``agent_registry`` and
+    ``ILLMProvider`` entries into ``llm_provider`` (last-discovered wins).
+
+    Args:
+        discovery_result: A :class:`KitDiscoveryResult` from ``discover_kits()``.
+        no_kits: When *True*, skip adapter loading entirely.
+
+    Returns:
+        Tuple of ``(agent_registry, llm_provider)`` where
+        ``agent_registry`` is a dict mapping adapter names to instances
+        and ``llm_provider`` is the last-discovered ``ILLMProvider``
+        instance (or ``None``).
+    """
+    if no_kits:
+        return {}, None
+
+    from beddel.domain.errors import KitDependencyError, KitManifestError
+    from beddel.tools.kits import load_kit_adapters
+
+    agent_registry: dict[str, Any] = {}
+    llm_provider: Any = None
+    llm_provider_names: list[str] = []
+
+    for manifest in discovery_result.manifests:
+        kit_name = manifest.kit.name
+        try:
+            adapter_map = load_kit_adapters(manifest)
+        except KitDependencyError as exc:
+            logger.warning(
+                "BEDDEL-KIT-658: Kit '%s' skipped — missing dependencies: %s",
+                kit_name,
+                exc.missing_packages,
+            )
+            continue
+        except KitManifestError as exc:
+            logger.warning("Skipping kit '%s' adapters: %s", kit_name, exc.message)
+            continue
+
+        for (port, name), instance in adapter_map.items():
+            if port == "IAgentAdapter":
+                agent_registry[name] = instance
+            elif port == "ILLMProvider":
+                if llm_provider is not None:
+                    llm_provider_names.append(name)
+                else:
+                    llm_provider_names.append(name)
+                llm_provider = instance
+
+    if len(llm_provider_names) > 1:
+        winner = llm_provider_names[-1]
+        logger.warning(
+            "Multiple ILLMProvider kits discovered: %s. Using '%s' (highest priority).",
+            llm_provider_names,
+            winner,
+        )
+
+    if llm_provider is None:
+        logger.warning(
+            "No ILLMProvider kit discovered. LLM primitives (llm, chat, guardrail) "
+            "will fail at execution time."
+        )
+
+    return agent_registry, llm_provider
+
+
 @click.group()
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging.")
 def cli(*, verbose: bool) -> None:
