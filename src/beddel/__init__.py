@@ -86,6 +86,7 @@ from beddel.domain.strategies import (
     GoalOrientedStrategy,
 )
 from beddel.primitives.agent_exec import AgentExecPrimitive
+from beddel.setup import setup as setup
 
 if TYPE_CHECKING:
     from beddel.adapters import CompositeMemoryProvider as CompositeMemoryProvider
@@ -259,4 +260,5 @@ __all__ = [
     "YAMLKnowledgeAdapter",
     "create_beddel_handler",
     "error_codes",
+    "setup",
 ]

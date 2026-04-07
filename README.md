@@ -22,6 +22,9 @@ steps:
 ```
 
 ```python
+import beddel
+beddel.setup()
+
 from beddel.domain.parser import WorkflowParser
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.registry import PrimitiveRegistry
@@ -116,6 +119,8 @@ pip install "beddel[default]"   # core + litellm + opentelemetry + fastapi + htt
 
 Requires Python 3.11+.
 
+> **Python API users:** Call `beddel.setup()` before importing kit modules. This activates kit paths. CLI commands (`beddel run`, `beddel serve`) handle this automatically.
+
 ## Why Beddel
 
 - Write workflows in YAML, not hundreds of lines of Python
@@ -172,7 +177,11 @@ beddel run workflow.yaml -i topic=astronomy
 
 ```python
 import asyncio
+import beddel
 from pathlib import Path
+
+beddel.setup()
+
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.parser import WorkflowParser
 from beddel.domain.registry import PrimitiveRegistry
@@ -269,6 +278,9 @@ Each kit declares its own pip dependencies in `kit.yaml`. The `install` command 
 **OpenTelemetry** — Opt-in tracing with workflow, step, and primitive-level spans. Token usage tracking per step. Zero overhead when disabled.
 
 ```python
+import beddel
+beddel.setup()
+
 from beddel_observability_otel.adapter import OpenTelemetryAdapter
 
 tracer = OpenTelemetryAdapter(service_name="my-app")
