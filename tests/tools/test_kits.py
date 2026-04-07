@@ -19,7 +19,7 @@ from beddel.domain.kit import (
     SolutionKit,
     parse_kit_manifest,
 )
-from beddel.error_codes import KIT_DEPENDENCY_MISSING, KIT_LOAD_FAILED
+from beddel.error_codes import KIT_LOAD_FAILED
 from beddel.tools.kits import discover_kits, load_kit, load_kit_adapters
 
 # ---------------------------------------------------------------------------
@@ -665,7 +665,6 @@ class TestLoadKitAdapters:
 
     def test_loads_adapter_from_targets_python(self) -> None:
         """AC #1: importlib resolves adapter class and instantiates it."""
-        from beddel.tools.kits import load_kit_adapters
 
         class _FakeAgentAdapter:
             pass
@@ -692,7 +691,6 @@ class TestLoadKitAdapters:
 
     def test_missing_name_raises_kit_manifest_error(self) -> None:
         """AC #6: adapter without name field raises KitManifestError."""
-        from beddel.tools.kits import load_kit_adapters
 
         manifest = self._make_adapter_manifest(
             adapters=[
@@ -711,7 +709,6 @@ class TestLoadKitAdapters:
 
     def test_missing_target_raises_kit_manifest_error(self) -> None:
         """AC #6: adapter without target field raises KitManifestError."""
-        from beddel.tools.kits import load_kit_adapters
 
         manifest = self._make_adapter_manifest(
             adapters=[
@@ -731,7 +728,6 @@ class TestLoadKitAdapters:
 
     def test_missing_deps_raises_kit_dependency_error(self) -> None:
         """AC #10: missing dependencies raise KitDependencyError."""
-        from beddel.tools.kits import load_kit_adapters
 
         manifest = self._make_adapter_manifest(
             adapters=[
@@ -752,7 +748,6 @@ class TestLoadKitAdapters:
 
     def test_empty_adapters_returns_empty_dict(self) -> None:
         """Kit with empty adapters list returns {}."""
-        from beddel.tools.kits import load_kit_adapters
 
         manifest = self._make_adapter_manifest(adapters=[])
 
@@ -762,7 +757,6 @@ class TestLoadKitAdapters:
 
     def test_no_targets_python_returns_empty_dict(self) -> None:
         """Kit without targets.python section returns {}."""
-        from beddel.tools.kits import load_kit_adapters
 
         manifest = self._make_adapter_manifest(include_targets=False)
 

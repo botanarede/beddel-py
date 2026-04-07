@@ -370,9 +370,7 @@ def run(
     register_builtins(registry)
 
     discovery_result = discover_kits(list(kit) if kit else None)
-    agent_registry, llm_provider = _build_adapter_registries(
-        discovery_result, no_kits=no_kits
-    )
+    agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
 
     def _safe_workflow_loader(name: str) -> Workflow:
         """Load a sub-workflow by name, confined to the parent directory."""
@@ -913,9 +911,7 @@ def serve(
     registry = PrimitiveRegistry()
     register_builtins(registry)
     discovery_result = discover_kits(list(kit) if kit else None)
-    agent_registry, llm_provider = _build_adapter_registries(
-        discovery_result, no_kits=no_kits
-    )
+    agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
     parsed_tools = _parse_tool_flags(tools)
 
     loaded = 0

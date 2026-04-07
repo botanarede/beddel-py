@@ -11,8 +11,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
+
+if TYPE_CHECKING:
+    from beddel.domain.kit import KitManifest
 
 from beddel.domain.models import Workflow
 
@@ -265,7 +268,7 @@ class TestBuildAdapterRegistries:
     """Tests for _build_adapter_registries() — AC #2, #9, #11, #12."""
 
     @staticmethod
-    def _make_manifest(name: str = "test-kit") -> "KitManifest":
+    def _make_manifest(name: str = "test-kit") -> KitManifest:
         from datetime import UTC, datetime
 
         from beddel.domain.kit import KitManifest, SolutionKit
@@ -314,7 +317,6 @@ class TestBuildAdapterRegistries:
 
     def test_multiple_llm_providers_last_wins(self) -> None:
         """AC #9: later ILLMProvider overrides earlier, warning logged."""
-        import logging
 
         from beddel.cli.commands import _build_adapter_registries
         from beddel.domain.kit import KitDiscoveryResult
