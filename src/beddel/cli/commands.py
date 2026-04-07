@@ -879,8 +879,6 @@ def serve(
     from beddel import __version__
 
     _ensure_kit_paths()
-    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter
-    from beddel_provider_litellm.adapter import LiteLLMAdapter
 
     from beddel.domain.errors import BeddelError
     from beddel.domain.models import DefaultDependencies, Workflow
@@ -888,6 +886,7 @@ def serve(
     from beddel.domain.registry import PrimitiveRegistry
     from beddel.integrations.fastapi import create_beddel_handler
     from beddel.primitives import register_builtins
+    from beddel.tools.kits import discover_kits
 
     app = FastAPI(title="Beddel", version=__version__)
 
@@ -900,7 +899,10 @@ def serve(
 
     registry = PrimitiveRegistry()
     register_builtins(registry)
-    adapter = LiteLLMAdapter()
+    discovery_result = discover_kits(list(kit) if kit else None)
+    agent_registry, llm_provider = _build_adapter_registries(
+        discovery_result, no_kits=no_kits
+    )
     parsed_tools = _parse_tool_flags(tools)
 
     loaded = 0
@@ -931,8 +933,8 @@ def serve(
             return _loader
 
         deps = DefaultDependencies(
-            llm_provider=adapter,
-            agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
+            llm_provider=llm_provider,
+            agent_registry=agent_registry,
             tool_registry=_build_tool_registry(
                 workflow,
                 parsed_tools,
