@@ -74,7 +74,7 @@ class TestConnectDefaultClientId:
         monkeypatch.setattr("webbrowser.open", lambda _url: True)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["connect"])
+        result = runner.invoke(cli, ["connect", "--url", "https://test.example.com"])
         assert result.exit_code == 0
         assert len(captured_client_ids) == 1
         assert captured_client_ids[0] == "Ov23lieA07aQzUjKcAHk"
@@ -213,13 +213,50 @@ class TestConnectFullFlow:
         monkeypatch.setattr("webbrowser.open", lambda _url: True)
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["connect"])
+        result = runner.invoke(cli, ["connect", "--url", "https://test.example.com"])
         assert result.exit_code == 0
         assert "ABCD-1234" in result.output
         assert "Authenticated as octocat" in result.output
         assert len(saved) == 1
         assert saved[0]["access_token"] == "gho_tok_test"
         assert saved[0]["github_user"] == "octocat"
+        assert saved[0]["server_url"] == "https://test.example.com"
+
+
+class TestConnectNoUrl:
+    """Default flow without --url prints error and exits."""
+
+    def test_connect_no_url(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect"])
+        assert result.exit_code == 1
+        assert "Missing --url" in result.output
+
+
+class TestConnectStatusNoServerUrl:
+    """--status when credentials exist but server_url is None."""
+
+    def test_connect_status_no_server_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        creds = _sample_creds()
+        creds["server_url"] = None
+        monkeypatch.setattr("beddel_auth_github.provider.load_credentials", lambda: creds)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "--status"])
+        assert result.exit_code == 0
+        assert "(not configured)" in result.output
+
+
+class TestConnectListenNoServerUrl:
+    """--listen when server_url is not configured."""
+
+    def test_connect_listen_no_server_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        creds = _sample_creds()
+        creds["server_url"] = None
+        monkeypatch.setattr("beddel_auth_github.provider.load_credentials", lambda: creds)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "--listen"])
+        assert result.exit_code == 1
+        assert "Server URL not configured" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -273,3 +310,20 @@ class TestStatusWithExpiredToken:
         assert result.exit_code == 0
         assert "expired" in result.output
         assert "beddel connect" in result.output
+
+
+class TestStatusNoServerUrl:
+    """``beddel status`` when server_url is not configured."""
+
+    def test_status_no_server_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        creds = _sample_creds()
+        creds["server_url"] = None
+        monkeypatch.setattr("beddel_auth_github.provider.load_credentials", lambda: creds)
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.check_token_validity",
+            AsyncMock(return_value=True),
+        )
+        runner = CliRunner()
+        result = runner.invoke(cli, ["status"])
+        assert result.exit_code == 0
+        assert "(not configured)" in result.output

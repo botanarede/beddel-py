@@ -371,7 +371,7 @@ def status() -> None:
         click.echo("Not connected to any remote server.")
         return
 
-    click.echo(f"Server: {creds.get('server_url') or 'https://connect.beddel.com.br'}")
+    click.echo(f"Server: {creds.get('server_url') or '(not configured)'}")
     click.echo(f"User: {creds['github_user']}")
     click.echo(f"Created: {creds['created_at']}")
 
@@ -387,7 +387,20 @@ def status() -> None:
 @click.option("--logout", is_flag=True, help="Remove stored credentials.")
 @click.option("--server", type=str, default=None, help="Set dashboard server URL.")
 @click.option("--listen", is_flag=True, help="Listen for commands from dashboard.")
-def connect(*, show_status: bool, logout: bool, server: str | None, listen: bool) -> None:
+@click.option(
+    "--url",
+    type=str,
+    default=None,
+    help="Dashboard URL (e.g. https://your-dashboard.example.com)",
+)
+def connect(
+    *,
+    show_status: bool,
+    logout: bool,
+    server: str | None,
+    listen: bool,
+    url: str | None,
+) -> None:
     """Authenticate with GitHub for remote dashboard access."""
     import datetime
     import os
@@ -411,7 +424,7 @@ def connect(*, show_status: bool, logout: bool, server: str | None, listen: bool
             click.echo("Not authenticated. Run `beddel connect` to authenticate.")
             return
         click.echo(f"User: {creds['github_user']}")
-        click.echo(f"Server: {creds.get('server_url') or 'https://connect.beddel.com.br'}")
+        click.echo(f"Server: {creds.get('server_url') or '(not configured)'}")
         click.echo(f"Created: {creds['created_at']}")
         return
 
@@ -439,11 +452,26 @@ def connect(*, show_status: bool, logout: bool, server: str | None, listen: bool
             click.echo("Not authenticated. Run `beddel connect` first.", err=True)
             raise SystemExit(1)
         pat = creds["access_token"]
-        srv = creds.get("server_url") or "https://connect.beddel.com.br"
+        srv = creds.get("server_url")
+        if not srv:
+            click.echo(
+                "Server URL not configured. Run `beddel connect --url <URL>` first.",
+                err=True,
+            )
+            raise SystemExit(1)
         asyncio.run(_listen_loop(srv, pat))
         return
 
     # Default: full Device Flow
+    if url is None:
+        click.echo(
+            "Missing --url. Usage: beddel connect --url https://your-dashboard.example.com",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    dashboard_url = url
+
     # Client ID is public (same pattern as GitHub CLI — safe to embed).
     # Override via env var for self-hosted GitHub Apps.
     client_id = os.environ.get("BEDDEL_GITHUB_CLIENT_ID", "Ov23lieA07aQzUjKcAHk")
@@ -464,7 +492,6 @@ def connect(*, show_status: bool, logout: bool, server: str | None, listen: bool
 
         user = asyncio.run(get_github_user(token))
 
-        dashboard_url = "https://connect.beddel.com.br"
         save_credentials(
             CredentialData(
                 access_token=token,
