@@ -730,9 +730,11 @@ async def _execute_and_stream(
     try:
         _ensure_kit_paths()
         from beddel.domain.executor import WorkflowExecutor
+        from beddel.domain.models import DefaultDependencies
         from beddel.domain.parser import WorkflowParser
         from beddel.domain.registry import PrimitiveRegistry
         from beddel.primitives import register_builtins
+        from beddel.tools.kits import discover_kits
 
         # Try to find the workflow file
         workflow_path = Path(workflow_id)
@@ -754,7 +756,18 @@ async def _execute_and_stream(
         workflow = WorkflowParser.parse(workflow_path.read_text())
         registry = PrimitiveRegistry()
         register_builtins(registry)
-        executor = WorkflowExecutor(registry)
+
+        discovery_result = discover_kits()
+        agent_registry, llm_provider = _build_adapter_registries(discovery_result)
+        merged_tools = _build_tool_registry(workflow, {})
+
+        deps = DefaultDependencies(
+            llm_provider=llm_provider,
+            agent_registry=agent_registry,
+            tool_registry=merged_tools,
+            registry=registry,
+        )
+        executor = WorkflowExecutor(registry, deps=deps)
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             async for event in executor.execute_stream(workflow, inputs):
