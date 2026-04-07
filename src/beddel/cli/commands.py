@@ -339,8 +339,6 @@ def run(
 ) -> None:
     """Execute a workflow and print results."""
     _ensure_kit_paths()
-    from beddel_agent_kiro.adapter import KiroCLIAgentAdapter
-    from beddel_provider_litellm.adapter import LiteLLMAdapter
 
     from beddel.domain.errors import BeddelError
     from beddel.domain.executor import WorkflowExecutor
@@ -348,6 +346,7 @@ def run(
     from beddel.domain.parser import WorkflowParser
     from beddel.domain.registry import PrimitiveRegistry
     from beddel.primitives import register_builtins
+    from beddel.tools.kits import discover_kits
 
     # Parse inputs
     input_dict: dict[str, Any] = {}
@@ -369,7 +368,11 @@ def run(
     # Build executor
     registry = PrimitiveRegistry()
     register_builtins(registry)
-    adapter = LiteLLMAdapter()
+
+    discovery_result = discover_kits(list(kit) if kit else None)
+    agent_registry, llm_provider = _build_adapter_registries(
+        discovery_result, no_kits=no_kits
+    )
 
     def _safe_workflow_loader(name: str) -> Workflow:
         """Load a sub-workflow by name, confined to the parent directory."""
@@ -395,8 +398,8 @@ def run(
         no_kits=no_kits,
     )
     deps = DefaultDependencies(
-        llm_provider=adapter,
-        agent_registry={"kiro-cli": KiroCLIAgentAdapter()},
+        llm_provider=llm_provider,
+        agent_registry=agent_registry,
         tool_registry=merged_tools,
         workflow_loader=_safe_workflow_loader,
         registry=registry,
