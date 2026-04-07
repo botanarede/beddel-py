@@ -1,8 +1,10 @@
 """Kit discovery and loading for the Beddel SDK.
 
 Provides :func:`discover_kits` — scans configured directories for
-``kit.yaml`` manifests — and :func:`load_kit` — resolves tool declarations
-from a manifest into callable functions via ``importlib``.
+``kit.yaml`` manifests — :func:`load_kit` — resolves tool declarations
+from a manifest into callable functions via ``importlib`` — and
+:func:`load_kit_adapters` — resolves adapter declarations into
+instantiated adapter objects.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from beddel.domain.kit import KitCollision, KitDiscoveryResult, KitManifest, par
 from beddel.error_codes import KIT_DEPENDENCY_MISSING, KIT_LOAD_FAILED
 from beddel.kits import BUNDLED_KITS_PATH
 
-__all__ = ["discover_kits", "load_kit"]
+__all__ = ["discover_kits", "load_kit", "load_kit_adapters"]
 
 logger = logging.getLogger(__name__)
 
@@ -204,3 +206,129 @@ def load_kit(manifest: KitManifest) -> dict[str, Callable[..., Any]]:
             ) from exc
         tools[tool_decl.name] = fn
     return tools
+
+
+def load_kit_adapters(manifest: KitManifest) -> dict[tuple[str, str], Any]:
+    """Resolve adapter declarations from a kit manifest into instances.
+
+    Reads ``targets.python.adapters[]`` from the manifest, validates each
+    entry has a ``name`` and ``target`` in ``module:class`` format, checks
+    dependencies, and instantiates adapter classes via ``importlib``.
+
+    Args:
+        manifest: A validated :class:`KitManifest`.
+
+    Returns:
+        Dict mapping ``(port, name)`` tuples to adapter instances.
+        For example: ``{("IAgentAdapter", "kiro-cli"): <instance>}``.
+
+    Raises:
+        KitDependencyError: If declared pip dependencies are not installed.
+        KitManifestError: If an adapter is missing ``name`` or ``target``,
+            or if the target cannot be imported.
+    """
+    from beddel.domain.kit import KitLanguageTarget
+
+    targets_raw = manifest.kit.targets
+    if not targets_raw or "python" not in targets_raw:
+        return {}
+
+    lang_target = KitLanguageTarget(**targets_raw["python"])
+
+    if not lang_target.adapters:
+        return {}
+
+    # Dependency validation (same as load_kit)
+    deps = lang_target.dependencies
+    if deps:
+        missing = _validate_dependencies(deps)
+        if missing:
+            pkg_list = ", ".join(missing)
+            raise KitDependencyError(
+                code=KIT_DEPENDENCY_MISSING,
+                message=(
+                    f"Kit '{manifest.kit.name}' requires packages that are "
+                    f"not installed: {pkg_list}. "
+                    f"Install them with: pip install {' '.join(missing)}"
+                ),
+                missing_packages=missing,
+                details={"kit": manifest.kit.name, "missing": missing},
+            )
+
+    adapters: dict[tuple[str, str], Any] = {}
+    for adapter_decl in lang_target.adapters:
+        if not adapter_decl.name:
+            raise KitManifestError(
+                code=KIT_LOAD_FAILED,
+                message=(
+                    f"Adapter in kit '{manifest.kit.name}' is missing "
+                    f"required 'name' field in targets.python.adapters"
+                ),
+                details={"kit": manifest.kit.name, "port": adapter_decl.port},
+            )
+        if not adapter_decl.target:
+            raise KitManifestError(
+                code=KIT_LOAD_FAILED,
+                message=(
+                    f"Adapter '{adapter_decl.name}' in kit "
+                    f"'{manifest.kit.name}' is missing required 'target' "
+                    f"field (expected 'module:class' format)"
+                ),
+                details={
+                    "kit": manifest.kit.name,
+                    "adapter": adapter_decl.name,
+                },
+            )
+        if ":" not in adapter_decl.target:
+            raise KitManifestError(
+                code=KIT_LOAD_FAILED,
+                message=(
+                    f"Invalid adapter target format for "
+                    f"'{adapter_decl.name}' in kit "
+                    f"'{manifest.kit.name}': expected 'module:class', "
+                    f"got '{adapter_decl.target}'"
+                ),
+                details={
+                    "kit": manifest.kit.name,
+                    "adapter": adapter_decl.name,
+                    "target": adapter_decl.target,
+                },
+            )
+
+        module_path, class_name = adapter_decl.target.rsplit(":", 1)
+        try:
+            mod = importlib.import_module(module_path)
+        except ImportError as exc:
+            raise KitManifestError(
+                code=KIT_LOAD_FAILED,
+                message=(
+                    f"Cannot import module '{module_path}' for adapter "
+                    f"'{adapter_decl.name}' in kit "
+                    f"'{manifest.kit.name}': {exc}"
+                ),
+                details={
+                    "kit": manifest.kit.name,
+                    "adapter": adapter_decl.name,
+                    "target": adapter_decl.target,
+                },
+            ) from exc
+        try:
+            cls = getattr(mod, class_name)
+        except AttributeError as exc:
+            raise KitManifestError(
+                code=KIT_LOAD_FAILED,
+                message=(
+                    f"Module '{module_path}' has no attribute "
+                    f"'{class_name}' for adapter '{adapter_decl.name}' "
+                    f"in kit '{manifest.kit.name}'"
+                ),
+                details={
+                    "kit": manifest.kit.name,
+                    "adapter": adapter_decl.name,
+                    "target": adapter_decl.target,
+                },
+            ) from exc
+
+        adapters[(adapter_decl.port, adapter_decl.name)] = cls()
+
+    return adapters
