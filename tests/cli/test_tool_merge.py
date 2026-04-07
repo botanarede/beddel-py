@@ -254,3 +254,157 @@ class TestKitListSourceColumn:
         assert "SOURCE" in result.output
         assert "bundled" in result.output
         assert "local" in result.output
+
+
+# ---------------------------------------------------------------------------
+# _build_adapter_registries — adapter registry construction
+# ---------------------------------------------------------------------------
+
+
+class TestBuildAdapterRegistries:
+    """Tests for _build_adapter_registries() — AC #2, #9, #11, #12."""
+
+    @staticmethod
+    def _make_manifest(name: str = "test-kit") -> "KitManifest":
+        from datetime import UTC, datetime
+
+        from beddel.domain.kit import KitManifest, SolutionKit
+
+        return KitManifest(
+            kit=SolutionKit(name=name, version="0.1.0", description="t", tools=[]),
+            root_path=Path("/fake"),
+            loaded_at=datetime.now(tz=UTC),
+        )
+
+    def test_agent_adapter_in_registry(self) -> None:
+        """AC #2: IAgentAdapter adapter appears in agent_registry with correct key."""
+        from beddel.cli.commands import _build_adapter_registries
+        from beddel.domain.kit import KitDiscoveryResult
+
+        sentinel = object()
+        manifest = self._make_manifest("agent-kit")
+        discovery = KitDiscoveryResult(manifests=[manifest], collisions=[])
+
+        with patch(
+            "beddel.tools.kits.load_kit_adapters",
+            return_value={("IAgentAdapter", "my-agent"): sentinel},
+        ):
+            registry, llm = _build_adapter_registries(discovery)
+
+        assert registry["my-agent"] is sentinel
+        assert llm is None
+
+    def test_llm_provider_resolved(self) -> None:
+        """AC #2: ILLMProvider adapter becomes llm_provider."""
+        from beddel.cli.commands import _build_adapter_registries
+        from beddel.domain.kit import KitDiscoveryResult
+
+        sentinel = object()
+        manifest = self._make_manifest("llm-kit")
+        discovery = KitDiscoveryResult(manifests=[manifest], collisions=[])
+
+        with patch(
+            "beddel.tools.kits.load_kit_adapters",
+            return_value={("ILLMProvider", "litellm"): sentinel},
+        ):
+            registry, llm = _build_adapter_registries(discovery)
+
+        assert llm is sentinel
+        assert registry == {}
+
+    def test_multiple_llm_providers_last_wins(self) -> None:
+        """AC #9: later ILLMProvider overrides earlier, warning logged."""
+        import logging
+
+        from beddel.cli.commands import _build_adapter_registries
+        from beddel.domain.kit import KitDiscoveryResult
+
+        first_llm = object()
+        second_llm = object()
+        m1 = self._make_manifest("llm-kit-a")
+        m2 = self._make_manifest("llm-kit-b")
+        discovery = KitDiscoveryResult(manifests=[m1, m2], collisions=[])
+
+        def _side_effect(manifest: Any) -> dict[tuple[str, str], Any]:
+            if manifest.kit.name == "llm-kit-a":
+                return {("ILLMProvider", "provider-a"): first_llm}
+            return {("ILLMProvider", "provider-b"): second_llm}
+
+        with (
+            patch("beddel.tools.kits.load_kit_adapters", side_effect=_side_effect),
+            patch("beddel.cli.commands.logger") as mock_logger,
+        ):
+            registry, llm = _build_adapter_registries(discovery)
+
+        assert llm is second_llm
+        assert registry == {}
+        # Verify warning about multiple providers was logged
+        warning_calls = [
+            c for c in mock_logger.warning.call_args_list if "Multiple ILLMProvider" in str(c)
+        ]
+        assert len(warning_calls) == 1
+
+    def test_missing_deps_graceful_degradation(self) -> None:
+        """AC #2: kit with missing deps skipped, others still loaded."""
+        from beddel.cli.commands import _build_adapter_registries
+        from beddel.domain.errors import KitDependencyError
+        from beddel.domain.kit import KitDiscoveryResult
+
+        good_adapter = object()
+        m_bad = self._make_manifest("bad-kit")
+        m_good = self._make_manifest("good-kit")
+        discovery = KitDiscoveryResult(manifests=[m_bad, m_good], collisions=[])
+
+        def _side_effect(manifest: Any) -> dict[tuple[str, str], Any]:
+            if manifest.kit.name == "bad-kit":
+                raise KitDependencyError(
+                    code="BEDDEL-KIT-653",
+                    message="missing deps",
+                    missing_packages=["nonexistent-pkg"],
+                )
+            return {("IAgentAdapter", "good-agent"): good_adapter}
+
+        with patch("beddel.tools.kits.load_kit_adapters", side_effect=_side_effect):
+            registry, llm = _build_adapter_registries(discovery)
+
+        assert "good-agent" in registry
+        assert registry["good-agent"] is good_adapter
+        assert llm is None
+
+    def test_no_kits_returns_empty(self) -> None:
+        """no_kits=True returns ({}, None) immediately."""
+        from beddel.cli.commands import _build_adapter_registries
+        from beddel.domain.kit import KitDiscoveryResult
+
+        discovery = KitDiscoveryResult(manifests=[self._make_manifest()], collisions=[])
+
+        registry, llm = _build_adapter_registries(discovery, no_kits=True)
+
+        assert registry == {}
+        assert llm is None
+
+    def test_no_llm_provider_returns_none(self) -> None:
+        """AC #11: no ILLMProvider kit → llm_provider is None, warning logged."""
+        from beddel.cli.commands import _build_adapter_registries
+        from beddel.domain.kit import KitDiscoveryResult
+
+        agent = object()
+        manifest = self._make_manifest("agent-only-kit")
+        discovery = KitDiscoveryResult(manifests=[manifest], collisions=[])
+
+        with (
+            patch(
+                "beddel.tools.kits.load_kit_adapters",
+                return_value={("IAgentAdapter", "my-agent"): agent},
+            ),
+            patch("beddel.cli.commands.logger") as mock_logger,
+        ):
+            registry, llm = _build_adapter_registries(discovery)
+
+        assert llm is None
+        assert registry["my-agent"] is agent
+        # Verify warning about no ILLMProvider was logged
+        warning_calls = [
+            c for c in mock_logger.warning.call_args_list if "No ILLMProvider" in str(c)
+        ]
+        assert len(warning_calls) == 1
