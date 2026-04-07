@@ -59,6 +59,7 @@ def _build_tool_registry(
     *,
     kit_paths: list[Path] | None = None,
     no_kits: bool = False,
+    discovery_result: Any = None,
 ) -> dict[str, Callable[..., Any]]:
     """Build a merged tool registry using the 3-layer override pattern.
 
@@ -72,6 +73,8 @@ def _build_tool_registry(
         parsed_tools: Dict of tools resolved from ``--tool`` CLI flags.
         kit_paths: Directories to scan for kits. *None* uses defaults.
         no_kits: When *True*, skip kit discovery entirely.
+        discovery_result: Pre-discovered :class:`KitDiscoveryResult`. If
+            provided, skips calling ``discover_kits()`` (avoids double scan).
 
     Returns:
         Merged dict mapping tool names to callables.
@@ -83,12 +86,12 @@ def _build_tool_registry(
         import os
 
         from beddel.domain.errors import KitDependencyError, KitManifestError
-        from beddel.domain.kit import KitDiscoveryResult
         from beddel.error_codes import KIT_RESOLUTION_AMBIGUOUS
         from beddel.tools.kits import discover_kits, load_kit
 
         strict = os.environ.get("BEDDEL_KIT_STRICT", "").lower() == "true"
-        discovery_result: KitDiscoveryResult = discover_kits(kit_paths)
+        if discovery_result is None:
+            discovery_result = discover_kits(kit_paths)
 
         # Build set of collided tool names and log warnings
         collided_names: set[str] = set()
@@ -238,10 +241,7 @@ def _build_adapter_registries(
             if port == "IAgentAdapter":
                 agent_registry[name] = instance
             elif port == "ILLMProvider":
-                if llm_provider is not None:
-                    llm_provider_names.append(name)
-                else:
-                    llm_provider_names.append(name)
+                llm_provider_names.append(name)
                 llm_provider = instance
 
     if len(llm_provider_names) > 1:
@@ -394,6 +394,7 @@ def run(
         parsed_tools,
         kit_paths=list(kit) if kit else None,
         no_kits=no_kits,
+        discovery_result=discovery_result,
     )
     deps = DefaultDependencies(
         llm_provider=llm_provider,
@@ -757,7 +758,7 @@ async def _execute_and_stream(
 
         discovery_result = discover_kits()
         agent_registry, llm_provider = _build_adapter_registries(discovery_result)
-        merged_tools = _build_tool_registry(workflow, {})
+        merged_tools = _build_tool_registry(workflow, {}, discovery_result=discovery_result)
 
         deps = DefaultDependencies(
             llm_provider=llm_provider,
@@ -949,6 +950,7 @@ def serve(
                 parsed_tools,
                 kit_paths=list(kit) if kit else None,
                 no_kits=no_kits,
+                discovery_result=discovery_result,
             ),
             workflow_loader=_make_workflow_loader(wf_parent),
             registry=registry,
