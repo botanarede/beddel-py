@@ -37,7 +37,7 @@ steps:
   - id: summarize
     primitive: llm
     config:
-      model: gemini/gemini-2.0-flash
+      model: gemini/gemini-2.5-flash-lite
       prompt: >
         Summarize the following topic at a $input.depth level.
         Topic: $input.topic
@@ -55,7 +55,7 @@ steps:
   - id: extract_keywords
     primitive: llm
     config:
-      model: gemini/gemini-2.0-flash
+      model: gemini/gemini-2.5-flash-lite
       prompt: >
         Extract 5-10 keywords from the following summary.
         Return them as a comma-separated list, nothing else.
