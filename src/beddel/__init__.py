@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib
-from typing import TYPE_CHECKING
+import warnings
 
 from beddel import error_codes as error_codes  # re-export module
 from beddel.domain.errors import (
@@ -77,87 +77,145 @@ from beddel.domain.ports import (
     ITierRouter,
     ITracer,
     NoOpTracer,
-    SpanT,
-    StepRunner,
 )
 from beddel.domain.strategies import (
     AgentDelegationStrategy,
     DurableExecutionStrategy,
     GoalOrientedStrategy,
 )
-from beddel.primitives.agent_exec import AgentExecPrimitive
 from beddel.setup import setup as setup
-
-if TYPE_CHECKING:
-    from beddel.adapters import CompositeMemoryProvider as CompositeMemoryProvider
-    from beddel.adapters import ConfigurableApprovalGate as ConfigurableApprovalGate
-    from beddel.adapters import InMemoryApprovalGate as InMemoryApprovalGate
-    from beddel.adapters import InMemoryBudgetEnforcer as InMemoryBudgetEnforcer
-    from beddel.adapters import InMemoryCircuitBreaker as InMemoryCircuitBreaker
-    from beddel.adapters import InMemoryDecisionStore as InMemoryDecisionStore
-    from beddel.adapters import InMemoryEventStore as InMemoryEventStore
-    from beddel.adapters import InMemoryMemoryProvider as InMemoryMemoryProvider
-    from beddel.adapters import InMemoryStateStore as InMemoryStateStore
-    from beddel.adapters import JSONFileStateStore as JSONFileStateStore
-    from beddel.adapters import LifecycleHookManager as LifecycleHookManager
-    from beddel.adapters import SQLiteEventStore as SQLiteEventStore
-    from beddel.adapters import StaticTierRouter as StaticTierRouter
-    from beddel.adapters import YAMLKnowledgeAdapter as YAMLKnowledgeAdapter
-    from beddel.adapters.pii_middleware import PIIMiddleware as PIIMiddleware
-    from beddel.adapters.pii_tokenizer import (
-        DEFAULT_PII_PATTERNS as DEFAULT_PII_PATTERNS,
-    )
-    from beddel.adapters.pii_tokenizer import (
-        RegexPIITokenizer as RegexPIITokenizer,
-    )
-    from beddel.integrations.fastapi import (
-        create_beddel_handler as create_beddel_handler,
-    )
-    from beddel.integrations.sse import BeddelSSEAdapter as BeddelSSEAdapter
 
 __version__ = "0.1.8"
 
-# Lazy imports to avoid circular dependency:
-# beddel → beddel.adapters → otel_adapter → beddel.__version__
-_LAZY_IMPORTS: dict[str, tuple[str, str]] = {
-    "BeddelSSEAdapter": ("beddel.integrations.sse", "BeddelSSEAdapter"),
-    "CompositeMemoryProvider": ("beddel.adapters", "CompositeMemoryProvider"),
-    "ConfigurableApprovalGate": ("beddel.adapters", "ConfigurableApprovalGate"),
+# Deprecated imports — these symbols have moved to submodules.
+# The lazy import mechanism is preserved for backward compatibility but now
+# emits DeprecationWarning guiding users to the correct import path.
+_DEPRECATED_IMPORTS: dict[str, tuple[str, str, str]] = {
+    # (module_path, attr_name, recommended_import_path)
+    "BeddelSSEAdapter": (
+        "beddel.integrations.sse",
+        "BeddelSSEAdapter",
+        "beddel.integrations",
+    ),
+    "CompositeMemoryProvider": (
+        "beddel.adapters",
+        "CompositeMemoryProvider",
+        "beddel.adapters",
+    ),
+    "ConfigurableApprovalGate": (
+        "beddel.adapters",
+        "ConfigurableApprovalGate",
+        "beddel.adapters",
+    ),
     "DEFAULT_PII_PATTERNS": (
         "beddel.adapters.pii_tokenizer",
         "DEFAULT_PII_PATTERNS",
+        "beddel.adapters",
     ),
-    "InMemoryApprovalGate": ("beddel.adapters", "InMemoryApprovalGate"),
-    "InMemoryBudgetEnforcer": ("beddel.adapters", "InMemoryBudgetEnforcer"),
-    "InMemoryCircuitBreaker": ("beddel.adapters", "InMemoryCircuitBreaker"),
-    "InMemoryDecisionStore": ("beddel.adapters", "InMemoryDecisionStore"),
-    "InMemoryEventStore": ("beddel.adapters", "InMemoryEventStore"),
-    "InMemoryMemoryProvider": ("beddel.adapters", "InMemoryMemoryProvider"),
-    "InMemoryStateStore": ("beddel.adapters", "InMemoryStateStore"),
-    "JSONFileStateStore": ("beddel.adapters", "JSONFileStateStore"),
-    "LifecycleHookManager": ("beddel.adapters", "LifecycleHookManager"),
+    "InMemoryApprovalGate": (
+        "beddel.adapters",
+        "InMemoryApprovalGate",
+        "beddel.adapters",
+    ),
+    "InMemoryBudgetEnforcer": (
+        "beddel.adapters",
+        "InMemoryBudgetEnforcer",
+        "beddel.adapters",
+    ),
+    "InMemoryCircuitBreaker": (
+        "beddel.adapters",
+        "InMemoryCircuitBreaker",
+        "beddel.adapters",
+    ),
+    "InMemoryDecisionStore": (
+        "beddel.adapters",
+        "InMemoryDecisionStore",
+        "beddel.adapters",
+    ),
+    "InMemoryEventStore": (
+        "beddel.adapters",
+        "InMemoryEventStore",
+        "beddel.adapters",
+    ),
+    "InMemoryMemoryProvider": (
+        "beddel.adapters",
+        "InMemoryMemoryProvider",
+        "beddel.adapters",
+    ),
+    "InMemoryStateStore": (
+        "beddel.adapters",
+        "InMemoryStateStore",
+        "beddel.adapters",
+    ),
+    "JSONFileStateStore": (
+        "beddel.adapters",
+        "JSONFileStateStore",
+        "beddel.adapters",
+    ),
+    "LifecycleHookManager": (
+        "beddel.adapters",
+        "LifecycleHookManager",
+        "beddel.adapters",
+    ),
     "PIIMiddleware": (
         "beddel.adapters.pii_middleware",
         "PIIMiddleware",
+        "beddel.adapters",
     ),
     "RegexPIITokenizer": (
         "beddel.adapters.pii_tokenizer",
         "RegexPIITokenizer",
+        "beddel.adapters",
     ),
-    "SQLiteEventStore": ("beddel.adapters", "SQLiteEventStore"),
-    "StaticTierRouter": ("beddel.adapters", "StaticTierRouter"),
-    "YAMLKnowledgeAdapter": ("beddel.adapters", "YAMLKnowledgeAdapter"),
+    "SQLiteEventStore": (
+        "beddel.adapters",
+        "SQLiteEventStore",
+        "beddel.adapters",
+    ),
+    "StaticTierRouter": (
+        "beddel.adapters",
+        "StaticTierRouter",
+        "beddel.adapters",
+    ),
+    "YAMLKnowledgeAdapter": (
+        "beddel.adapters",
+        "YAMLKnowledgeAdapter",
+        "beddel.adapters",
+    ),
     "create_beddel_handler": (
         "beddel.integrations.fastapi",
         "create_beddel_handler",
+        "beddel.integrations",
+    ),
+    "AgentExecPrimitive": (
+        "beddel.primitives.agent_exec",
+        "AgentExecPrimitive",
+        "beddel.primitives.agent_exec",
+    ),
+    "SpanT": (
+        "beddel.domain.ports",
+        "SpanT",
+        "beddel.domain.ports",
+    ),
+    "StepRunner": (
+        "beddel.domain.ports",
+        "StepRunner",
+        "beddel.domain.ports",
     ),
 }
 
 
 def __getattr__(name: str) -> object:
-    """Lazily import adapter symbols to break circular imports."""
-    if name in _LAZY_IMPORTS:
-        module_path, attr = _LAZY_IMPORTS[name]
+    """Lazily import deprecated symbols with a deprecation warning."""
+    if name in _DEPRECATED_IMPORTS:
+        module_path, attr, recommended = _DEPRECATED_IMPORTS[name]
+        warnings.warn(
+            f"Importing {name} from 'beddel' is deprecated. "
+            f"Use 'from {recommended} import {name}' instead. "
+            "This will be removed in v1.0.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         mod = importlib.import_module(module_path)
         value = getattr(mod, attr)
         globals()[name] = value  # cache for subsequent access
@@ -170,7 +228,6 @@ __all__ = [
     "__version__",
     "AdapterError",
     "AgentDelegationStrategy",
-    "AgentExecPrimitive",
     "AgentError",
     "AgentResult",
     "ApprovalError",
@@ -178,15 +235,11 @@ __all__ = [
     "ApprovalResult",
     "ApprovalStatus",
     "BeddelError",
-    "BeddelSSEAdapter",
     "BudgetError",
     "BudgetStatus",
-    "CompositeMemoryProvider",
-    "ConfigurableApprovalGate",
     "CoordinationError",
     "CoordinationResult",
     "CoordinationTask",
-    "DEFAULT_PII_PATTERNS",
     "Decision",
     "DecisionError",
     "DefaultDependencies",
@@ -217,48 +270,31 @@ __all__ = [
     "IStateStore",
     "ITierRouter",
     "ITracer",
-    "JSONFileStateStore",
-    "InMemoryApprovalGate",
-    "InMemoryBudgetEnforcer",
-    "InMemoryCircuitBreaker",
-    "InMemoryDecisionStore",
-    "InMemoryEventStore",
-    "InMemoryMemoryProvider",
-    "InMemoryStateStore",
     "InterruptibleContext",
     "KitDependencyError",
     "KitManifestError",
     "KnowledgeEntry",
     "KnowledgeError",
     "KnowledgeSource",
-    "LifecycleHookManager",
     "MCPError",
     "MemoryEntry",
     "MemoryError",
     "NoOpTracer",
-    "ParseError",
     "PIIError",
-    "PIIMiddleware",
     "PIIPattern",
+    "ParseError",
     "PrimitiveError",
     "ResolveError",
-    "RegexPIITokenizer",
     "RiskLevel",
     "RiskMatrix",
     "SequentialStrategy",
     "SkillError",
     "SkillReference",
-    "SpanT",
-    "SQLiteEventStore",
-    "StaticTierRouter",
     "StateError",
-    "StepRunner",
     "TokenMap",
     "TracingError",
     "TriggerConfig",
     "TriggerEvent",
-    "YAMLKnowledgeAdapter",
-    "create_beddel_handler",
     "error_codes",
     "setup",
 ]
