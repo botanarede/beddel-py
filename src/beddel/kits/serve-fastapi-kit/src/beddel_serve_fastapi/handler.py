@@ -8,13 +8,13 @@ responses.
 Example::
 
     from beddel.domain.models import Workflow
-    from beddel.integrations.fastapi import create_beddel_handler
+    from beddel_serve_fastapi.handler import create_beddel_handler
 
     workflow = Workflow(...)
     router = create_beddel_handler(workflow)
     app.include_router(router, prefix="/my-workflow")
 
-Requires the ``fastapi`` extra: ``pip install beddel[fastapi]``.
+Requires the ``default`` extra: ``pip install beddel[default]``.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from beddel.domain.models import DefaultDependencies, Workflow
 from beddel.domain.ports import IHookManager, ILLMProvider, ITracer
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.error_codes import INTERNAL_SERVER_ERROR
-from beddel.integrations.sse import BeddelSSEAdapter
+from beddel_serve_fastapi.sse import BeddelSSEAdapter
 from beddel.primitives import register_builtins
 
 __all__ = ["create_beddel_handler"]
@@ -100,7 +100,7 @@ def create_beddel_handler(
 
         from fastapi import FastAPI
         from beddel.domain.models import Workflow
-        from beddel.integrations.fastapi import create_beddel_handler
+        from beddel_serve_fastapi.handler import create_beddel_handler
 
         app = FastAPI()
         workflow = Workflow(id="demo", name="Demo", steps=[...])
@@ -122,7 +122,12 @@ def create_beddel_handler(
         if provider is not None:
             effective_provider = provider
         else:
-            from beddel.adapters.litellm_adapter import LiteLLMAdapter
+            try:
+                from beddel_provider_litellm.adapter import LiteLLMAdapter
+            except ImportError:
+                raise ImportError(
+                    "LiteLLM provider not available. Install: pip install beddel[default]"
+                ) from None
 
             effective_provider = LiteLLMAdapter()
 
@@ -139,10 +144,7 @@ def create_beddel_handler(
             lifecycle_hooks=effective_hook_manager,
             tracer=tracer,
         )
-        executor = WorkflowExecutor(
-            effective_registry,
-            deps=fallback_deps,
-        )
+        executor = WorkflowExecutor(effective_registry, deps=fallback_deps)
 
     router = APIRouter()
 
