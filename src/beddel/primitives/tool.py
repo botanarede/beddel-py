@@ -31,7 +31,7 @@ try:
     from pathlib import Path as _Path
 
     _tool_proj_root = _Path(__file__).resolve().parents[4]
-    _mcp_kit_src = str(_tool_proj_root / "kits" / "protocol-mcp-kit" / "src")
+    _mcp_kit_src = str(_tool_proj_root / "repo" / "kits" / "protocol-mcp-kit" / "src")
     if _mcp_kit_src not in _sys.path:
         _sys.path.insert(0, _mcp_kit_src)
     from beddel_protocol_mcp.schema_validator import (  # type: ignore[import-not-found]

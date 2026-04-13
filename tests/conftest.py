@@ -20,6 +20,10 @@ from pathlib import Path
 #   parents[3] = <project_root>
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
+# Kits live at: <project_root>/repo/kits/<kit>/src/
+# (moved from <project_root>/kits/ during kit ecosystem restructure)
+_KITS_BASE = _PROJECT_ROOT / "repo" / "kits"
+
 _KIT_DIRS = [
     "agent-openclaw-kit",
     "agent-claude-kit",
@@ -38,6 +42,6 @@ _KIT_DIRS = [
 ]
 
 for _kit in _KIT_DIRS:
-    _kit_src = str(_PROJECT_ROOT / "kits" / _kit / "src")
+    _kit_src = str(_KITS_BASE / _kit / "src")
     if _kit_src not in sys.path:
         sys.path.insert(0, _kit_src)

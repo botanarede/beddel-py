@@ -126,10 +126,10 @@ def create_beddel_handler(
             from pathlib import Path as _Path
 
             _proj_root = _Path(__file__).resolve().parents[5]
-            _kit_src = str(_proj_root / "kits" / "provider-litellm-kit" / "src")
+            _kit_src = str(_proj_root / "repo" / "kits" / "provider-litellm-kit" / "src")
             if _kit_src not in _sys.path:
                 _sys.path.insert(0, _kit_src)
-            from beddel_provider_litellm.adapter import (
+            from beddel_provider_litellm.adapter import (  # type: ignore[import-not-found]
                 LiteLLMAdapter,
             )
 
