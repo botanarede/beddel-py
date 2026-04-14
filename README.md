@@ -392,7 +392,7 @@ git clone https://github.com/botanarede/beddel-py.git
 cd beddel-py
 pip install -e ".[dev]"
 
-pytest                  # 2072 tests
+pytest                  # 2066 tests
 ruff check . && ruff format .
 mypy src/
 ```
