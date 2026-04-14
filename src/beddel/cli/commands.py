@@ -436,10 +436,17 @@ def run(
 def status() -> None:
     """Show connection status for the remote dashboard."""
     _ensure_kit_paths()
-    from beddel_auth_github.provider import (  # type: ignore[import-not-found]
-        check_token_validity,
-        load_credentials,
-    )
+    try:
+        from beddel_auth_github.provider import (  # type: ignore[import-not-found]
+            check_token_validity,
+            load_credentials,
+        )
+    except ImportError:
+        click.echo(
+            "Missing dependency. Install: pip install beddel[default]",
+            err=True,
+        )
+        raise SystemExit(1) from None
 
     creds = load_credentials()
     if creds is None:
@@ -481,15 +488,22 @@ def connect(
     import os
 
     _ensure_kit_paths()
-    from beddel_auth_github.provider import (
-        CredentialData,
-        delete_credentials,
-        get_github_user,
-        initiate_device_flow,
-        load_credentials,
-        poll_for_token,
-        save_credentials,
-    )
+    try:
+        from beddel_auth_github.provider import (
+            CredentialData,
+            delete_credentials,
+            get_github_user,
+            initiate_device_flow,
+            load_credentials,
+            poll_for_token,
+            save_credentials,
+        )
+    except ImportError:
+        click.echo(
+            "Missing dependency. Install: pip install beddel[default]",
+            err=True,
+        )
+        raise SystemExit(1) from None
 
     from beddel.domain.errors import BeddelError
 
@@ -854,7 +868,14 @@ def serve(
     # MCP mode — branch early, skip FastAPI
     if mcp:
         _ensure_kit_paths()
-        from beddel_serve_mcp.server import BeddelMCPServer  # type: ignore[import-not-found]
+        try:
+            from beddel_serve_mcp.server import BeddelMCPServer  # type: ignore[import-not-found]
+        except ImportError:
+            click.echo(
+                "Missing dependency. Install: pip install beddel[mcp]",
+                err=True,
+            )
+            raise SystemExit(1) from None
 
         from beddel.domain.parser import WorkflowParser
 
@@ -892,9 +913,16 @@ def serve(
 
     _ensure_kit_paths()
 
-    from beddel_serve_fastapi.handler import (  # type: ignore[import-not-found]
-        create_beddel_handler,
-    )
+    try:
+        from beddel_serve_fastapi.handler import (  # type: ignore[import-not-found]
+            create_beddel_handler,
+        )
+    except ImportError:
+        click.echo(
+            "Missing dependency. Install: pip install beddel[default]",
+            err=True,
+        )
+        raise SystemExit(1) from None
 
     from beddel.domain.errors import BeddelError
     from beddel.domain.models import DefaultDependencies, Workflow
