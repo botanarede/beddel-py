@@ -302,7 +302,7 @@ Or programmatically:
 
 ```python
 from fastapi import FastAPI
-from beddel.integrations.fastapi import create_beddel_handler
+from beddel_serve_fastapi.handler import create_beddel_handler
 
 app = FastAPI()
 app.include_router(create_beddel_handler(workflow))
