@@ -92,11 +92,6 @@ __version__ = "0.1.8"
 # emits DeprecationWarning guiding users to the correct import path.
 _DEPRECATED_IMPORTS: dict[str, tuple[str, str, str]] = {
     # (module_path, attr_name, recommended_import_path)
-    "BeddelSSEAdapter": (
-        "beddel.integrations.sse",
-        "BeddelSSEAdapter",
-        "beddel.integrations",
-    ),
     "CompositeMemoryProvider": (
         "beddel.adapters",
         "CompositeMemoryProvider",
@@ -181,11 +176,6 @@ _DEPRECATED_IMPORTS: dict[str, tuple[str, str, str]] = {
         "beddel.adapters",
         "YAMLKnowledgeAdapter",
         "beddel.adapters",
-    ),
-    "create_beddel_handler": (
-        "beddel.integrations.fastapi",
-        "create_beddel_handler",
-        "beddel.integrations",
     ),
     "AgentExecPrimitive": (
         "beddel.primitives.agent_exec",

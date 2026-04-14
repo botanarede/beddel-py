@@ -11,11 +11,12 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from beddel_serve_fastapi.handler import create_beddel_handler
+
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import DefaultDependencies, ExecutionContext, Step, Workflow
 from beddel.domain.ports import ILLMProvider, IPrimitive
 from beddel.domain.registry import PrimitiveRegistry
-from beddel.integrations.fastapi import create_beddel_handler
 from beddel.primitives import register_builtins
 
 # ---------------------------------------------------------------------------
@@ -94,7 +95,7 @@ class TestServeWiringRoundTrip:
 
         # Act
         with patch(
-            "beddel.integrations.fastapi.WorkflowExecutor",
+            "beddel_serve_fastapi.handler.WorkflowExecutor",
         ) as mock_executor_cls:
             create_beddel_handler(_make_workflow(), deps=deps)
 
@@ -113,7 +114,7 @@ class TestServeWiringRoundTrip:
         deps = _build_serve_deps(registry)
 
         with patch(
-            "beddel.integrations.fastapi.WorkflowExecutor",
+            "beddel_serve_fastapi.handler.WorkflowExecutor",
         ) as mock_executor_cls:
             create_beddel_handler(_make_workflow(), deps=deps)
 
@@ -128,7 +129,7 @@ class TestServeWiringRoundTrip:
         deps = _build_serve_deps(registry)
 
         with patch(
-            "beddel.integrations.fastapi.WorkflowExecutor",
+            "beddel_serve_fastapi.handler.WorkflowExecutor",
         ) as mock_executor_cls:
             create_beddel_handler(_make_workflow(), deps=deps)
 
@@ -143,7 +144,7 @@ class TestServeWiringRoundTrip:
         deps = _build_serve_deps(registry)
 
         with patch(
-            "beddel.integrations.fastapi.WorkflowExecutor",
+            "beddel_serve_fastapi.handler.WorkflowExecutor",
         ) as mock_executor_cls:
             create_beddel_handler(_make_workflow(), deps=deps)
 

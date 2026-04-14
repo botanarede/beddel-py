@@ -854,7 +854,7 @@ def serve(
     # MCP mode — branch early, skip FastAPI
     if mcp:
         _ensure_kit_paths()
-        from beddel_serve_mcp.server import BeddelMCPServer
+        from beddel_serve_mcp.server import BeddelMCPServer  # type: ignore[import-not-found]
 
         from beddel.domain.parser import WorkflowParser
 
@@ -864,7 +864,7 @@ def serve(
                 workflow = WorkflowParser.parse(wf_path.read_text())
                 server.register_workflow(workflow)
         else:
-            from beddel_serve_mcp.server import create_mcp_server
+            from beddel_serve_mcp.server import create_mcp_server  # type: ignore[import-not-found]
 
             server = create_mcp_server(Path("."), name=server_name)
 
@@ -883,7 +883,7 @@ def serve(
         from fastapi.middleware.cors import CORSMiddleware
     except ImportError:
         click.echo(
-            "Missing dependencies. Install with: pip install beddel[cli]",
+            "Missing dependencies. Install with: pip install beddel[default]",
             err=True,
         )
         raise SystemExit(1) from None
@@ -892,11 +892,14 @@ def serve(
 
     _ensure_kit_paths()
 
+    from beddel_serve_fastapi.handler import (  # type: ignore[import-not-found]
+        create_beddel_handler,
+    )
+
     from beddel.domain.errors import BeddelError
     from beddel.domain.models import DefaultDependencies, Workflow
     from beddel.domain.parser import WorkflowParser
     from beddel.domain.registry import PrimitiveRegistry
-    from beddel.integrations.fastapi import create_beddel_handler
     from beddel.primitives import register_builtins
     from beddel.tools.kits import discover_kits
 

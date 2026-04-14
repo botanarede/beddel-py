@@ -204,7 +204,7 @@ class ToolPrimitive(IPrimitive):
                     code=PRIM_TOOL_EXEC_FAILED,
                     message=(
                         "Schema validation requested but jsonschema is not installed. "
-                        "Install with: pip install beddel[mcp]"
+                        "Install with: pip install mcp jsonschema"
                     ),
                     details={
                         "tool": tool_name,

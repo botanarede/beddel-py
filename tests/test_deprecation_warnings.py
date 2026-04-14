@@ -59,17 +59,6 @@ class TestDeprecationWarnings:
         assert "StaticTierRouter" in msg
         assert "beddel.adapters" in msg
 
-    def test_integration_create_beddel_handler_warns(self) -> None:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            self._import_from_beddel("create_beddel_handler")
-
-        dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-        assert len(dep_warnings) == 1
-        msg = str(dep_warnings[0].message)
-        assert "create_beddel_handler" in msg
-        assert "beddel.integrations" in msg
-
     def test_primitive_agent_exec_warns(self) -> None:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -96,17 +85,6 @@ class TestDeprecationWarnings:
         )
         assert InMemoryEventStore is not None
 
-    def test_integrations_import_no_warning(self) -> None:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            from beddel.integrations import create_beddel_handler  # noqa: F811
-
-        dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-        assert dep_warnings == [], (
-            f"Expected no DeprecationWarning from beddel.integrations, got: {dep_warnings}"
-        )
-        assert create_beddel_handler is not None
-
     # ------------------------------------------------------------------
     # Subtask 3.3 — deprecated imports still return the correct object
     # ------------------------------------------------------------------
@@ -117,15 +95,6 @@ class TestDeprecationWarnings:
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             deprecated = self._import_from_beddel("InMemoryEventStore")
-
-        assert deprecated is canonical
-
-    def test_deprecated_import_returns_correct_integration(self) -> None:
-        from beddel.integrations import create_beddel_handler as canonical
-
-        with warnings.catch_warnings(record=True):
-            warnings.simplefilter("always")
-            deprecated = self._import_from_beddel("create_beddel_handler")
 
         assert deprecated is canonical
 

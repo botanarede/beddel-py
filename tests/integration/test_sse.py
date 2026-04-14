@@ -6,11 +6,12 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from beddel_serve_fastapi.sse import BeddelSSEAdapter
+from beddel_serve_fastapi.sse import BeddelSSEAdapter as DirectSSEAdapter
+
 from beddel.domain.errors import BeddelError
 from beddel.domain.models import BeddelEvent, EventType
 from beddel.error_codes import INTERNAL_SERVER_ERROR
-from beddel.integrations import BeddelSSEAdapter
-from beddel.integrations.sse import BeddelSSEAdapter as DirectSSEAdapter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -256,10 +257,10 @@ class TestStreamBehavior:
 
 
 class TestPackageExport:
-    """BeddelSSEAdapter is importable from the integrations package."""
+    """BeddelSSEAdapter is importable from the kit package."""
 
-    def test_import_from_integrations_package(self) -> None:
-        """BeddelSSEAdapter is re-exported from beddel.integrations."""
+    def test_import_from_kit_package(self) -> None:
+        """BeddelSSEAdapter is importable from beddel_serve_fastapi.sse."""
         assert BeddelSSEAdapter is DirectSSEAdapter
 
 

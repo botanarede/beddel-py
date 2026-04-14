@@ -13,13 +13,13 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
+from beddel_serve_fastapi.handler import create_beddel_handler
 from fastapi import APIRouter, FastAPI
 
 from beddel.domain.errors import ExecutionError, ParseError
 from beddel.domain.models import ExecutionContext, Step, Workflow
 from beddel.domain.ports import ILLMProvider, IPrimitive
 from beddel.domain.registry import PrimitiveRegistry
-from beddel.integrations.fastapi import create_beddel_handler
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -173,7 +173,7 @@ class TestFactoryDefaults:
         mock_tracer = MagicMock()
 
         with patch(
-            "beddel.integrations.fastapi.WorkflowExecutor",
+            "beddel_serve_fastapi.handler.WorkflowExecutor",
         ) as mock_executor_cls:
             create_beddel_handler(
                 _make_workflow(),
@@ -195,7 +195,7 @@ class TestFactoryDefaults:
         from unittest.mock import patch
 
         with patch(
-            "beddel.integrations.fastapi.WorkflowExecutor",
+            "beddel_serve_fastapi.handler.WorkflowExecutor",
         ) as mock_executor_cls:
             create_beddel_handler(
                 _make_workflow(),
@@ -222,7 +222,7 @@ class TestFactoryDefaults:
         mock_deps = MagicMock(spec=DefaultDependencies)
 
         with patch(
-            "beddel.integrations.fastapi.WorkflowExecutor",
+            "beddel_serve_fastapi.handler.WorkflowExecutor",
         ) as mock_executor_cls:
             create_beddel_handler(
                 _make_workflow(),
@@ -250,7 +250,7 @@ class TestFactoryDefaults:
         mock_tracer = MagicMock()
 
         with patch(
-            "beddel.integrations.fastapi.WorkflowExecutor",
+            "beddel_serve_fastapi.handler.WorkflowExecutor",
         ) as mock_executor_cls:
             create_beddel_handler(
                 _make_workflow(),
@@ -410,7 +410,7 @@ class TestErrorHandling:
             base_url="http://test",
         ) as client:
             with patch(
-                "beddel.integrations.fastapi.WorkflowExecutor.execute_stream",
+                "beddel_serve_fastapi.handler.WorkflowExecutor.execute_stream",
                 side_effect=ExecutionError(
                     code="BEDDEL-EXEC-002",
                     message="Step failed",
@@ -445,7 +445,7 @@ class TestErrorHandling:
             base_url="http://test",
         ) as client:
             with patch(
-                "beddel.integrations.fastapi.WorkflowExecutor.execute_stream",
+                "beddel_serve_fastapi.handler.WorkflowExecutor.execute_stream",
                 side_effect=ParseError(
                     code="BEDDEL-PARSE-001",
                     message="Bad workflow YAML",
