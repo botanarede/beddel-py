@@ -155,6 +155,71 @@ class TestKitList:
         assert result.exit_code == 0
         assert "missing-deps" in result.output
 
+    def test_kit_list_json_output(self, tmp_path: Path) -> None:
+        """``--json`` flag returns valid JSON with expected keys."""
+        import json
+        from datetime import UTC, datetime
+
+        from beddel.domain.kit import KitDiscoveryResult, KitManifest, SolutionKit
+
+        kit = SolutionKit(
+            name="json-kit",
+            version="2.0.0",
+            description="JSON test",
+        )
+        manifest = KitManifest(
+            kit=kit,
+            root_path=tmp_path,
+            loaded_at=datetime.now(UTC),
+        )
+        discovery = KitDiscoveryResult(manifests=[manifest], collisions=[])
+
+        runner = CliRunner()
+        with (
+            patch("beddel.cli.commands._ensure_kit_paths"),
+            patch(
+                "beddel.tools.kits.discover_kits",
+                return_value=discovery,
+            ),
+            patch(
+                "beddel.tools.kits.load_kit",
+                return_value={},
+            ),
+        ):
+            result = runner.invoke(cli, ["kit", "list", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        item = data[0]
+        assert set(item.keys()) == {"name", "version", "source", "status", "path"}
+        assert item["name"] == "json-kit"
+        assert item["version"] == "2.0.0"
+        assert item["status"] == "loaded"
+
+    def test_kit_list_json_empty(self) -> None:
+        """``--json`` with no kits returns empty JSON array ``[]``."""
+        import json
+
+        from beddel.domain.kit import KitDiscoveryResult
+
+        empty_result = KitDiscoveryResult(manifests=[], collisions=[])
+
+        runner = CliRunner()
+        with (
+            patch("beddel.cli.commands._ensure_kit_paths"),
+            patch(
+                "beddel.tools.kits.discover_kits",
+                return_value=empty_result,
+            ),
+        ):
+            result = runner.invoke(cli, ["kit", "list", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data == []
+
 
 # ---------------------------------------------------------------------------
 # beddel kit install

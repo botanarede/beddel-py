@@ -60,7 +60,6 @@ default = [
 dev = [
     "beddel[default]",
     "opentelemetry-sdk>=1.0",
-    "click>=8.0",
     "langfuse>=3.0",
     "mcp>=1.0",
     "jsonschema>=4.0",
@@ -83,6 +82,7 @@ packages = ["src/beddel"]
 artifacts = [
     "src/beddel/kits/__init__.py",
     "src/beddel/kits/*/kit.yaml",
+    "src/beddel/kits/*/py.typed",
     "src/beddel/kits/*/src/**/*.py",
 ]
 
@@ -98,6 +98,7 @@ include = [
 artifacts = [
     "src/beddel/kits/__init__.py",
     "src/beddel/kits/*/kit.yaml",
+    "src/beddel/kits/*/py.typed",
     "src/beddel/kits/*/src/**/*.py",
 ]
 

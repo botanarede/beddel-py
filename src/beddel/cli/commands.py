@@ -1171,8 +1171,11 @@ def kit_install(source: str, *, global_install: bool) -> None:
 
 
 @kit.command("list")
-def kit_list() -> None:
+@click.option("--json", "is_json", is_flag=True, default=False, help="Output as JSON array.")
+def kit_list(*, is_json: bool = False) -> None:
     """List all discovered solution kits."""
+    import json as json_mod
+
     from beddel.domain.errors import KitDependencyError, KitManifestError
     from beddel.tools.kits import discover_kits, load_kit
 
@@ -1180,7 +1183,10 @@ def kit_list() -> None:
     result = discover_kits()
 
     if not result.manifests:
-        click.echo("No kits found.")
+        if is_json:
+            click.echo(json_mod.dumps([]))
+        else:
+            click.echo("No kits found.")
         return
 
     rows: list[tuple[str, str, str, str, str]] = []
@@ -1197,6 +1203,14 @@ def kit_list() -> None:
         except (KitManifestError, Exception):
             status = "error"
         rows.append((name, version, source, status, path))
+
+    if is_json:
+        data = [
+            {"name": r[0], "version": r[1], "source": r[2], "status": r[3], "path": r[4]}
+            for r in rows
+        ]
+        click.echo(json_mod.dumps(data))
+        return
 
     headers = ("NAME", "VERSION", "SOURCE", "STATUS", "PATH")
     widths = [max(len(h), max(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
