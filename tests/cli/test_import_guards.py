@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 
 def _run_guarded(
@@ -130,3 +131,28 @@ class TestServeFastapiImportGuard:
         has_guard = "Missing dependency" in out or "Missing dependencies" in out
         assert has_guard, f"Missing dependency message in: {out}"
         assert "beddel[default]" in out, f"Missing install hint in: {out}"
+
+
+# ── beddel run ────────────────────────────────────────────────────
+
+
+class TestRunImportGuard:
+    """``beddel run`` must produce a user-friendly error when LLM provider is unavailable."""
+
+    def test_missing_litellm_produces_friendly_error(self, tmp_path: Path) -> None:
+        # Create a minimal workflow that requires an LLM step
+        wf = tmp_path / "test.yaml"
+        wf.write_text(
+            "name: test\n"
+            "steps:\n"
+            "  - id: s1\n"
+            "    primitive: llm\n"
+            "    config:\n"
+            "      model: gpt-4\n"
+            "      prompt: hello\n"
+        )
+        _rc, out = _run_guarded("litellm", ["run", str(wf)])
+        # Should exit non-zero — the executor catches the missing provider
+        assert "EXIT:1" in out or "EXIT:2" in out, f"Expected non-zero exit, got: {out}"
+        # Should NOT contain a raw Python traceback
+        assert "Traceback (most recent call last)" not in out, f"Raw traceback in output: {out}"
