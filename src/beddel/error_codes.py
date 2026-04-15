@@ -6,33 +6,48 @@ organised into non-overlapping numeric ranges by domain.
 
 Ranges
 ------
-==========  ========  ===========
-Range       Prefix    Domain
-==========  ========  ===========
-100 – 199   PARSE     YAML parsing & validation
-200 – 299   GUARD     Guardrail validation
-300 – 399   PRIM      Primitive execution
-400 – 499   ADAPT     Adapter errors
-500 – 599   EXEC      Workflow execution
-600 – 699   RESOLVE   Variable resolution
-700 – 799   AGENT     Agent adapter errors
-800 – 849   CB        Circuit breaker errors
-800 – 849   CODEX     Codex integration errors (planned)
-850 – 899   BUDGET    Budget enforcement errors
-900 – 949   DURABLE   Durable execution errors
-900 – 919   APPROVAL  Approval gate errors (shared band with DURABLE, distinct prefix)
-920 – 939   PII       PII tokenization errors
-940 – 959   STATE     State persistence errors
-960 – 979   MEMORY    Episodic memory errors
-950 – 999   MCP       MCP integration errors
-980 – 999   KNOWLEDGE Knowledge architecture errors (sub-range of 950-999)
-1000 – 1049  AUTH     Remote authentication errors
-1050 – 1099  DECISION Decision-centric runtime errors
-1100 – 1149  COORD    Multi-agent coordination errors
-1150 – 1199  EVENT    Event-driven execution errors
-1200 – 1249  SKILL    Skill composition errors
-650 – 699    KIT      Kit manifest errors (sub-range of 600-699, distinct BEDDEL-KIT- prefix)
-==========  ========  ===========
+
+Primary ranges are non-overlapping top-level allocations.  Sub-ranges are
+contained within a parent primary range and use a distinct ``BEDDEL-{PREFIX}-``
+string prefix to avoid collision (the numeric overlap is intentional).
+
+**Primary Ranges** (non-overlapping):
+
+==============  ========  ===========
+Range           Prefix    Domain
+==============  ========  ===========
+100 – 199       PARSE     YAML parsing & validation
+200 – 299       GUARD     Guardrail validation
+300 – 399       PRIM      Primitive execution
+400 – 499       ADAPT     Adapter errors
+500 – 599       EXEC      Workflow execution
+600 – 699       RESOLVE   Variable resolution
+700 – 799       AGENT     Agent adapter errors
+800 – 849       —         CB + CODEX band
+850 – 899       BUDGET    Budget enforcement errors
+900 – 949       DURABLE   Durable execution band
+950 – 999       MCP       MCP integration band
+1000 – 1049     AUTH      Remote authentication errors
+1050 – 1099     DECISION  Decision-centric runtime errors
+1100 – 1149     COORD     Multi-agent coordination errors
+1150 – 1199     EVENT     Event-driven execution errors
+1200 – 1249     SKILL     Skill composition errors
+==============  ========  ===========
+
+**Sub-ranges** (contained within parent, distinct BEDDEL-{PREFIX}- prefix):
+
+==============  =========  ==============================  ====================
+Range           Prefix     Domain                          Parent
+==============  =========  ==============================  ====================
+650 – 699       KIT        Kit manifest errors              ⊂ RESOLVE (600-699)
+800 – 824       CB         Circuit breaker errors            ⊂ 800-849 band
+825 – 849       CODEX      Codex integration errors          ⊂ 800-849 band
+900 – 919       APPROVAL   Approval gate errors              ⊂ DURABLE (900-949)
+920 – 939       PII        PII tokenization errors           ⊂ DURABLE (900-949)
+940 – 949       STATE      State persistence errors         adjacent to DURABLE
+960 – 979       MEMORY     Episodic memory errors            ⊂ MCP (950-999)
+980 – 999       KNOWLEDGE  Knowledge architecture errors     ⊂ MCP (950-999)
+==============  =========  ==============================  ====================
 """
 
 from __future__ import annotations
@@ -62,11 +77,15 @@ RESOLVE_RANGE: tuple[int, int] = (600, 699)
 AGENT_RANGE: tuple[int, int] = (700, 799)
 """Agent adapter errors."""
 
-CB_RANGE: tuple[int, int] = (800, 849)
-"""Circuit breaker errors."""
+CB_RANGE: tuple[int, int] = (800, 824)
+"""Circuit breaker errors — sub-range within the 800-849 numeric band.
+CB uses a distinct string prefix BEDDEL-CB- (same pattern as KIT_RANGE
+sharing the 600-699 band with RESOLVE_RANGE)."""
 
-CODEX_RANGE: tuple[int, int] = (800, 849)
-"""Codex integration errors (planned — Epic 4.1A). Codes 800–805."""
+CODEX_RANGE: tuple[int, int] = (825, 849)
+"""Codex integration errors (planned — Epic 4.1A) — sub-range within the
+800-849 numeric band. CODEX uses a distinct string prefix BEDDEL-CODEX-
+(same pattern as KIT_RANGE sharing the 600-699 band with RESOLVE_RANGE)."""
 
 BUDGET_RANGE: tuple[int, int] = (850, 899)
 """Budget enforcement errors."""
@@ -83,14 +102,20 @@ sharing the 600-699 band with RESOLVE_RANGE)."""
 PII_RANGE: tuple[int, int] = (920, 939)
 """PII tokenization errors."""
 
-STATE_RANGE: tuple[int, int] = (940, 959)
+STATE_RANGE: tuple[int, int] = (940, 949)
 """State persistence errors."""
 
 MEMORY_RANGE: tuple[int, int] = (960, 979)
-"""Episodic memory errors."""
+"""Episodic memory errors — sub-range within the 950-999 numeric band.
+MCP_RANGE covers 950-999 for allocation tracking; MEMORY uses a distinct
+string prefix BEDDEL-MEMORY- to avoid collision (same pattern as KIT_RANGE
+sharing the 600-699 band with RESOLVE_RANGE)."""
 
 MCP_RANGE: tuple[int, int] = (950, 999)
-"""MCP integration errors."""
+"""MCP integration errors — primary range for the 950-999 band.
+Sub-ranges: MEMORY_RANGE (960-979) and KNOWLEDGE_RANGE (980-999) are
+contained within this band and use distinct BEDDEL-MEMORY- / BEDDEL-KNOWLEDGE-
+string prefixes (same pattern as RESOLVE_RANGE containing KIT_RANGE)."""
 
 KNOWLEDGE_RANGE: tuple[int, int] = (980, 999)
 """Knowledge architecture errors — sub-range within the 950-999 numeric band.

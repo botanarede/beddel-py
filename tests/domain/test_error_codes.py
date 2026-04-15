@@ -18,6 +18,7 @@ from beddel.error_codes import (
     AGENT_STREAM_INTERRUPTED,
     AGENT_TIMEOUT,
     ALL_CODES,
+    APPROVAL_RANGE,
     AUTH_CREDENTIALS_FILE_ERROR,
     AUTH_DEVICE_FLOW_FAILED,
     AUTH_DEVICE_FLOW_TIMEOUT,
@@ -26,22 +27,34 @@ from beddel.error_codes import (
     AUTH_RANGE,
     AUTH_TOKEN_EXCHANGE_FAILED,
     AUTH_USER_NOT_ALLOWED,
+    BUDGET_RANGE,
     CB_CIRCUIT_OPEN,
     CB_FALLBACK_FAILED,
     CB_RANGE,
     CB_RECOVERY_PROBE_FAILED,
+    CODEX_RANGE,
+    COORDINATION_RANGE,
+    DECISION_RANGE,
+    DURABLE_RANGE,
+    EVENT_RANGE,
     EXEC_GOAL_CONDITION_FAILED,
     EXEC_GOAL_MAX_ATTEMPTS,
     EXEC_RANGE,
     GUARD_RANGE,
+    KIT_RANGE,
     KNOWLEDGE_GET_FAILED,
     KNOWLEDGE_LIST_FAILED,
     KNOWLEDGE_NOT_CONFIGURED,
     KNOWLEDGE_QUERY_FAILED,
     KNOWLEDGE_RANGE,
+    MCP_RANGE,
+    MEMORY_RANGE,
     PARSE_RANGE,
+    PII_RANGE,
     PRIM_RANGE,
     RESOLVE_RANGE,
+    SKILL_RANGE,
+    STATE_RANGE,
 )
 
 # Valid code pattern: BEDDEL-{PREFIX}-{NNN}
@@ -84,8 +97,9 @@ class TestRanges:
             assert lo < hi, f"{name} lower bound >= upper bound"
 
     def test_ranges_do_not_overlap(self) -> None:
-        # CB_RANGE shares numeric space with EXEC_RANGE but uses a different
-        # prefix (CB vs EXEC), so it is excluded from the overlap check.
+        # All primary ranges must be non-overlapping.  The 800-849 band is
+        # represented as a single entry (CB + CODEX share it with distinct
+        # prefixes — sub-range containment is tested separately).
         ranges = [
             ("PARSE_RANGE", PARSE_RANGE),
             ("GUARD_RANGE", GUARD_RANGE),
@@ -94,6 +108,15 @@ class TestRanges:
             ("EXEC_RANGE", EXEC_RANGE),
             ("RESOLVE_RANGE", RESOLVE_RANGE),
             ("AGENT_RANGE", AGENT_RANGE),
+            ("800-849 band", (800, 849)),
+            ("BUDGET_RANGE", BUDGET_RANGE),
+            ("DURABLE_RANGE", DURABLE_RANGE),
+            ("MCP_RANGE", MCP_RANGE),
+            ("AUTH_RANGE", AUTH_RANGE),
+            ("DECISION_RANGE", DECISION_RANGE),
+            ("COORDINATION_RANGE", COORDINATION_RANGE),
+            ("EVENT_RANGE", EVENT_RANGE),
+            ("SKILL_RANGE", SKILL_RANGE),
         ]
         for i, (name_a, (lo_a, hi_a)) in enumerate(ranges):
             for name_b, (lo_b, hi_b) in ranges[i + 1 :]:
@@ -345,8 +368,8 @@ class TestCircuitBreakerCodes:
         assert CB_RECOVERY_PROBE_FAILED == "BEDDEL-CB-502"
 
     def test_cb_range_value(self) -> None:
-        """CB_RANGE is (800, 849)."""
-        assert CB_RANGE == (800, 849)
+        """CB_RANGE is (800, 824) — sub-range of the 800-849 band."""
+        assert CB_RANGE == (800, 824)
 
     def test_cb_circuit_open_in_all_codes(self) -> None:
         """CB_CIRCUIT_OPEN is registered in ALL_CODES."""
@@ -503,3 +526,83 @@ class TestKnowledgeCodes:
         """Exactly 4 KNOWLEDGE codes exist in ALL_CODES."""
         knowledge_codes = {k: v for k, v in ALL_CODES.items() if k.startswith("KNOWLEDGE_")}
         assert len(knowledge_codes) == 4
+
+
+class TestErrorCodeRangeIntegrity:
+    """Comprehensive range validation: no silent collisions, sub-range containment,
+    and ALL_CODES exhaustiveness (AC #5, #6)."""
+
+    def test_primary_ranges_no_overlap(self) -> None:
+        """All primary ranges are non-overlapping.
+
+        The 800-849 band is a single primary allocation shared by CB and CODEX
+        sub-ranges (distinct prefixes).
+        """
+        primary_ranges = [
+            ("PARSE_RANGE", PARSE_RANGE),
+            ("GUARD_RANGE", GUARD_RANGE),
+            ("PRIM_RANGE", PRIM_RANGE),
+            ("ADAPT_RANGE", ADAPT_RANGE),
+            ("EXEC_RANGE", EXEC_RANGE),
+            ("RESOLVE_RANGE", RESOLVE_RANGE),
+            ("AGENT_RANGE", AGENT_RANGE),
+            ("800-849 band", (800, 849)),
+            ("BUDGET_RANGE", BUDGET_RANGE),
+            ("DURABLE_RANGE", DURABLE_RANGE),
+            ("MCP_RANGE", MCP_RANGE),
+            ("AUTH_RANGE", AUTH_RANGE),
+            ("DECISION_RANGE", DECISION_RANGE),
+            ("COORDINATION_RANGE", COORDINATION_RANGE),
+            ("EVENT_RANGE", EVENT_RANGE),
+            ("SKILL_RANGE", SKILL_RANGE),
+        ]
+        for i, (name_a, (lo_a, hi_a)) in enumerate(primary_ranges):
+            for name_b, (lo_b, hi_b) in primary_ranges[i + 1 :]:
+                assert hi_a < lo_b or hi_b < lo_a, (
+                    f"{name_a} ({lo_a}-{hi_a}) overlaps {name_b} ({lo_b}-{hi_b})"
+                )
+
+    def test_sub_ranges_contained(self) -> None:
+        """Each sub-range is fully contained within its parent range."""
+        containment_checks: list[tuple[str, tuple[int, int], str, tuple[int, int]]] = [
+            ("KIT_RANGE", KIT_RANGE, "RESOLVE_RANGE", RESOLVE_RANGE),
+            ("CB_RANGE", CB_RANGE, "800-849 band", (800, 849)),
+            ("CODEX_RANGE", CODEX_RANGE, "800-849 band", (800, 849)),
+            ("APPROVAL_RANGE", APPROVAL_RANGE, "DURABLE_RANGE", DURABLE_RANGE),
+            ("PII_RANGE", PII_RANGE, "DURABLE_RANGE", DURABLE_RANGE),
+            ("STATE_RANGE", STATE_RANGE, "DURABLE_RANGE", DURABLE_RANGE),
+            ("MEMORY_RANGE", MEMORY_RANGE, "MCP_RANGE", MCP_RANGE),
+            ("KNOWLEDGE_RANGE", KNOWLEDGE_RANGE, "MCP_RANGE", MCP_RANGE),
+        ]
+        for sub_name, (lo_sub, hi_sub), par_name, (lo_par, hi_par) in containment_checks:
+            assert lo_par <= lo_sub, (
+                f"{sub_name} lower bound {lo_sub} < {par_name} lower bound {lo_par}"
+            )
+            assert hi_sub <= hi_par, (
+                f"{sub_name} upper bound {hi_sub} > {par_name} upper bound {hi_par}"
+            )
+
+    def test_no_string_code_collisions(self) -> None:
+        """No two constants in ALL_CODES share the same string value."""
+        seen: dict[str, str] = {}
+        for name, code in ALL_CODES.items():
+            assert code not in seen, (
+                f"String collision: {code!r} used by both {seen[code]} and {name}"
+            )
+            seen[code] = name
+
+    def test_all_codes_exhaustive(self) -> None:
+        """ALL_CODES matches every module-level BEDDEL- string constant."""
+        module_codes: dict[str, str] = {}
+        for attr in dir(error_codes):
+            if attr.startswith("_") or not attr.isupper():
+                continue
+            val = getattr(error_codes, attr)
+            if isinstance(val, str) and val.startswith("BEDDEL-"):
+                module_codes[attr] = val
+
+        assert module_codes == ALL_CODES, (
+            f"ALL_CODES mismatch.\n"
+            f"  Missing from ALL_CODES: {set(module_codes) - set(ALL_CODES)}\n"
+            f"  Extra in ALL_CODES: {set(ALL_CODES) - set(module_codes)}"
+        )
