@@ -5,6 +5,88 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-04-07
+
+### Changed
+
+- Public API surface reduction: `__all__` reduced from 93 to ~40 symbols, deprecation warnings for moved symbols
+- CLI import guards: helpful error messages for missing optional kits
+- Source tree documentation sync: remove phantom entries from architecture docs
+- Error code registry cleanup: resolve range overlaps, add comprehensive range tests
+- README test count update
+
+### Removed
+
+- `beddel/integrations/` directory deleted, CLI redirected to kit adapters
+- Empty `tests/integrations/` scaffold deleted
+- Stale imports fixed in `serve-fastapi-kit`
+- Architecture docs updated to reflect kit boundary enforcement
+
+### Added
+
+- `py.typed` markers for all kits
+- Kit READMEs and authoring guide
+- `--json` CLI output flag
+- Click dependency deduplication
+- Integration test: import guard for `beddel run`
+
+## [0.1.7] - 2026-04-06
+
+### Fixed
+
+- Include `kits/__init__.py` in build artifacts
+
+## [0.1.6] - 2026-04-05
+
+### Fixed
+
+- Include bundled kits in both sdist and wheel distributions
+
+## [0.1.5] - 2026-04-05
+
+### Fixed
+
+- Include bundled kits in wheel distribution
+
+## [0.1.4] - 2026-04-04
+
+### Added
+
+- HOTL approval gates: `IApprovalGate` port, `ApprovalPolicy`/`ApprovalResult`/`ApprovalStatus` models, `InMemoryApprovalGate` + `ConfigurableApprovalGate` adapters, CIBA async flow, `on_approval_requested`/`on_approval_received` lifecycle hooks
+- Bundled kits: 7 kit directories in `[default]` extra, 3-path discovery (bundled/local/global), `kit list` SOURCE column, graceful degradation for missing deps
+- PII tokenization: `IPIITokenizer` port, `TokenMap`/`PIIPattern` models, `RegexPIITokenizer` adapter (4 default patterns), `PIIMiddleware` LLM wrapper
+- State persistence: `IStateStore` port, `JSONFileStateStore` + `InMemoryStateStore` adapters, `InterruptibleContext` checkpoint/restore
+- Episodic memory: `IMemoryProvider` port, `MemoryEntry`/`Episode` models, `InMemoryMemoryProvider` adapter, `CompositeMemoryProvider` with async buffering
+- Knowledge architecture: `IKnowledgeProvider` port, `KnowledgeEntry`/`KnowledgeSource` models, `YAMLKnowledgeAdapter`
+- Decision-centric runtime: `Decision` dataclass, `IDecisionStore` port, `InMemoryDecisionStore` adapter, `DecidePrimitive`, `on_decision` hook, Langfuse integration
+- Multi-agent coordination: `ICoordinationStrategy` port, `CoordinationTask`/`CoordinationResult` models, `SupervisorStrategy`, `HandoffStrategy`, `ParallelDispatchStrategy` (merge/first/vote)
+- Event-driven execution: `TriggerConfig`/`TriggerEvent` models, `EventDrivenExecutionStrategy`, `WebhookTriggerHandler`, `ScheduleTriggerHandler` (interval+cron), `SSETriggerHandler`
+- Skill composition: `SkillReference` model, `SkillResolver` with version constraints, `call-agent` skill invocation, `SKILL.md` export metadata
+- Adapter auto-discovery: `load_kit_adapters()`, `_build_adapter_registries()`, dynamic adapter discovery in `run`/`serve` commands
+- `serve-mcp-kit`: expose YAML workflows as MCP tools
+- `beddel serve --mcp` CLI command
+- CLI auth browser handoff: token exchange + conditional browser open
+- SSE connect channel: CLI listen mode, dashboard relay, workflow dispatch
+- GitHub OAuth web flow with CSRF protection (`state` parameter) and `redirect_uri` validation
+- `beddel.setup()` for Python API kit paths
+- Kit install from GitHub repositories
+
+### Changed
+
+- Legacy `WorkflowExecutor` constructor removed, 133 test instantiations migrated to `deps=` pattern
+- Spec contracts, exports, constants, and type safety fixes across codebase
+- Stale docstrings and legacy code cleaned up (8 audit tasks)
+- SDK CLI dashboard decoupling: dead code removed, `connect` command wired
+- Connect URL parameterized: `--url` flag required
+- `click` moved to core dependencies, meta-extras removed
+- README synced with Epics 1–7 + hero banner
+
+### Removed
+
+- Kit-bound adapters from public API
+- Deprecated adapter import shim
+- 14 orphan test stubs migrated to kits
+
 ## [0.1.3] - 2026-04-01
 
 ### Added
