@@ -15,42 +15,42 @@ import click
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Kit sys.path helper (ADR-0008, Story 5.1.1 Task 5)
-# ---------------------------------------------------------------------------
-# commands.py lives at: <project_root>/src/beddel-py/src/beddel/cli/commands.py
-#   parents[0] = cli/
-#   parents[1] = beddel/
-#   parents[2] = src/          (beddel-py/src)
-#   parents[3] = beddel-py/
-#   parents[4] = src/          (top-level src/)
-#   parents[5] = <project_root>
-_PROJECT_ROOT = Path(__file__).resolve().parents[5]
+
+def _add_kit_dir_to_path(base: Path) -> None:
+    """Scan *base* for kit subdirectories and add their ``src/`` to sys.path."""
+    if not base.is_dir():
+        return
+    for kit_dir in base.iterdir():
+        kit_src = kit_dir / "src"
+        if kit_src.is_dir() and str(kit_src) not in sys.path:
+            sys.path.insert(0, str(kit_src))
 
 
 def _ensure_kit_paths() -> None:
     """Add all kit ``src/`` directories to ``sys.path`` if not already present.
 
-    Scans both bundled kits (``beddel/kits/``) and project-local kits
-    (``<project_root>/kits/``).
+    Resolution order:
+
+    1. Bundled kits shipped inside the ``beddel`` package.
+    2. User-configured paths from ``.beddel.json`` (project) or
+       ``~/.config/beddel/config.json`` (global).
+    3. Interactive prompt if no kits found and running in a TTY.
     """
+    from beddel.cli.config import prompt_kits_path, resolve_kits_paths
     from beddel.kits import BUNDLED_KITS_PATH
 
-    # Bundled kits shipped inside the package
-    if BUNDLED_KITS_PATH.is_dir():
-        for kit_dir in BUNDLED_KITS_PATH.iterdir():
-            kit_src = kit_dir / "src"
-            if kit_src.is_dir() and str(kit_src) not in sys.path:
-                sys.path.insert(0, str(kit_src))
+    # 1. Bundled kits shipped inside the package
+    _add_kit_dir_to_path(BUNDLED_KITS_PATH)
 
-    # Project-local kits
-    kits_dir = _PROJECT_ROOT / "kits"
-    if not kits_dir.is_dir():
-        return
-    for kit_dir in kits_dir.iterdir():
-        kit_src = kit_dir / "src"
-        if kit_src.is_dir() and str(kit_src) not in sys.path:
-            sys.path.insert(0, str(kit_src))
+    # 2. User-configured paths
+    for kits_dir in resolve_kits_paths():
+        _add_kit_dir_to_path(kits_dir)
+
+    # 3. Interactive prompt if nothing was added beyond bundled
+    if not resolve_kits_paths():
+        prompted = prompt_kits_path()
+        if prompted:
+            _add_kit_dir_to_path(prompted)
 
 
 def _build_tool_registry(
@@ -275,6 +275,71 @@ def version() -> None:
     from beddel import __version__
 
     click.echo(f"beddel {__version__}")
+
+
+# ---------------------------------------------------------------------------
+# beddel config — kit/flow path management
+# ---------------------------------------------------------------------------
+
+
+@cli.group("config")
+def config_group() -> None:
+    """Manage kit and flow path configuration."""
+
+
+@config_group.command("show")
+def config_show() -> None:
+    """Display current configuration (project + global)."""
+    from beddel.cli.config import (
+        GLOBAL_CONFIG_PATH,
+        find_project_config,
+        load_global_config,
+        load_project_config,
+    )
+
+    project_cfg_path = find_project_config()
+    if project_cfg_path is not None:
+        click.echo(f"Project config: {project_cfg_path}")
+        cfg = load_project_config(project_cfg_path)
+        click.echo(f"  kits_paths: {cfg['kits_paths'] or '(none)'}")
+        click.echo(f"  flows_paths: {cfg['flows_paths'] or '(none)'}")
+    else:
+        click.echo("Project config: not found")
+
+    click.echo(f"Global config:  {GLOBAL_CONFIG_PATH}")
+    if GLOBAL_CONFIG_PATH.exists():
+        gcfg = load_global_config()
+        click.echo(f"  kits_paths: {gcfg['kits_paths'] or '(none)'}")
+        click.echo(f"  flows_paths: {gcfg['flows_paths'] or '(none)'}")
+    else:
+        click.echo("  (not created yet)")
+
+
+@config_group.command("set")
+@click.argument("key", type=click.Choice(["kits-path", "flows-path"]))
+@click.argument("path_value", type=click.Path(exists=True, path_type=Path))
+def config_set(key: str, path_value: Path) -> None:
+    """Set a path in the global config.
+
+    KEY is 'kits-path' or 'flows-path'. PATH is the directory.
+    """
+    from beddel.cli.config import load_global_config, save_global_config
+
+    cfg = load_global_config()
+    resolved = path_value.resolve()
+    config_key = "kits_paths" if key == "kits-path" else "flows_paths"
+    cfg[config_key] = [str(resolved)]
+    save_global_config(cfg)
+    click.echo(f"Set {key} = {resolved}")
+
+
+@config_group.command("reset")
+def config_reset() -> None:
+    """Reset global config to empty defaults."""
+    from beddel.cli.config import GLOBAL_CONFIG_PATH, save_global_config
+
+    save_global_config({"kits_paths": [], "flows_paths": []})
+    click.echo(f"Reset {GLOBAL_CONFIG_PATH}")
 
 
 @cli.command()
