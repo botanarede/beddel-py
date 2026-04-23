@@ -917,6 +917,12 @@ async def _execute_and_stream(
     default="Beddel Workflows",
     help="MCP server name.",
 )
+@click.option(
+    "--dashboard",
+    is_flag=True,
+    default=False,
+    help="Mount AG-UI endpoints for dashboard integration.",
+)
 def serve(
     host: str,
     port: int,
@@ -928,6 +934,7 @@ def serve(
     transport: str,
     server_name: str,
     no_kits: bool,
+    dashboard: bool,
 ) -> None:
     """Start a FastAPI server exposing workflows as SSE endpoints."""
     # MCP mode — branch early, skip FastAPI
@@ -1012,7 +1019,7 @@ def serve(
     parsed_tools = _parse_tool_flags(tools)
 
     loaded = 0
-    all_workflows: dict[str, Workflow] = {}
+    all_workflows: dict[str, tuple[Workflow, Path]] = {}
     for wf_path in workflow_paths:
         yaml_str = wf_path.read_text()
         workflow = WorkflowParser.parse(yaml_str)
@@ -1057,8 +1064,36 @@ def serve(
         )
         app.include_router(router, prefix=f"/workflows/{workflow.id}")
         click.echo(f"  Mounted: /workflows/{workflow.id} ({wf_path.name})")
-        all_workflows[workflow.id] = workflow
+        all_workflows[workflow.id] = (workflow, wf_path)
         loaded += 1
+
+    if dashboard:
+        try:
+            from beddel_ag_ui.endpoint import create_agui_endpoint
+        except ImportError:
+            click.echo(
+                "Warning: ag-ui-kit not available. "
+                "Install ag-ui-protocol to enable AG-UI endpoints.",
+                err=True,
+            )
+        else:
+            for wf_id, (wf, wf_path_) in all_workflows.items():
+                wf_deps = DefaultDependencies(
+                    llm_provider=llm_provider,
+                    agent_registry=agent_registry,
+                    tool_registry=_build_tool_registry(
+                        wf,
+                        parsed_tools,
+                        kit_paths=list(kit) if kit else None,
+                        no_kits=no_kits,
+                        discovery_result=discovery_result,
+                    ),
+                    workflow_loader=_make_workflow_loader(wf_path_.parent.resolve()),
+                    registry=registry,
+                )
+                agui_router = create_agui_endpoint(wf, deps=wf_deps)
+                app.include_router(agui_router, prefix=f"/ag-ui/{wf_id}")
+                click.echo(f"  AG-UI: /ag-ui/{wf_id} ({wf_path_.name})")
 
     @app.get("/health")
     async def health() -> dict[str, str]:
