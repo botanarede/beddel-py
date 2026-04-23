@@ -1069,7 +1069,9 @@ def serve(
 
     if dashboard:
         try:
-            from beddel_ag_ui.endpoint import create_agui_endpoint
+            from beddel_ag_ui.endpoint import (  # type: ignore[import-not-found]
+                create_agui_endpoint,
+            )
         except ImportError:
             click.echo(
                 "Warning: ag-ui-kit not available. "
