@@ -389,7 +389,7 @@ class TestConnectAutoListenAfterOAuth:
 
     def test_auto_listen_after_oauth(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Mock Device Flow + token exchange, verify _build_runtime_app and
-        _listen_loop are called after successful auth, and console output
+        _wait_for_shutdown are called after successful auth, and console output
         includes runtime info."""
         import unittest.mock
 
@@ -448,7 +448,7 @@ class TestConnectAutoListenAfterOAuth:
         monkeypatch.setattr("uvicorn.Config", mock_config_cls)
         monkeypatch.setattr("uvicorn.Server", lambda _cfg: mock_server)
 
-        # Mock _listen_loop to return immediately
+        # Mock _wait_for_shutdown to return immediately
         async def _mock_listen(*_a: Any, **_kw: Any) -> None:
             return
 
@@ -498,20 +498,20 @@ class TestConnectListenStartsRuntime:
         monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
         monkeypatch.setattr("uvicorn.Server", lambda _cfg: mock_server)
 
-        # Mock _listen_loop
-        async def _mock_listen(*_a: Any, **_kw: Any) -> None:
-            call_order.append("listen_loop")
+        # Mock _wait_for_shutdown
+        async def _mock_shutdown(*_a: Any, **_kw: Any) -> None:
+            call_order.append("wait_for_shutdown")
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_shutdown)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--listen"])
 
         assert result.exit_code == 0
-        # Verify runtime was built before listen
+        # Verify runtime was built before shutdown wait
         assert "build_runtime" in call_order
-        assert "listen_loop" in call_order
-        assert call_order.index("build_runtime") < call_order.index("listen_loop")
+        assert "wait_for_shutdown" in call_order
+        assert call_order.index("build_runtime") < call_order.index("wait_for_shutdown")
         # Verify runtime info in output
         assert "Runtime:" in result.output
         assert "1 workflow(s)" in result.output
@@ -583,7 +583,7 @@ class TestConnectWorkflowDiscovery:
         async def _mock_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--listen"])
@@ -626,7 +626,7 @@ class TestConnectWorkflowDiscovery:
         async def _mock_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--listen", "--workflow", str(wf_file)])
@@ -679,7 +679,7 @@ class TestConnectNoWorkflowsWarning:
         async def _mock_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--listen"])
@@ -727,8 +727,8 @@ class TestConnectExistingFlagsUnchanged:
 class TestConnectGracefulShutdown:
     """AC #4: Ctrl+C gracefully shuts down both server and SSE connection."""
 
-    def test_uvicorn_server_passed_to_listen_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Verify that uvicorn_server is passed to _listen_loop for shutdown."""
+    def test_uvicorn_server_passed_to_shutdown(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify that uvicorn_server is passed to _wait_for_shutdown."""
         import unittest.mock
 
         creds = _sample_creds()
@@ -744,19 +744,19 @@ class TestConnectGracefulShutdown:
         monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
         monkeypatch.setattr("uvicorn.Server", lambda _cfg: mock_server)
 
-        # Capture kwargs passed to _listen_loop
+        # Capture kwargs passed to _wait_for_shutdown
         listen_kwargs: list[dict[str, Any]] = []
 
         async def _mock_listen(*_a: Any, **_kw: Any) -> None:
             listen_kwargs.append(_kw)
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--listen"])
 
         assert result.exit_code == 0
-        # Verify uvicorn_server was passed to _listen_loop
+        # Verify uvicorn_server was passed to _wait_for_shutdown
         assert len(listen_kwargs) == 1
         assert listen_kwargs[0]["uvicorn_server"] is mock_server
         # Verify shutdown message
@@ -792,7 +792,7 @@ class TestConnectHostPortOptions:
         async def _mock_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--listen", "--host", "0.0.0.0", "--port", "9090"])
@@ -829,12 +829,12 @@ class TestConnectDevSubcommand:
         monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
         monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
 
-        listen_calls: list[tuple[Any, ...]] = []
+        shutdown_calls: list[dict[str, Any]] = []
 
-        async def _mock_listen(*args: Any, **kwargs: Any) -> None:
-            listen_calls.append(args)
+        async def _mock_shutdown(*args: Any, **kwargs: Any) -> None:
+            shutdown_calls.append(kwargs)
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_shutdown)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "dev"])
@@ -842,12 +842,8 @@ class TestConnectDevSubcommand:
         # Verify _build_runtime_app was called with dashboard=True
         assert len(build_calls) == 1
         assert build_calls[0]["dashboard"] is True
-        # Verify _listen_loop was called (blocking mechanism)
-        assert len(listen_calls) == 1
-        # Verify default URL is localhost:3000
-        assert listen_calls[0][0] == "http://localhost:3000"
-        # Verify empty token (no auth)
-        assert listen_calls[0][1] == ""
+        # Verify _wait_for_shutdown was called (blocking mechanism)
+        assert len(shutdown_calls) == 1
         # Verify runtime info in output
         assert "Runtime:" in result.output
         assert "Runtime stopped." in result.output
@@ -862,17 +858,18 @@ class TestConnectDevSubcommand:
         monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
         monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
 
-        listen_urls: list[str] = []
+        shutdown_called = False
 
-        async def _mock_listen(url: str, *_a: Any, **_kw: Any) -> None:
-            listen_urls.append(url)
+        async def _mock_shutdown(**_kw: Any) -> None:
+            nonlocal shutdown_called
+            shutdown_called = True
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_shutdown)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "dev"])
         assert result.exit_code == 0
-        assert listen_urls == ["http://localhost:3000"]
+        assert shutdown_called
 
     def test_dev_custom_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import unittest.mock
@@ -884,17 +881,18 @@ class TestConnectDevSubcommand:
         monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
         monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
 
-        listen_urls: list[str] = []
+        shutdown_called = False
 
-        async def _mock_listen(url: str, *_a: Any, **_kw: Any) -> None:
-            listen_urls.append(url)
+        async def _mock_shutdown(**_kw: Any) -> None:
+            nonlocal shutdown_called
+            shutdown_called = True
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_shutdown)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "dev", "--url", "http://localhost:4000"])
         assert result.exit_code == 0
-        assert listen_urls == ["http://localhost:4000"]
+        assert shutdown_called
 
     def test_dev_no_oauth_imports(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Verify dev mode does NOT call any OAuth functions."""
@@ -910,7 +908,7 @@ class TestConnectDevSubcommand:
         async def _mock_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_listen)
 
         # If OAuth functions were called, they would fail since we don't mock them
         # (load_credentials, initiate_device_flow, etc.)
@@ -1056,22 +1054,20 @@ class TestConnectDeprecatedUrl:
         monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
         monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
 
-        listen_calls: list[tuple[str, str]] = []
+        shutdown_calls: list[dict[str, Any]] = []
 
-        async def _mock_listen(url: str, token: str, **_kw: Any) -> None:
-            listen_calls.append((url, token))
+        async def _mock_shutdown(**_kw: Any) -> None:
+            shutdown_calls.append(_kw)
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _mock_shutdown)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--url", "http://localhost:3000"])
         assert result.exit_code == 0
         # Deprecation warning is in output (CliRunner mixes stderr)
         assert "deprecated" in result.output.lower()
-        # Should invoke dev mode (empty token)
-        assert len(listen_calls) == 1
-        assert listen_calls[0][0] == "http://localhost:3000"
-        assert listen_calls[0][1] == ""
+        # Should invoke dev mode — _wait_for_shutdown called
+        assert len(shutdown_calls) == 1
 
     def test_deprecated_url_remote_invokes_remote(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import unittest.mock
