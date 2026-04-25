@@ -1,8 +1,8 @@
-"""Unit tests for ``beddel serve --dashboard`` flag behavior (Story BC3.2, Task 3).
+"""Unit tests verifying ``beddel serve`` has no ``--dashboard`` flag (Story BC6.3, Task 4).
 
 Verifies:
-- ``serve --help`` advertises the ``--dashboard`` option (AC #1).
-- Invoking ``serve`` without ``--dashboard`` does NOT import ``beddel_ag_ui`` (AC #4).
+- ``serve --help`` does NOT advertise a ``--dashboard`` option (AC #6).
+- ``serve`` never imports ``beddel_ag_ui`` — AG-UI is connect-only (AC #6).
 """
 
 from __future__ import annotations
@@ -12,10 +12,14 @@ import sys
 from pathlib import Path
 
 
-class TestDashboardFlagInHelp:
-    """3.2 — ``serve --help`` output includes the ``--dashboard`` option."""
+class TestNoDashboardFlagInServe:
+    """BC6.3 — ``serve --help`` does NOT include a ``--dashboard`` option.
 
-    def test_help_contains_dashboard_option(self) -> None:
+    The ``--dashboard`` flag was removed in BC6.3.  AG-UI endpoints are
+    now mounted exclusively by the ``connect`` command.
+    """
+
+    def test_help_does_not_contain_dashboard_option(self) -> None:
         from click.testing import CliRunner
 
         from beddel.cli.commands import cli
@@ -24,11 +28,15 @@ class TestDashboardFlagInHelp:
         result = runner.invoke(cli, ["serve", "--help"])
 
         assert result.exit_code == 0, result.output
-        assert "--dashboard" in result.output
+        assert "--dashboard" not in result.output
 
 
 class TestNoDashboardSkipsAguiImport:
-    """3.3 — ``serve`` without ``--dashboard`` does NOT import ``beddel_ag_ui``.
+    """BC6.3 — ``serve`` never imports ``beddel_ag_ui`` (dashboard flag removed).
+
+    Since ``--dashboard`` was removed in BC6.3, ``serve`` must never
+    trigger an import of ``beddel_ag_ui``.  AG-UI endpoints are mounted
+    exclusively by the ``connect`` command.
 
     Runs in a subprocess so that module-level side effects from the
     test environment do not interfere.  A ``sys.meta_path`` blocker
@@ -37,7 +45,7 @@ class TestNoDashboardSkipsAguiImport:
     """
 
     def test_no_agui_import_without_flag(self, tmp_path: Path) -> None:
-        """Invoke ``serve`` (no ``--dashboard``) and verify ``beddel_ag_ui`` is never imported."""
+        """Invoke ``serve`` and verify ``beddel_ag_ui`` is never imported."""
         wf_file = tmp_path / "hello.yaml"
         wf_file.write_text(
             "id: hello-world\n"
@@ -69,7 +77,7 @@ class TestNoDashboardSkipsAguiImport:
 
 
 def _build_subprocess_script(wf_path: str) -> str:
-    """Return a Python script that invokes ``serve`` without ``--dashboard``.
+    """Return a Python script that invokes ``serve`` (no AG-UI — dashboard flag removed in BC6.3).
 
     The script installs a ``sys.meta_path`` spy that detects any attempt
     to import ``beddel_ag_ui``.  The ``serve`` command will fail early
@@ -137,7 +145,7 @@ from click.testing import CliRunner
 from beddel.cli.commands import cli
 
 runner = CliRunner()
-# Invoke WITHOUT --dashboard, with a real workflow file
+# Invoke serve (no AG-UI — dashboard flag removed in BC6.3)
 result = runner.invoke(
     cli,
     ["serve", "-w", "{wf_path}"],

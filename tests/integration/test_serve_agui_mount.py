@@ -1,12 +1,12 @@
-"""Integration tests for AG-UI endpoint mounting in ``serve --dashboard`` (Story BC3.2, Task 4).
+"""Integration tests for AG-UI endpoint mounting via ``connect dev`` (Story BC3.2, updated BC6.3).
 
-Tests the combined FastAPI app that mimics the ``beddel serve --dashboard``
+Tests the combined FastAPI app that mimics the ``beddel connect dev``
 flow: per-workflow SSE handlers at ``/workflows/{id}`` alongside AG-UI
 endpoints at ``/ag-ui/{id}``, with CORS middleware covering both.
 
 Uses ``httpx.AsyncClient`` with ``ASGITransport`` — no real server needed.
 
-AC #1: ``--dashboard`` mounts AG-UI endpoints under ``/ag-ui/{workflow_id}``.
+AC #1: ``connect dev`` mounts AG-UI endpoints under ``/ag-ui/{workflow_id}``.
 AC #2: Existing per-workflow SSE endpoints remain functional.
 AC #3: CORS middleware covers AG-UI endpoints.
 AC #5: CLI output includes AG-UI mount lines.
@@ -67,7 +67,7 @@ def _standard_events() -> tuple[BeddelEvent, ...]:
 
 
 def _build_combined_app() -> FastAPI:
-    """Build a FastAPI app mimicking ``serve --dashboard``.
+    """Build a FastAPI app mimicking ``connect dev``.
 
     Mounts:
     - CORSMiddleware with ``allow_origins=["http://localhost:3000"]``

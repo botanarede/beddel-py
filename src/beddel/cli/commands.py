@@ -1027,7 +1027,7 @@ async def _execute_and_stream(
 def _build_runtime_app(
     workflow_paths: tuple[Path, ...],
     *,
-    dashboard: bool = True,
+    dashboard: bool = False,
     tools: tuple[str, ...] = (),
     kit: tuple[Path, ...] = (),
     no_kits: bool = False,
@@ -1246,12 +1246,6 @@ def _build_runtime_app(
     default="Beddel Workflows",
     help="MCP server name.",
 )
-@click.option(
-    "--dashboard",
-    is_flag=True,
-    default=False,
-    help="Mount AG-UI endpoints for dashboard integration.",
-)
 def serve(
     host: str,
     port: int,
@@ -1263,7 +1257,6 @@ def serve(
     transport: str,
     server_name: str,
     no_kits: bool,
-    dashboard: bool,
 ) -> None:
     """Start a FastAPI server exposing workflows as SSE endpoints."""
     # MCP mode — branch early, skip FastAPI
@@ -1310,9 +1303,7 @@ def serve(
 
     from beddel import __version__
 
-    app, loaded, wf_ids = _build_runtime_app(
-        workflow_paths, dashboard=dashboard, tools=tools, kit=kit, no_kits=no_kits
-    )
+    app, loaded, wf_ids = _build_runtime_app(workflow_paths, tools=tools, kit=kit, no_kits=no_kits)
 
     click.echo(f"Beddel v{__version__} — {loaded} workflow(s)")
     click.echo(f"Listening on http://{host}:{port}")
