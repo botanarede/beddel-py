@@ -661,8 +661,8 @@ class TestConnectNoWorkflowsWarning:
         def _mock_build(wf_paths: tuple[Path, ...], **kwargs: Any) -> tuple[Any, int, list[str]]:
             # Simulate the warning that _build_runtime_app emits
             click_mod.echo(
-                "Warning: No workflow files found. Use --workflow to specify "
-                "files or place YAML files in the current directory.",
+                "Warning: No workflows found. Place .yaml files in the "
+                "current directory or workflows/ subdirectory.",
                 err=True,
             )
             return (mock_app, 0, [])
@@ -686,7 +686,7 @@ class TestConnectNoWorkflowsWarning:
 
         assert result.exit_code == 0
         # Warning should appear in stderr
-        assert "No workflow files found" in result.output
+        assert "No workflows found" in result.output
         # Runtime still starts with 0 workflows
         assert "0 workflow(s)" in result.output
 

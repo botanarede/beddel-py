@@ -1087,6 +1087,7 @@ def _build_runtime_app(
     effective_paths: tuple[Path, ...] = workflow_paths
     if not effective_paths:
         discovered: list[Path] = []
+        seen: set[Path] = set()
         scan_dirs = [Path(".")]
         workflows_dir = Path("workflows")
         if workflows_dir.is_dir():
@@ -1108,12 +1109,16 @@ def _build_runtime_app(
                         if has_name and has_steps:
                             break
                     if has_name and has_steps:
-                        discovered.append(candidate)
+                        resolved = candidate.resolve()
+                        if resolved not in seen:
+                            seen.add(resolved)
+                            discovered.append(candidate)
+                            click.echo(f"  Discovered: {candidate.name}")
         effective_paths = tuple(discovered)
         if not effective_paths:
             click.echo(
-                "Warning: No workflow files found. Use --workflow to specify "
-                "files or place YAML files in the current directory.",
+                "Warning: No workflows found. Place .yaml files in the "
+                "current directory or workflows/ subdirectory.",
                 err=True,
             )
 
