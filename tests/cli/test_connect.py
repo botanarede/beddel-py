@@ -805,3 +805,376 @@ class TestConnectHostPortOptions:
         # Verify output reflects custom host/port
         assert "0.0.0.0" in result.output
         assert "9090" in result.output
+
+
+# ---------------------------------------------------------------------------
+# BC6.1 — Subcommand refactoring tests
+# ---------------------------------------------------------------------------
+
+
+class TestConnectDevSubcommand:
+    """AC #1: 'beddel connect dev' starts runtime without OAuth."""
+
+    def test_dev_starts_runtime_no_oauth(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        mock_app = unittest.mock.MagicMock()
+        build_calls: list[dict[str, Any]] = []
+
+        def _mock_build(*_a: Any, **kw: Any) -> tuple[Any, int, list[str]]:
+            build_calls.append(kw)
+            return (mock_app, 1, ["wf1"])
+
+        monkeypatch.setattr("beddel.cli.commands._build_runtime_app", _mock_build)
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        listen_calls: list[tuple[Any, ...]] = []
+
+        async def _mock_listen(*args: Any, **kwargs: Any) -> None:
+            listen_calls.append(args)
+
+        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "dev"])
+        assert result.exit_code == 0
+        # Verify _build_runtime_app was called with dashboard=True
+        assert len(build_calls) == 1
+        assert build_calls[0]["dashboard"] is True
+        # Verify _listen_loop was called (blocking mechanism)
+        assert len(listen_calls) == 1
+        # Verify default URL is localhost:3000
+        assert listen_calls[0][0] == "http://localhost:3000"
+        # Verify empty token (no auth)
+        assert listen_calls[0][1] == ""
+        # Verify runtime info in output
+        assert "Runtime:" in result.output
+        assert "Runtime stopped." in result.output
+
+    def test_dev_default_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        listen_urls: list[str] = []
+
+        async def _mock_listen(url: str, *_a: Any, **_kw: Any) -> None:
+            listen_urls.append(url)
+
+        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "dev"])
+        assert result.exit_code == 0
+        assert listen_urls == ["http://localhost:3000"]
+
+    def test_dev_custom_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        listen_urls: list[str] = []
+
+        async def _mock_listen(url: str, *_a: Any, **_kw: Any) -> None:
+            listen_urls.append(url)
+
+        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "dev", "--url", "http://localhost:4000"])
+        assert result.exit_code == 0
+        assert listen_urls == ["http://localhost:4000"]
+
+    def test_dev_no_oauth_imports(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify dev mode does NOT call any OAuth functions."""
+        import unittest.mock
+
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        async def _mock_listen(*_a: Any, **_kw: Any) -> None:
+            return
+
+        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+
+        # If OAuth functions were called, they would fail since we don't mock them
+        # (load_credentials, initiate_device_flow, etc.)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "dev"])
+        assert result.exit_code == 0
+
+
+class TestConnectRemoteSubcommand:
+    """AC #2: 'beddel connect remote' runs OAuth and shows relay placeholder."""
+
+    def test_remote_runs_oauth(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        flow_data: dict[str, Any] = {
+            "device_code": "dc_test",
+            "user_code": "REMOTE-1234",
+            "verification_uri": "https://github.com/login/device",
+            "expires_in": 900,
+            "interval": 5,
+        }
+
+        monkeypatch.setenv("BEDDEL_GITHUB_CLIENT_ID", "test-id")
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.initiate_device_flow",
+            AsyncMock(return_value=flow_data),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.poll_for_token",
+            AsyncMock(return_value="gho_remote_tok"),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.get_github_user",
+            AsyncMock(return_value="remoteuser"),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.save_credentials",
+            lambda _d: None,
+        )
+
+        mock_response = unittest.mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"session_id": "s"}
+
+        async def _mock_post(*_a: Any, **_k: Any) -> Any:
+            return mock_response
+
+        mock_client = unittest.mock.MagicMock()
+        mock_client.post = _mock_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        monkeypatch.setattr("httpx.AsyncClient", lambda **_kw: mock_client)
+        monkeypatch.setattr("webbrowser.open", lambda _url: True)
+
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        async def _noop_listen(*_a: Any, **_kw: Any) -> None:
+            return
+
+        monkeypatch.setattr("beddel.cli.commands._listen_loop", _noop_listen)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "remote"])
+        assert result.exit_code == 0
+        assert "REMOTE-1234" in result.output
+        assert "Authenticated as remoteuser" in result.output
+        assert "Relay not yet implemented" in result.output
+
+    def test_remote_default_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setenv("BEDDEL_GITHUB_CLIENT_ID", "test-id")
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.initiate_device_flow",
+            AsyncMock(
+                return_value={
+                    "device_code": "dc",
+                    "user_code": "UC",
+                    "verification_uri": "https://github.com/login/device",
+                    "expires_in": 900,
+                    "interval": 5,
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.poll_for_token",
+            AsyncMock(return_value="gho_tok"),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.get_github_user",
+            AsyncMock(return_value="user"),
+        )
+        monkeypatch.setattr("beddel_auth_github.provider.save_credentials", lambda _d: None)
+
+        mock_response = unittest.mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"session_id": "s"}
+
+        async def _mock_post(*_a: Any, **_k: Any) -> Any:
+            return mock_response
+
+        mock_client = unittest.mock.MagicMock()
+        mock_client.post = _mock_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        monkeypatch.setattr("httpx.AsyncClient", lambda **_kw: mock_client)
+        monkeypatch.setattr("webbrowser.open", lambda _url: True)
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        listen_urls: list[str] = []
+
+        async def _mock_listen(url: str, *_a: Any, **_kw: Any) -> None:
+            listen_urls.append(url)
+
+        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "remote"])
+        assert result.exit_code == 0
+        # Default URL for remote is connect.beddel.com.br
+        assert listen_urls == ["https://connect.beddel.com.br"]
+
+
+class TestConnectDeprecatedUrl:
+    """AC #3: --url on group is deprecated alias that infers mode."""
+
+    def test_deprecated_url_localhost_invokes_dev(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        listen_calls: list[tuple[str, str]] = []
+
+        async def _mock_listen(url: str, token: str, **_kw: Any) -> None:
+            listen_calls.append((url, token))
+
+        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "--url", "http://localhost:3000"])
+        assert result.exit_code == 0
+        # Deprecation warning is in output (CliRunner mixes stderr)
+        assert "deprecated" in result.output.lower()
+        # Should invoke dev mode (empty token)
+        assert len(listen_calls) == 1
+        assert listen_calls[0][0] == "http://localhost:3000"
+        assert listen_calls[0][1] == ""
+
+    def test_deprecated_url_remote_invokes_remote(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setenv("BEDDEL_GITHUB_CLIENT_ID", "test-id")
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.initiate_device_flow",
+            AsyncMock(
+                return_value={
+                    "device_code": "dc",
+                    "user_code": "UC",
+                    "verification_uri": "https://github.com/login/device",
+                    "expires_in": 900,
+                    "interval": 5,
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.poll_for_token",
+            AsyncMock(return_value="gho_tok"),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.get_github_user",
+            AsyncMock(return_value="user"),
+        )
+        monkeypatch.setattr("beddel_auth_github.provider.save_credentials", lambda _d: None)
+
+        mock_response = unittest.mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"session_id": "s"}
+
+        async def _mock_post(*_a: Any, **_k: Any) -> Any:
+            return mock_response
+
+        mock_client = unittest.mock.MagicMock()
+        mock_client.post = _mock_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        monkeypatch.setattr("httpx.AsyncClient", lambda **_kw: mock_client)
+        monkeypatch.setattr("webbrowser.open", lambda _url: True)
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        async def _noop_listen(*_a: Any, **_kw: Any) -> None:
+            return
+
+        monkeypatch.setattr("beddel.cli.commands._listen_loop", _noop_listen)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "--url", "https://example.com"])
+        assert result.exit_code == 0
+        # Should invoke remote mode (OAuth flow)
+        assert "Authenticated as user" in result.output
+
+
+class TestConnectNoSubcommand:
+    """AC #5: 'beddel connect' without subcommand shows help."""
+
+    def test_shows_help_with_subcommands(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect"])
+        assert result.exit_code == 0
+        assert "dev" in result.output
+        assert "remote" in result.output
+
+    def test_help_flag_shows_subcommands(self) -> None:
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "--help"])
+        assert result.exit_code == 0
+        assert "dev" in result.output
+        assert "remote" in result.output
+        assert "--status" in result.output
+        assert "--logout" in result.output
+
+
+class TestConnectGroupFlagsStillWork:
+    """AC backward compat: --status, --logout, --server, --listen on group."""
+
+    def test_status_on_group(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        creds = _sample_creds()
+        monkeypatch.setattr("beddel_auth_github.provider.load_credentials", lambda: creds)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "--status"])
+        assert result.exit_code == 0
+        assert "testuser" in result.output
+
+    def test_logout_on_group(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("beddel_auth_github.provider.delete_credentials", lambda: True)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "--logout"])
+        assert result.exit_code == 0
+        assert "Credentials removed" in result.output
+
+    def test_server_on_group(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        creds = _sample_creds()
+        monkeypatch.setattr("beddel_auth_github.provider.load_credentials", lambda: creds)
+        monkeypatch.setattr("beddel_auth_github.provider.save_credentials", lambda _d: None)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "--server", "https://new.example.com"])
+        assert result.exit_code == 0
+        assert "Server URL updated" in result.output
