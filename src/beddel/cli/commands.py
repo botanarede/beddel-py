@@ -1031,8 +1031,53 @@ async def _handle_relay_run(
 ) -> None:
     """Forward a relay ``run`` message to the local AG-UI endpoint.
 
-    Stub — full implementation in Task 3.
+    Extracts the ``RunAgentInput`` from *payload* and POSTs it to the
+    local AG-UI endpoint.  The SSE response is parsed line-by-line and
+    each ``BaseEvent`` is relayed back over the WebSocket as an
+    ``event`` message.
     """
+    import httpx
+
+    agent_name: str = payload.get("agent_name", "beddel")
+    run_input: Any = payload.get("input", {})
+
+    url = f"http://127.0.0.1:{local_port}/ag-ui/{agent_name}"
+
+    try:
+        async with (
+            httpx.AsyncClient(timeout=None) as client,
+            client.stream("POST", url, json=run_input) as resp,
+        ):
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[len("data: ") :]
+                try:
+                    event = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+                msg = json.dumps(
+                    {
+                        "type": "event",
+                        "payload": {
+                            "event_type": event.get("type", ""),
+                            "data": event,
+                        },
+                    },
+                )
+                await ws.send(msg)
+    except Exception as exc:  # noqa: BLE001
+        err_msg = json.dumps(
+            {
+                "type": "error",
+                "payload": {
+                    "message": str(exc),
+                    "code": "RELAY_EXEC_ERROR",
+                },
+            },
+        )
+        await ws.send(err_msg)
 
 
 async def _relay_loop(
