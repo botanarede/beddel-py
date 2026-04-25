@@ -806,8 +806,6 @@ def connect_remote(ctx: click.Context, *, url: str) -> None:
             webbrowser.open(browser_url)
         click.echo(f"Dashboard: {dashboard_url}")
 
-        click.echo("Relay not yet implemented — use dev mode for now")
-
         # Start local runtime
         app, loaded, wf_ids = _build_runtime_app(workflow_paths, dashboard=True)
 
@@ -824,8 +822,8 @@ def connect_remote(ctx: click.Context, *, url: str) -> None:
         for wf_id in wf_ids:
             click.echo(f"  AG-UI: http://{host}:{port}/ag-ui/{wf_id}")
 
-        # Enter listen mode
-        asyncio.run(_listen_loop(dashboard_url, token, uvicorn_server=uvi_server))
+        # Enter relay mode
+        asyncio.run(_relay_loop(dashboard_url, token, user, port, uvicorn_server=uvi_server))
 
         # Shutdown
         uvi_server.should_exit = True

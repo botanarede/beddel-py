@@ -85,7 +85,7 @@ class TestConnectDefaultClientId:
         async def _noop_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _noop_listen)
+        monkeypatch.setattr("beddel.cli.commands._relay_loop", _noop_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--url", "https://test.example.com"])
@@ -237,7 +237,7 @@ class TestConnectFullFlow:
         async def _noop_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _noop_listen)
+        monkeypatch.setattr("beddel.cli.commands._relay_loop", _noop_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--url", "https://test.example.com"])
@@ -452,7 +452,7 @@ class TestConnectAutoListenAfterOAuth:
         async def _mock_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._relay_loop", _mock_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--url", "https://test.example.com"])
@@ -975,14 +975,13 @@ class TestConnectRemoteSubcommand:
         async def _noop_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _noop_listen)
+        monkeypatch.setattr("beddel.cli.commands._relay_loop", _noop_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "remote"])
         assert result.exit_code == 0
         assert "REMOTE-1234" in result.output
         assert "Authenticated as remoteuser" in result.output
-        assert "Relay not yet implemented" in result.output
 
     def test_remote_default_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import unittest.mock
@@ -1035,7 +1034,7 @@ class TestConnectRemoteSubcommand:
         async def _mock_listen(url: str, *_a: Any, **_kw: Any) -> None:
             listen_urls.append(url)
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _mock_listen)
+        monkeypatch.setattr("beddel.cli.commands._relay_loop", _mock_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "remote"])
@@ -1123,7 +1122,7 @@ class TestConnectDeprecatedUrl:
         async def _noop_listen(*_a: Any, **_kw: Any) -> None:
             return
 
-        monkeypatch.setattr("beddel.cli.commands._listen_loop", _noop_listen)
+        monkeypatch.setattr("beddel.cli.commands._relay_loop", _noop_listen)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["connect", "--url", "https://example.com"])
