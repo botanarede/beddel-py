@@ -1020,6 +1020,134 @@ async def _execute_and_stream(
 
 
 # ---------------------------------------------------------------------------
+# WebSocket relay helpers (used by ``connect remote``)
+# ---------------------------------------------------------------------------
+
+
+async def _handle_relay_run(
+    ws: Any,
+    payload: dict[str, Any],
+    local_port: int,
+) -> None:
+    """Forward a relay ``run`` message to the local AG-UI endpoint.
+
+    Stub — full implementation in Task 3.
+    """
+
+
+async def _relay_loop(
+    dashboard_url: str,
+    token: str,
+    username: str,
+    local_port: int,
+    *,
+    uvicorn_server: Any | None = None,
+) -> None:
+    """Maintain a WebSocket connection to the dashboard relay.
+
+    Sends a ``register`` message on connect, responds to application-level
+    ``ping`` with ``pong``, and dispatches ``run`` messages to
+    :func:`_handle_relay_run`.  Reconnects with exponential backoff on
+    disconnect.
+    """
+    import signal
+
+    import websockets
+
+    from beddel import __version__ as sdk_version
+
+    stop_event = asyncio.Event()
+
+    def _handle_signal(*_: object) -> None:
+        click.echo("\nDisconnecting...")
+        stop_event.set()
+        if uvicorn_server is not None:
+            uvicorn_server.should_exit = True
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+    # Build WebSocket URL: http(s) → ws(s), append path.
+    ws_url = (
+        dashboard_url.replace("https://", "wss://").replace("http://", "ws://").rstrip("/")
+        + "/api/relay/ws"
+    )
+
+    backoff = 1.0
+    max_backoff = 8.0
+
+    while not stop_event.is_set():
+        try:
+            async with websockets.connect(
+                ws_url,
+                additional_headers={
+                    "Authorization": f"Bearer {token}",
+                },
+            ) as ws:
+                # --- Register ---
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "register",
+                            "payload": {
+                                "username": username,
+                                "sdk_version": sdk_version,
+                            },
+                        }
+                    )
+                )
+                click.echo(f"Connected to relay at {dashboard_url}")
+
+                backoff = 1.0  # Reset on successful connection
+
+                # --- Message loop ---
+                async for raw_msg in ws:
+                    if stop_event.is_set():
+                        break
+
+                    try:
+                        msg: dict[str, Any] = json.loads(raw_msg)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+
+                    msg_type = msg.get("type")
+
+                    if msg_type == "ping":
+                        await ws.send(json.dumps({"type": "pong"}))
+                    elif msg_type == "run":
+                        await _handle_relay_run(
+                            ws,
+                            msg["payload"],
+                            local_port,
+                        )
+                    elif msg_type == "error":
+                        err_payload = msg.get("payload", {})
+                        click.echo(
+                            f"Relay error: {err_payload.get('message', msg)}",
+                            err=True,
+                        )
+
+        except websockets.ConnectionClosed:
+            if stop_event.is_set():
+                break
+            click.echo("Reconnecting...")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, max_backoff)
+
+        except OSError as exc:
+            if stop_event.is_set():
+                break
+            click.echo(
+                f"Connection failed: {exc}. Retrying in {backoff:.0f}s...",
+                err=True,
+            )
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, max_backoff)
+
+    click.echo("Disconnected.")
+
+
+# ---------------------------------------------------------------------------
 # Shared runtime builder (used by ``serve`` and ``connect``)
 # ---------------------------------------------------------------------------
 
