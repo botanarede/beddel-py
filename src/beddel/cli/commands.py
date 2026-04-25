@@ -540,6 +540,16 @@ def status() -> None:
     default=None,
     help="Dashboard URL (e.g. https://your-dashboard.example.com)",
 )
+@click.option("--host", default="127.0.0.1", help="Bind host.")
+@click.option("--port", default=8000, type=int, help="Bind port.")
+@click.option(
+    "--workflow",
+    "-w",
+    "workflow_paths",
+    multiple=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Workflow YAML file to serve (repeatable).",
+)
 def connect(
     *,
     show_status: bool,
@@ -547,6 +557,9 @@ def connect(
     server: str | None,
     listen: bool,
     url: str | None,
+    host: str,
+    port: int,
+    workflow_paths: tuple[Path, ...],
 ) -> None:
     """Authenticate with GitHub for remote dashboard access."""
     import datetime
@@ -613,7 +626,28 @@ def connect(
                 err=True,
             )
             raise SystemExit(1)
-        asyncio.run(_listen_loop(srv, pat))
+
+        # Start local runtime
+        app, loaded, wf_ids = _build_runtime_app(workflow_paths, dashboard=True)
+
+        import threading
+
+        import uvicorn
+
+        config = uvicorn.Config(app, host=host, port=port, log_level="info")
+        uvi_server = uvicorn.Server(config)
+        server_thread = threading.Thread(target=uvi_server.run, daemon=True)
+        server_thread.start()
+
+        click.echo(f"Runtime: http://{host}:{port} — {loaded} workflow(s)")
+        for wf_id in wf_ids:
+            click.echo(f"  AG-UI: http://{host}:{port}/ag-ui/{wf_id}")
+
+        asyncio.run(_listen_loop(srv, pat, uvicorn_server=uvi_server))
+
+        uvi_server.should_exit = True
+        server_thread.join(timeout=5.0)
+        click.echo("Runtime stopped.")
         return
 
     # Default: full Device Flow
@@ -669,7 +703,8 @@ def connect(
                     )
                     if resp.status_code == 200:
                         data = resp.json()
-                        return data.get("session_id")
+                        result: str | None = data.get("session_id")
+                        return result
                     return None
 
             session_id = asyncio.run(_exchange())
@@ -689,6 +724,31 @@ def connect(
         with contextlib.suppress(Exception):
             webbrowser.open(browser_url)
         click.echo(f"Dashboard: {dashboard_url}")
+
+        # Start local runtime
+        app, loaded, wf_ids = _build_runtime_app(workflow_paths, dashboard=True)
+
+        import threading
+
+        import uvicorn
+
+        config = uvicorn.Config(app, host=host, port=port, log_level="info")
+        uvi_server = uvicorn.Server(config)
+        server_thread = threading.Thread(target=uvi_server.run, daemon=True)
+        server_thread.start()
+
+        click.echo(f"Runtime: http://{host}:{port} — {loaded} workflow(s)")
+        for wf_id in wf_ids:
+            click.echo(f"  AG-UI: http://{host}:{port}/ag-ui/{wf_id}")
+
+        # Enter listen mode
+        asyncio.run(_listen_loop(dashboard_url, token, uvicorn_server=uvi_server))
+
+        # Shutdown
+        uvi_server.should_exit = True
+        server_thread.join(timeout=5.0)
+        click.echo("Runtime stopped.")
+        return
     except BeddelError as exc:
         click.echo(f"Error [{exc.code}]: {exc.message}", err=True)
         raise SystemExit(1) from None
@@ -699,7 +759,7 @@ def connect(
 # ---------------------------------------------------------------------------
 
 
-async def _listen_loop(server_url: str, token: str) -> None:
+async def _listen_loop(server_url: str, token: str, *, uvicorn_server: Any | None = None) -> None:
     """Listen for commands from dashboard via SSE."""
     import signal
 
@@ -710,6 +770,8 @@ async def _listen_loop(server_url: str, token: str) -> None:
     def _handle_signal(*_: object) -> None:
         click.echo("\nDisconnecting...")
         stop_event.set()
+        if uvicorn_server is not None:
+            uvicorn_server.should_exit = True
 
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
@@ -874,6 +936,190 @@ async def _execute_and_stream(
         click.echo(f"Workflow execution error: {exc}", err=True)
 
 
+# ---------------------------------------------------------------------------
+# Shared runtime builder (used by ``serve`` and ``connect``)
+# ---------------------------------------------------------------------------
+
+
+def _build_runtime_app(
+    workflow_paths: tuple[Path, ...],
+    *,
+    dashboard: bool = True,
+    tools: tuple[str, ...] = (),
+    kit: tuple[Path, ...] = (),
+    no_kits: bool = False,
+) -> tuple[Any, int, list[str]]:
+    """Build a FastAPI app with workflow handlers and optional AG-UI endpoints.
+
+    Returns (app, loaded_count, workflow_ids).
+    """
+    try:
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
+    except ImportError:
+        click.echo(
+            "Missing dependencies. Install with: pip install beddel[default]",
+            err=True,
+        )
+        raise SystemExit(1) from None
+
+    from beddel import __version__
+
+    _ensure_kit_paths()
+
+    try:
+        from beddel_serve_fastapi.handler import (  # type: ignore[import-not-found]
+            create_beddel_handler,
+        )
+    except ImportError:
+        click.echo(
+            "Missing dependency. Install: pip install beddel[default]",
+            err=True,
+        )
+        raise SystemExit(1) from None
+
+    from beddel.domain.errors import BeddelError
+    from beddel.domain.models import DefaultDependencies, Workflow
+    from beddel.domain.parser import WorkflowParser
+    from beddel.domain.registry import PrimitiveRegistry
+    from beddel.primitives import register_builtins
+    from beddel.tools.kits import discover_kits
+
+    app = FastAPI(title="Beddel", version=__version__)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    registry = PrimitiveRegistry()
+    register_builtins(registry)
+    discovery_result = discover_kits(list(kit) if kit else None)
+    agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
+    parsed_tools = _parse_tool_flags(tools)
+
+    # Auto-discovery: if no workflow paths provided, scan CWD
+    effective_paths: tuple[Path, ...] = workflow_paths
+    if not effective_paths:
+        discovered: list[Path] = []
+        scan_dirs = [Path(".")]
+        workflows_dir = Path("workflows")
+        if workflows_dir.is_dir():
+            scan_dirs.append(workflows_dir)
+        for scan_dir in scan_dirs:
+            for pattern in ("*.yaml", "*.yml"):
+                for candidate in scan_dir.glob(pattern):
+                    try:
+                        content = candidate.read_text()
+                    except OSError:
+                        continue
+                    has_name = False
+                    has_steps = False
+                    for line in content.splitlines():
+                        if line.startswith("name:"):
+                            has_name = True
+                        if line.startswith("steps:") or line.startswith("  steps:"):
+                            has_steps = True
+                        if has_name and has_steps:
+                            break
+                    if has_name and has_steps:
+                        discovered.append(candidate)
+        effective_paths = tuple(discovered)
+        if not effective_paths:
+            click.echo(
+                "Warning: No workflow files found. Use --workflow to specify "
+                "files or place YAML files in the current directory.",
+                err=True,
+            )
+
+    loaded = 0
+    all_workflows: dict[str, tuple[Workflow, Path]] = {}
+    for wf_path in effective_paths:
+        yaml_str = wf_path.read_text()
+        workflow = WorkflowParser.parse(yaml_str)
+
+        wf_parent = wf_path.parent.resolve()
+
+        def _make_workflow_loader(root: Path) -> Callable[[str], Workflow]:
+            """Return a workflow loader scoped to *root*."""
+
+            def _loader(name: str) -> Workflow:
+                target = (root / name).resolve()
+                if not target.is_relative_to(root):
+                    raise BeddelError(
+                        code="BEDDEL-CLI-001",
+                        message=f"Workflow path escapes base directory: {name}",
+                    )
+                if not target.exists():
+                    raise BeddelError(
+                        code="BEDDEL-CLI-002",
+                        message=(f"Sub-workflow not found: {name} (resolved: {target})"),
+                    )
+                return WorkflowParser.parse(target.read_text())
+
+            return _loader
+
+        deps = DefaultDependencies(
+            llm_provider=llm_provider,
+            agent_registry=agent_registry,
+            tool_registry=_build_tool_registry(
+                workflow,
+                parsed_tools,
+                kit_paths=list(kit) if kit else None,
+                no_kits=no_kits,
+                discovery_result=discovery_result,
+            ),
+            workflow_loader=_make_workflow_loader(wf_parent),
+            registry=registry,
+        )
+        router = create_beddel_handler(
+            workflow,
+            deps=deps,
+        )
+        app.include_router(router, prefix=f"/workflows/{workflow.id}")
+        click.echo(f"  Mounted: /workflows/{workflow.id} ({wf_path.name})")
+        all_workflows[workflow.id] = (workflow, wf_path)
+        loaded += 1
+
+    if dashboard:
+        try:
+            from beddel_ag_ui.endpoint import (  # type: ignore[import-not-found]
+                create_agui_endpoint,
+            )
+        except ImportError:
+            click.echo(
+                "Warning: ag-ui-kit not available. "
+                "Install ag-ui-protocol to enable AG-UI endpoints.",
+                err=True,
+            )
+        else:
+            for wf_id, (wf, wf_path_) in all_workflows.items():
+                wf_deps = DefaultDependencies(
+                    llm_provider=llm_provider,
+                    agent_registry=agent_registry,
+                    tool_registry=_build_tool_registry(
+                        wf,
+                        parsed_tools,
+                        kit_paths=list(kit) if kit else None,
+                        no_kits=no_kits,
+                        discovery_result=discovery_result,
+                    ),
+                    workflow_loader=_make_workflow_loader(wf_path_.parent.resolve()),
+                    registry=registry,
+                )
+                agui_router = create_agui_endpoint(wf, deps=wf_deps)
+                app.include_router(agui_router, prefix=f"/ag-ui/{wf_id}")
+                click.echo(f"  AG-UI: /ag-ui/{wf_id} ({wf_path_.name})")
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok", "version": __version__}
+
+    return app, loaded, list(all_workflows.keys())
+
+
 @cli.command()
 @click.option("--host", default="127.0.0.1", help="Bind host.")
 @click.option("--port", default=8000, type=int, help="Bind port.")
@@ -957,7 +1203,7 @@ def serve(
                 workflow = WorkflowParser.parse(wf_path.read_text())
                 server.register_workflow(workflow)
         else:
-            from beddel_serve_mcp.server import create_mcp_server  # type: ignore[import-not-found]
+            from beddel_serve_mcp.server import create_mcp_server
 
             server = create_mcp_server(Path("."), name=server_name)
 
@@ -972,8 +1218,6 @@ def serve(
 
     try:
         import uvicorn
-        from fastapi import FastAPI
-        from fastapi.middleware.cors import CORSMiddleware
     except ImportError:
         click.echo(
             "Missing dependencies. Install with: pip install beddel[default]",
@@ -983,123 +1227,9 @@ def serve(
 
     from beddel import __version__
 
-    _ensure_kit_paths()
-
-    try:
-        from beddel_serve_fastapi.handler import (  # type: ignore[import-not-found]
-            create_beddel_handler,
-        )
-    except ImportError:
-        click.echo(
-            "Missing dependency. Install: pip install beddel[default]",
-            err=True,
-        )
-        raise SystemExit(1) from None
-
-    from beddel.domain.errors import BeddelError
-    from beddel.domain.models import DefaultDependencies, Workflow
-    from beddel.domain.parser import WorkflowParser
-    from beddel.domain.registry import PrimitiveRegistry
-    from beddel.primitives import register_builtins
-    from beddel.tools.kits import discover_kits
-
-    app = FastAPI(title="Beddel", version=__version__)
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
-        allow_methods=["*"],
-        allow_headers=["*"],
+    app, loaded, wf_ids = _build_runtime_app(
+        workflow_paths, dashboard=dashboard, tools=tools, kit=kit, no_kits=no_kits
     )
-
-    registry = PrimitiveRegistry()
-    register_builtins(registry)
-    discovery_result = discover_kits(list(kit) if kit else None)
-    agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
-    parsed_tools = _parse_tool_flags(tools)
-
-    loaded = 0
-    all_workflows: dict[str, tuple[Workflow, Path]] = {}
-    for wf_path in workflow_paths:
-        yaml_str = wf_path.read_text()
-        workflow = WorkflowParser.parse(yaml_str)
-
-        wf_parent = wf_path.parent.resolve()
-
-        def _make_workflow_loader(root: Path) -> Callable[[str], Workflow]:
-            """Return a workflow loader scoped to *root*."""
-
-            def _loader(name: str) -> Workflow:
-                target = (root / name).resolve()
-                if not target.is_relative_to(root):
-                    raise BeddelError(
-                        code="BEDDEL-CLI-001",
-                        message=f"Workflow path escapes base directory: {name}",
-                    )
-                if not target.exists():
-                    raise BeddelError(
-                        code="BEDDEL-CLI-002",
-                        message=(f"Sub-workflow not found: {name} (resolved: {target})"),
-                    )
-                return WorkflowParser.parse(target.read_text())
-
-            return _loader
-
-        deps = DefaultDependencies(
-            llm_provider=llm_provider,
-            agent_registry=agent_registry,
-            tool_registry=_build_tool_registry(
-                workflow,
-                parsed_tools,
-                kit_paths=list(kit) if kit else None,
-                no_kits=no_kits,
-                discovery_result=discovery_result,
-            ),
-            workflow_loader=_make_workflow_loader(wf_parent),
-            registry=registry,
-        )
-        router = create_beddel_handler(
-            workflow,
-            deps=deps,
-        )
-        app.include_router(router, prefix=f"/workflows/{workflow.id}")
-        click.echo(f"  Mounted: /workflows/{workflow.id} ({wf_path.name})")
-        all_workflows[workflow.id] = (workflow, wf_path)
-        loaded += 1
-
-    if dashboard:
-        try:
-            from beddel_ag_ui.endpoint import (  # type: ignore[import-not-found]
-                create_agui_endpoint,
-            )
-        except ImportError:
-            click.echo(
-                "Warning: ag-ui-kit not available. "
-                "Install ag-ui-protocol to enable AG-UI endpoints.",
-                err=True,
-            )
-        else:
-            for wf_id, (wf, wf_path_) in all_workflows.items():
-                wf_deps = DefaultDependencies(
-                    llm_provider=llm_provider,
-                    agent_registry=agent_registry,
-                    tool_registry=_build_tool_registry(
-                        wf,
-                        parsed_tools,
-                        kit_paths=list(kit) if kit else None,
-                        no_kits=no_kits,
-                        discovery_result=discovery_result,
-                    ),
-                    workflow_loader=_make_workflow_loader(wf_path_.parent.resolve()),
-                    registry=registry,
-                )
-                agui_router = create_agui_endpoint(wf, deps=wf_deps)
-                app.include_router(agui_router, prefix=f"/ag-ui/{wf_id}")
-                click.echo(f"  AG-UI: /ag-ui/{wf_id} ({wf_path_.name})")
-
-    @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok", "version": __version__}
 
     click.echo(f"Beddel v{__version__} — {loaded} workflow(s)")
     click.echo(f"Listening on http://{host}:{port}")
