@@ -529,7 +529,7 @@ def status() -> None:
         click.echo("Token: expired. Run `beddel connect` to re-authenticate.")
 
 
-@cli.command()
+@cli.group(invoke_without_command=True)
 @click.option("--status", "show_status", is_flag=True, help="Show auth status.")
 @click.option("--logout", is_flag=True, help="Remove stored credentials.")
 @click.option("--server", type=str, default=None, help="Set dashboard server URL.")
@@ -538,7 +538,7 @@ def status() -> None:
     "--url",
     type=str,
     default=None,
-    help="Dashboard URL (e.g. https://your-dashboard.example.com)",
+    help="[Deprecated] Use 'beddel connect dev' or 'beddel connect remote'.",
 )
 @click.option("--host", default="127.0.0.1", help="Bind host.")
 @click.option("--port", default=8000, type=int, help="Bind port.")
@@ -550,7 +550,9 @@ def status() -> None:
     type=click.Path(exists=True, path_type=Path),
     help="Workflow YAML file to serve (repeatable).",
 )
+@click.pass_context
 def connect(
+    ctx: click.Context,
     *,
     show_status: bool,
     logout: bool,
@@ -561,19 +563,16 @@ def connect(
     port: int,
     workflow_paths: tuple[Path, ...],
 ) -> None:
-    """Authenticate with GitHub for remote dashboard access."""
-    import datetime
-    import os
+    """Connect to a dashboard for workflow execution.
 
+    Use 'beddel connect dev' for local development (no auth).
+    Use 'beddel connect remote' for remote dashboard (GitHub OAuth).
+    """
     _ensure_kit_paths()
     try:
         from beddel_auth_github.provider import (
-            CredentialData,
             delete_credentials,
-            get_github_user,
-            initiate_device_flow,
             load_credentials,
-            poll_for_token,
             save_credentials,
         )
     except ImportError:
@@ -582,8 +581,6 @@ def connect(
             err=True,
         )
         raise SystemExit(1) from None
-
-    from beddel.domain.errors import BeddelError
 
     if show_status:
         creds = load_credentials()
@@ -650,13 +647,97 @@ def connect(
         click.echo("Runtime stopped.")
         return
 
-    # Default: full Device Flow
-    if url is None:
+    # Deprecated --url alias: infer mode from URL
+    if url is not None:
         click.echo(
-            "Missing --url. Usage: beddel connect --url https://your-dashboard.example.com",
+            "Warning: --url is deprecated. Use 'beddel connect dev' or "
+            "'beddel connect remote' instead.",
             err=True,
         )
-        raise SystemExit(1)
+        if "localhost" in url or "127.0.0.1" in url:
+            ctx.invoke(connect_dev, url=url)
+        else:
+            ctx.invoke(connect_remote, url=url)
+        return
+
+    # No subcommand, no flags: show help
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@connect.command("dev")
+@click.option(
+    "--url",
+    default="http://localhost:3000",
+    help="Dashboard URL (default: http://localhost:3000).",
+)
+@click.pass_context
+def connect_dev(ctx: click.Context, *, url: str) -> None:
+    """Start local dev mode — no auth, connects to local dashboard."""
+    host: str = ctx.parent.params["host"]  # type: ignore[union-attr]
+    port: int = ctx.parent.params["port"]  # type: ignore[union-attr]
+    workflow_paths: tuple[Path, ...] = ctx.parent.params["workflow_paths"]  # type: ignore[union-attr]
+
+    # No OAuth — skip auth entirely
+    app, loaded, wf_ids = _build_runtime_app(workflow_paths, dashboard=True)
+
+    import threading
+
+    import uvicorn
+
+    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    uvi_server = uvicorn.Server(config)
+    # Daemon thread: signal handler in _listen_loop ensures clean shutdown
+    server_thread = threading.Thread(target=uvi_server.run, daemon=True)
+    server_thread.start()
+
+    click.echo(f"Runtime: http://{host}:{port} — {loaded} workflow(s)")
+    for wf_id in wf_ids:
+        click.echo(f"  AG-UI: http://{host}:{port}/ag-ui/{wf_id}")
+
+    # Block until Ctrl+C — SSE listen loop handles signal-based shutdown.
+    # Empty token: dev mode has no auth; the SSE connect will fail gracefully
+    # and the signal handler will handle Ctrl+C.
+    asyncio.run(_listen_loop(url, "", uvicorn_server=uvi_server))
+
+    uvi_server.should_exit = True
+    server_thread.join(timeout=5.0)
+    click.echo("Runtime stopped.")
+
+
+@connect.command("remote")
+@click.option(
+    "--url",
+    default="https://connect.beddel.com.br",
+    help="Dashboard URL (default: https://connect.beddel.com.br).",
+)
+@click.pass_context
+def connect_remote(ctx: click.Context, *, url: str) -> None:
+    """Start remote mode — GitHub OAuth, connects to hosted dashboard."""
+    import datetime
+    import os
+
+    host: str = ctx.parent.params["host"]  # type: ignore[union-attr]
+    port: int = ctx.parent.params["port"]  # type: ignore[union-attr]
+    workflow_paths: tuple[Path, ...] = ctx.parent.params["workflow_paths"]  # type: ignore[union-attr]
+
+    _ensure_kit_paths()
+    try:
+        from beddel_auth_github.provider import (
+            CredentialData,
+            get_github_user,
+            initiate_device_flow,
+            poll_for_token,
+            save_credentials,
+        )
+    except ImportError:
+        click.echo(
+            "Missing dependency. Install: pip install beddel[default]",
+            err=True,
+        )
+        raise SystemExit(1) from None
+
+    from beddel.domain.errors import BeddelError
 
     dashboard_url = url
 
@@ -724,6 +805,8 @@ def connect(
         with contextlib.suppress(Exception):
             webbrowser.open(browser_url)
         click.echo(f"Dashboard: {dashboard_url}")
+
+        click.echo("Relay not yet implemented — use dev mode for now")
 
         # Start local runtime
         app, loaded, wf_ids = _build_runtime_app(workflow_paths, dashboard=True)

@@ -251,13 +251,14 @@ class TestConnectFullFlow:
 
 
 class TestConnectNoUrl:
-    """Default flow without --url prints error and exits."""
+    """Default flow without subcommand shows help with dev/remote subcommands."""
 
     def test_connect_no_url(self) -> None:
         runner = CliRunner()
         result = runner.invoke(cli, ["connect"])
-        assert result.exit_code == 1
-        assert "Missing --url" in result.output
+        assert result.exit_code == 0
+        assert "dev" in result.output
+        assert "remote" in result.output
 
 
 class TestConnectStatusNoServerUrl:
