@@ -85,7 +85,7 @@ def create_workflow_listing_router(
             )
         return results
 
-    @router.get("/{workflow_id}")
+    @router.get("/{workflow_id}", response_model=None)
     async def _get_workflow(workflow_id: str) -> dict[str, Any] | JSONResponse:
         """Return full detail for a single workflow, or 404 if not found."""
         entry = workflows.get(workflow_id)
