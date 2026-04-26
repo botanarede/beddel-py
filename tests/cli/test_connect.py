@@ -1207,3 +1207,221 @@ class TestConnectGroupFlagsStillWork:
         result = runner.invoke(cli, ["connect", "--server", "https://new.example.com"])
         assert result.exit_code == 0
         assert "Server URL updated" in result.output
+
+
+# ---------------------------------------------------------------------------
+# BC7.1 — Unified connect + deprecation warning tests
+# ---------------------------------------------------------------------------
+
+
+class TestConnectUnifiedDevMode:
+    """AC #1, #2: 'beddel connect' (no subcommand) with dev: true starts runtime without OAuth."""
+
+    def test_unified_dev_starts_runtime_no_oauth(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setattr("beddel.cli.config.resolve_dev_mode", lambda: True)
+        monkeypatch.setattr(
+            "beddel.cli.config.resolve_dashboard_url", lambda: "http://localhost:3000"
+        )
+
+        start_calls: list[tuple[Any, ...]] = []
+
+        def _mock_start(
+            host: str, port: int, workflow_paths: tuple[Path, ...]
+        ) -> tuple[Any, Any, int, list[str]]:
+            start_calls.append((host, port, workflow_paths))
+            return (unittest.mock.MagicMock(), unittest.mock.MagicMock(), 1, ["wf1"])
+
+        monkeypatch.setattr("beddel.cli.commands._start_runtime", _mock_start)
+
+        async def _noop(*_a: Any, **_kw: Any) -> None:
+            return
+
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _noop)
+
+        # Do NOT mock OAuth — if it were called, it would fail
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect"])
+        assert result.exit_code == 0
+        # _start_runtime was called
+        assert len(start_calls) == 1
+        # Runtime output present
+        assert "Runtime:" in result.output
+        assert "Runtime stopped." in result.output
+
+    def test_unified_dev_no_oauth_calls(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify that no OAuth functions are invoked in dev mode."""
+        import unittest.mock
+
+        monkeypatch.setattr("beddel.cli.config.resolve_dev_mode", lambda: True)
+        monkeypatch.setattr(
+            "beddel.cli.config.resolve_dashboard_url", lambda: "http://localhost:3000"
+        )
+
+        monkeypatch.setattr(
+            "beddel.cli.commands._start_runtime",
+            lambda *_a, **_kw: (
+                unittest.mock.MagicMock(),
+                unittest.mock.MagicMock(),
+                0,
+                [],
+            ),
+        )
+
+        async def _noop(*_a: Any, **_kw: Any) -> None:
+            return
+
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _noop)
+
+        # Mock _connect_remote_flow to detect if it's called
+        remote_calls: list[dict[str, Any]] = []
+
+        def _mock_remote(**kw: Any) -> None:
+            remote_calls.append(kw)
+
+        monkeypatch.setattr("beddel.cli.commands._connect_remote_flow", _mock_remote)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect"])
+        assert result.exit_code == 0
+        # _connect_remote_flow must NOT have been called
+        assert len(remote_calls) == 0
+
+
+class TestConnectUnifiedRemoteMode:
+    """AC #1, #3: 'beddel connect' (no subcommand) with dev: false runs OAuth flow."""
+
+    def test_unified_remote_runs_oauth(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("beddel.cli.config.resolve_dev_mode", lambda: False)
+        monkeypatch.setattr(
+            "beddel.cli.config.resolve_dashboard_url",
+            lambda: "https://connect.beddel.com.br",
+        )
+
+        remote_calls: list[dict[str, Any]] = []
+
+        def _mock_remote(**kw: Any) -> None:
+            remote_calls.append(kw)
+
+        monkeypatch.setattr("beddel.cli.commands._connect_remote_flow", _mock_remote)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect"])
+        assert result.exit_code == 0
+        # _connect_remote_flow was called
+        assert len(remote_calls) == 1
+        assert remote_calls[0]["dashboard_url"] == "https://connect.beddel.com.br"
+
+    def test_unified_remote_no_start_runtime(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """In remote mode, _start_runtime is NOT called directly."""
+        import unittest.mock
+
+        monkeypatch.setattr("beddel.cli.config.resolve_dev_mode", lambda: False)
+        monkeypatch.setattr(
+            "beddel.cli.config.resolve_dashboard_url",
+            lambda: "https://connect.beddel.com.br",
+        )
+
+        start_calls: list[tuple[Any, ...]] = []
+
+        def _mock_start(*args: Any) -> tuple[Any, Any, int, list[str]]:
+            start_calls.append(args)
+            return (unittest.mock.MagicMock(), unittest.mock.MagicMock(), 0, [])
+
+        monkeypatch.setattr("beddel.cli.commands._start_runtime", _mock_start)
+        monkeypatch.setattr("beddel.cli.commands._connect_remote_flow", lambda **_kw: None)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect"])
+        assert result.exit_code == 0
+        # _start_runtime should NOT be called from the unified path in remote mode
+        assert len(start_calls) == 0
+
+
+class TestConnectDevDeprecationWarning:
+    """AC #4: 'beddel connect dev' prints deprecation warning."""
+
+    def test_dev_deprecation_warning_in_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        async def _noop(*_a: Any, **_kw: Any) -> None:
+            return
+
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _noop)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "dev"])
+        assert result.exit_code == 0
+        # CliRunner mixes stderr into output by default
+        assert "deprecated" in result.output.lower()
+        assert "config.json" in result.output
+
+
+class TestConnectRemoteDeprecationWarning:
+    """AC #5: 'beddel connect remote' prints deprecation warning."""
+
+    def test_remote_deprecation_warning_in_output(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setenv("BEDDEL_GITHUB_CLIENT_ID", "test-id")
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.initiate_device_flow",
+            AsyncMock(
+                return_value={
+                    "device_code": "dc",
+                    "user_code": "UC",
+                    "verification_uri": "https://github.com/login/device",
+                    "expires_in": 900,
+                    "interval": 5,
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.poll_for_token",
+            AsyncMock(return_value="gho_tok"),
+        )
+        monkeypatch.setattr(
+            "beddel_auth_github.provider.get_github_user",
+            AsyncMock(return_value="user"),
+        )
+        monkeypatch.setattr("beddel_auth_github.provider.save_credentials", lambda _d: None)
+
+        mock_response = unittest.mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"session_id": "s"}
+
+        async def _mock_post(*_a: Any, **_k: Any) -> Any:
+            return mock_response
+
+        mock_client = unittest.mock.MagicMock()
+        mock_client.post = _mock_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        monkeypatch.setattr("httpx.AsyncClient", lambda **_kw: mock_client)
+        monkeypatch.setattr("webbrowser.open", lambda _url: True)
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        async def _noop(*_a: Any, **_kw: Any) -> None:
+            return
+
+        monkeypatch.setattr("beddel.cli.commands._relay_loop", _noop)
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["connect", "remote"])
+        assert result.exit_code == 0
+        # CliRunner mixes stderr into output by default
+        assert "deprecated" in result.output.lower()
+        assert "config.json" in result.output
