@@ -251,14 +251,31 @@ class TestConnectFullFlow:
 
 
 class TestConnectNoUrl:
-    """Default flow without subcommand shows help with dev/remote subcommands."""
+    """Default flow without subcommand runs config-driven unified flow."""
 
-    def test_connect_no_url(self) -> None:
+    def test_connect_no_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setattr("beddel.cli.config.resolve_dev_mode", lambda: True)
+        monkeypatch.setattr(
+            "beddel.cli.config.resolve_dashboard_url", lambda: "http://localhost:3000"
+        )
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        async def _noop(*_a: Any, **_kw: Any) -> None:
+            return
+
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _noop)
+
         runner = CliRunner()
         result = runner.invoke(cli, ["connect"])
         assert result.exit_code == 0
-        assert "dev" in result.output
-        assert "remote" in result.output
+        assert "Runtime stopped" in result.output
 
 
 class TestConnectStatusNoServerUrl:
@@ -1128,14 +1145,31 @@ class TestConnectDeprecatedUrl:
 
 
 class TestConnectNoSubcommand:
-    """AC #5: 'beddel connect' without subcommand shows help."""
+    """'beddel connect' without subcommand runs config-driven unified flow."""
 
-    def test_shows_help_with_subcommands(self) -> None:
+    def test_shows_help_with_subcommands(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import unittest.mock
+
+        monkeypatch.setattr("beddel.cli.config.resolve_dev_mode", lambda: True)
+        monkeypatch.setattr(
+            "beddel.cli.config.resolve_dashboard_url", lambda: "http://localhost:3000"
+        )
+        monkeypatch.setattr(
+            "beddel.cli.commands._build_runtime_app",
+            lambda *_a, **_kw: (unittest.mock.MagicMock(), 0, []),
+        )
+        monkeypatch.setattr("uvicorn.Config", unittest.mock.MagicMock())
+        monkeypatch.setattr("uvicorn.Server", lambda _cfg: unittest.mock.MagicMock())
+
+        async def _noop(*_a: Any, **_kw: Any) -> None:
+            return
+
+        monkeypatch.setattr("beddel.cli.commands._wait_for_shutdown", _noop)
+
         runner = CliRunner()
         result = runner.invoke(cli, ["connect"])
         assert result.exit_code == 0
-        assert "dev" in result.output
-        assert "remote" in result.output
+        assert "Runtime stopped" in result.output
 
     def test_help_flag_shows_subcommands(self) -> None:
         runner = CliRunner()
