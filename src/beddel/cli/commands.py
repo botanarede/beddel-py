@@ -880,13 +880,22 @@ def connect(
         dashboard_url = resolve_dashboard_url()
 
         if dev_mode:
-            # Dev mode: no OAuth, start runtime, block until shutdown
+            # Dev mode: start runtime + relay to local dashboard
             uvi_server, server_thread, loaded, wf_ids = _start_runtime(host, port, workflow_paths)
             click.echo(f"Runtime: http://{host}:{port} — {loaded} workflow(s)")
             for wf_id in wf_ids:
                 click.echo(f"  AG-UI: http://{host}:{port}/ag-ui/{wf_id}")
 
-            asyncio.run(_wait_for_shutdown(uvicorn_server=uvi_server))
+            # Enter relay loop — same as remote but without OAuth
+            asyncio.run(
+                _relay_loop(
+                    dashboard_url,
+                    token="dev-token",
+                    username="dev-user",
+                    local_port=port,
+                    uvicorn_server=uvi_server,
+                )
+            )
 
             uvi_server.should_exit = True
             server_thread.join(timeout=5.0)
@@ -1119,7 +1128,17 @@ async def _handle_relay_run(
     agent_name: str = payload.get("agent_name", "beddel")
     run_input: Any = payload.get("input", {})
 
-    url = f"http://127.0.0.1:{local_port}/ag-ui/{agent_name}"
+    # Extract workflow_id from the coagent state in the RunAgentInput
+    workflow_id: str = agent_name
+    if isinstance(run_input, dict):
+        state = run_input.get("state")
+        if isinstance(state, dict) and isinstance(state.get("workflow_id"), str):
+            workflow_id = state["workflow_id"]
+        forwarded = run_input.get("forwarded_props")
+        if isinstance(forwarded, dict) and isinstance(forwarded.get("workflow_id"), str):
+            workflow_id = forwarded["workflow_id"]
+
+    url = f"http://127.0.0.1:{local_port}/ag-ui/{workflow_id}"
 
     try:
         async with (
@@ -1444,6 +1463,49 @@ def _build_runtime_app(
                 agui_router = create_agui_endpoint(wf, deps=wf_deps)
                 app.include_router(agui_router, prefix=f"/ag-ui/{wf_id}")
                 click.echo(f"  AG-UI: /ag-ui/{wf_id} ({wf_path_.name})")
+
+    # ── Workflow listing endpoints (consumed by Live view) ──────────────
+    @app.get("/workflows")
+    async def list_workflows() -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for wf_id, (wf, _wf_path) in all_workflows.items():
+            results.append(
+                {
+                    "id": wf_id,
+                    "name": wf.name,
+                    "description": wf.description or "",
+                    "version": wf.version or "1.0",
+                    "step_count": len(wf.steps),
+                }
+            )
+        return results
+
+    @app.get("/workflows/{workflow_id}")
+    async def get_workflow(workflow_id: str) -> dict[str, Any]:
+        entry = all_workflows.get(workflow_id)
+        if entry is None:
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(status_code=404, content={"detail": "Not found"})  # type: ignore[return-value]
+        wf, wf_path = entry
+        steps_list = [
+            {
+                "id": s.id,
+                "name": s.id,
+                "primitive": s.primitive,
+            }
+            for s in wf.steps
+        ]
+        return {
+            "id": wf.id,
+            "name": wf.name,
+            "description": wf.description or "",
+            "version": wf.version or "1.0",
+            "step_count": len(wf.steps),
+            "yaml_content": wf_path.read_text(),
+            "input_schema": wf.input_schema if wf.input_schema else None,
+            "steps": steps_list,
+        }
 
     @app.get("/health")
     async def health() -> dict[str, str]:
