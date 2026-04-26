@@ -1,4 +1,4 @@
-"""Beddel CLI configuration — kit and flow path resolution.
+"""Beddel CLI configuration — kit/flow path and mode resolution.
 
 Implements a 3-layer configuration hierarchy:
 
@@ -10,7 +10,9 @@ Both files share the same JSON schema::
 
     {
         "kits_paths": ["/absolute/path/to/kits"],
-        "flows_paths": ["/absolute/path/to/flows"]
+        "flows_paths": ["/absolute/path/to/flows"],
+        "dev": true,
+        "dashboard_url": "http://localhost:3000"
     }
 
 Paths in ``.beddel.json`` may be relative (resolved against the file's
@@ -42,9 +44,19 @@ PROJECT_CONFIG_NAME: str = ".beddel.json"
 # ---------------------------------------------------------------------------
 
 
+_SENTINEL: object = object()
+"""Internal sentinel to distinguish 'key absent' from ``None``."""
+
+_DASHBOARD_URL_DEV: str = "http://localhost:3000"
+"""Default dashboard URL for dev mode."""
+
+_DASHBOARD_URL_REMOTE: str = "https://connect.beddel.com.br"
+"""Default dashboard URL for remote mode."""
+
+
 def _empty_config() -> dict[str, Any]:
     """Return a config dict with empty defaults."""
-    return {"kits_paths": [], "flows_paths": []}
+    return {"kits_paths": [], "flows_paths": [], "dev": _SENTINEL, "dashboard_url": _SENTINEL}
 
 
 def _normalize_paths(paths: list[str], base_dir: Path) -> list[Path]:
@@ -91,6 +103,10 @@ def load_project_config(config_path: Path) -> dict[str, Any]:
         result["kits_paths"] = [str(p) for p in _normalize_paths(raw["kits_paths"], base_dir)]
     if "flows_paths" in raw:
         result["flows_paths"] = [str(p) for p in _normalize_paths(raw["flows_paths"], base_dir)]
+    if "dev" in raw:
+        result["dev"] = bool(raw["dev"])
+    if "dashboard_url" in raw:
+        result["dashboard_url"] = str(raw["dashboard_url"])
     return result
 
 
@@ -112,6 +128,10 @@ def load_global_config() -> dict[str, Any]:
         result["kits_paths"] = raw["kits_paths"]
     if "flows_paths" in raw:
         result["flows_paths"] = raw["flows_paths"]
+    if "dev" in raw:
+        result["dev"] = bool(raw["dev"])
+    if "dashboard_url" in raw:
+        result["dashboard_url"] = str(raw["dashboard_url"])
     return result
 
 
@@ -167,6 +187,57 @@ def resolve_flows_paths() -> list[Path]:
         return [Path(p) for p in global_cfg["flows_paths"]]
 
     return []
+
+
+def resolve_dev_mode() -> bool:
+    """Return whether the CLI should operate in dev mode.
+
+    Resolution order (first explicit value wins):
+    1. ``.beddel.json`` ``dev`` key
+    2. ``~/.config/beddel/config.json`` ``dev`` key
+    3. Default: ``True`` (dev mode)
+    """
+    # 1. Project-local
+    project_cfg_path = find_project_config()
+    if project_cfg_path is not None:
+        cfg = load_project_config(project_cfg_path)
+        if cfg["dev"] is not _SENTINEL:
+            return bool(cfg["dev"])
+
+    # 2. Global
+    global_cfg = load_global_config()
+    if global_cfg["dev"] is not _SENTINEL:
+        return bool(global_cfg["dev"])
+
+    # 3. Default — dev mode
+    return True
+
+
+def resolve_dashboard_url() -> str:
+    """Return the dashboard URL to connect to.
+
+    Resolution order (first explicit value wins):
+    1. ``.beddel.json`` ``dashboard_url`` key
+    2. ``~/.config/beddel/config.json`` ``dashboard_url`` key
+    3. Default: ``http://localhost:3000`` if dev mode,
+       ``https://connect.beddel.com.br`` if remote mode.
+    """
+    # 1. Project-local
+    project_cfg_path = find_project_config()
+    if project_cfg_path is not None:
+        cfg = load_project_config(project_cfg_path)
+        if cfg["dashboard_url"] is not _SENTINEL:
+            return str(cfg["dashboard_url"])
+
+    # 2. Global
+    global_cfg = load_global_config()
+    if global_cfg["dashboard_url"] is not _SENTINEL:
+        return str(global_cfg["dashboard_url"])
+
+    # 3. Default — depends on dev mode
+    if resolve_dev_mode():
+        return _DASHBOARD_URL_DEV
+    return _DASHBOARD_URL_REMOTE
 
 
 # ---------------------------------------------------------------------------
