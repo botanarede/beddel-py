@@ -6,6 +6,7 @@ import asyncio
 import importlib
 import json
 import logging
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -64,6 +65,49 @@ def _resolve_all_kit_paths(explicit_kit: tuple[Path, ...]) -> list[Path] | None:
     merged: list[Path] = list(explicit_kit)
     merged.extend(resolve_kits_paths())
     return merged if merged else None
+
+
+def _resolve_all_flow_paths(explicit_workflows: tuple[Path, ...]) -> list[Path]:
+    """Merge explicit ``-w`` CLI paths with config-file flow paths.
+
+    Returns an empty list when nothing is configured (no bundled-flow
+    equivalent exists).
+    """
+    from beddel.cli.config import resolve_flows_paths
+
+    merged: list[Path] = list(explicit_workflows)
+    merged.extend(resolve_flows_paths())
+    return merged
+
+
+def _validate_config_paths() -> None:
+    """Validate ``kits_paths`` and ``flows_paths`` from config.json.
+
+    Checks each configured directory for existence and write permission.
+    Write permission is required so the dashboard can install kits/flows
+    via ``git clone``.
+    """
+    from beddel.cli.config import resolve_flows_paths, resolve_kits_paths
+
+    for label, paths in [
+        ("kits_paths", resolve_kits_paths()),
+        ("flows_paths", resolve_flows_paths()),
+    ]:
+        if not paths:
+            logger.warning(
+                "No %s configured in config.json. Dashboard installs will not work.",
+                label,
+            )
+            continue
+        for p in paths:
+            if not p.is_dir():
+                logger.warning("%s directory does not exist: %s", label, p)
+            elif not os.access(p, os.W_OK):
+                logger.warning(
+                    "%s directory is not writable: %s — dashboard installs will fail.",
+                    label,
+                    p,
+                )
 
 
 def _build_tool_registry(
@@ -1069,6 +1113,7 @@ def _build_runtime_app(
     from beddel import __version__
 
     _ensure_kit_paths()
+    _validate_config_paths()
 
     try:
         from beddel_serve_fastapi.handler import (  # type: ignore[import-not-found]
@@ -1103,44 +1148,36 @@ def _build_runtime_app(
     agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
     parsed_tools = _parse_tool_flags(tools)
 
-    # Auto-discovery: if no workflow paths provided, scan CWD
-    effective_paths: tuple[Path, ...] = workflow_paths
-    if not effective_paths:
-        discovered: list[Path] = []
-        seen: set[Path] = set()
-        scan_dirs = [Path(".")]
-        workflows_dir = Path("workflows")
-        if workflows_dir.is_dir():
-            scan_dirs.append(workflows_dir)
-        for scan_dir in scan_dirs:
-            for pattern in ("*.yaml", "*.yml"):
-                for candidate in scan_dir.glob(pattern):
+    # Flow discovery: explicit -w flags + config.json flows_paths
+    config_flow_dirs = _resolve_all_flow_paths(workflow_paths)
+    discovered: list[Path] = []
+    seen: set[Path] = set()
+    for flow_dir in config_flow_dirs:
+        if flow_dir.is_file() and flow_dir.suffix in (".yaml", ".yml"):
+            resolved = flow_dir.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                discovered.append(flow_dir)
+                click.echo(f"  Flow: {flow_dir.name}")
+        elif flow_dir.is_dir():
+            for pattern in ("**/*.yaml", "**/*.yml"):
+                for candidate in flow_dir.glob(pattern):
                     try:
                         content = candidate.read_text()
                     except OSError:
                         continue
-                    has_name = False
-                    has_steps = False
-                    for line in content.splitlines():
-                        if line.startswith("name:"):
-                            has_name = True
-                        if line.startswith("steps:") or line.startswith("  steps:"):
-                            has_steps = True
-                        if has_name and has_steps:
-                            break
-                    if has_name and has_steps:
+                    if "name:" in content and "steps:" in content:
                         resolved = candidate.resolve()
                         if resolved not in seen:
                             seen.add(resolved)
                             discovered.append(candidate)
                             click.echo(f"  Discovered: {candidate.name}")
-        effective_paths = tuple(discovered)
-        if not effective_paths:
-            click.echo(
-                "Warning: No workflows found. Place .yaml files in the "
-                "current directory or workflows/ subdirectory.",
-                err=True,
-            )
+    effective_paths: tuple[Path, ...] = tuple(discovered)
+    if not effective_paths:
+        click.echo(
+            "Warning: No workflows found. Configure flows_paths in ~/.config/beddel/config.json",
+            err=True,
+        )
 
     loaded = 0
     all_workflows: dict[str, tuple[Workflow, Path]] = {}

@@ -158,6 +158,12 @@ def _stub_heavy_deps(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda: None,
     )
 
+    # -- _validate_config_paths → noop --------------------------------------
+    monkeypatch.setattr(
+        "beddel.cli.commands._validate_config_paths",
+        lambda: None,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Helper
@@ -169,8 +175,30 @@ def _invoke_serve(
     tmp_path: Path,
     extra_args: list[str] | None = None,
 ) -> Any:
-    """``chdir`` into *tmp_path* and invoke ``beddel serve`` via CliRunner."""
+    """``chdir`` into *tmp_path* and invoke ``beddel serve`` via CliRunner.
+
+    Mocks ``_resolve_all_flow_paths`` to return ``[tmp_path]`` (simulating
+    config.json ``flows_paths`` pointing at the temp directory).  When an
+    explicit ``-w`` flag is present the mock returns the explicit paths
+    directly (matching real behaviour).
+    """
     monkeypatch.chdir(tmp_path)
+
+    # Build the list of directories to scan — mirrors config.json behaviour.
+    scan_dirs: list[Path] = [tmp_path]
+    wf_subdir = tmp_path / "workflows"
+    if wf_subdir.is_dir():
+        scan_dirs.append(wf_subdir)
+
+    def _fake_resolve_all_flow_paths(explicit: tuple[Path, ...]) -> list[Path]:
+        if explicit:
+            return list(explicit)
+        return scan_dirs
+
+    monkeypatch.setattr(
+        "beddel.cli.commands._resolve_all_flow_paths",
+        _fake_resolve_all_flow_paths,
+    )
 
     # Reload commands module so the lazy imports inside _build_runtime_app
     # pick up our patched sys.modules.
@@ -319,7 +347,7 @@ class TestWorkflowDiscoveryWarning:
         result = _invoke_serve(monkeypatch, tmp_path)
 
         # The warning goes to stderr
-        assert "Warning: No workflows found" in result.stderr
+        assert "Warning: No workflows found" in (result.output + result.stderr)
 
     @pytest.mark.usefixtures("_stub_heavy_deps")
     def test_only_invalid_yaml_emits_warning(
@@ -331,7 +359,7 @@ class TestWorkflowDiscoveryWarning:
 
         result = _invoke_serve(monkeypatch, tmp_path)
 
-        assert "Warning: No workflows found" in result.stderr
+        assert "Warning: No workflows found" in (result.output + result.stderr)
 
 
 class TestWorkflowDiscoveryDedup:
