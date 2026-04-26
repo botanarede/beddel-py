@@ -56,7 +56,13 @@ _DASHBOARD_URL_REMOTE: str = "https://connect.beddel.com.br"
 
 def _empty_config() -> dict[str, Any]:
     """Return a config dict with empty defaults."""
-    return {"kits_paths": [], "flows_paths": [], "dev": _SENTINEL, "dashboard_url": _SENTINEL}
+    return {
+        "kits_paths": [],
+        "flows_paths": [],
+        "dev": _SENTINEL,
+        "dashboard_url": _SENTINEL,
+        "llm_provider": _SENTINEL,
+    }
 
 
 def _normalize_paths(paths: list[str], base_dir: Path) -> list[Path]:
@@ -107,6 +113,8 @@ def load_project_config(config_path: Path) -> dict[str, Any]:
         result["dev"] = bool(raw["dev"])
     if "dashboard_url" in raw:
         result["dashboard_url"] = str(raw["dashboard_url"])
+    if "llm_provider" in raw:
+        result["llm_provider"] = str(raw["llm_provider"])
     return result
 
 
@@ -132,6 +140,8 @@ def load_global_config() -> dict[str, Any]:
         result["dev"] = bool(raw["dev"])
     if "dashboard_url" in raw:
         result["dashboard_url"] = str(raw["dashboard_url"])
+    if "llm_provider" in raw:
+        result["llm_provider"] = str(raw["llm_provider"])
     return result
 
 
@@ -238,6 +248,38 @@ def resolve_dashboard_url() -> str:
     if resolve_dev_mode():
         return _DASHBOARD_URL_DEV
     return _DASHBOARD_URL_REMOTE
+
+
+_LLM_PROVIDER_DEFAULT: str = "litellm"
+"""Default LLM provider when none is configured."""
+
+
+def resolve_llm_provider() -> str:
+    """Return the preferred LLM provider kit name.
+
+    When multiple ``ILLMProvider`` kits are discovered, this value
+    determines which one is selected instead of the previous
+    "last-discovered wins" behavior.
+
+    Resolution order (first explicit value wins):
+    1. ``.beddel.json`` ``llm_provider`` key
+    2. ``~/.config/beddel/config.json`` ``llm_provider`` key
+    3. Default: ``"litellm"``
+    """
+    # 1. Project-local
+    project_cfg_path = find_project_config()
+    if project_cfg_path is not None:
+        cfg = load_project_config(project_cfg_path)
+        if cfg["llm_provider"] is not _SENTINEL:
+            return str(cfg["llm_provider"])
+
+    # 2. Global
+    global_cfg = load_global_config()
+    if global_cfg["llm_provider"] is not _SENTINEL:
+        return str(global_cfg["llm_provider"])
+
+    # 3. Default
+    return _LLM_PROVIDER_DEFAULT
 
 
 # ---------------------------------------------------------------------------

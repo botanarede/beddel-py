@@ -278,6 +278,7 @@ def _build_adapter_registries(
     agent_registry: dict[str, Any] = {}
     llm_provider: Any = None
     llm_provider_names: list[str] = []
+    llm_providers: dict[str, Any] = {}
 
     for manifest in discovery_result.manifests:
         kit_name = manifest.kit.name
@@ -302,15 +303,33 @@ def _build_adapter_registries(
                 agent_registry[name] = instance
             elif port == "ILLMProvider":
                 llm_provider_names.append(name)
-                llm_provider = instance
+                llm_providers[name] = instance
 
     if len(llm_provider_names) > 1:
-        winner = llm_provider_names[-1]
-        logger.warning(
-            "Multiple ILLMProvider kits discovered: %s. Using '%s' (highest priority).",
-            llm_provider_names,
-            winner,
-        )
+        from beddel.cli.config import resolve_llm_provider
+
+        preferred = resolve_llm_provider()
+        if preferred in llm_providers:
+            llm_provider = llm_providers[preferred]
+            logger.warning(
+                "Multiple ILLMProvider kits discovered: %s. "
+                "Using '%s' (from config.json llm_provider).",
+                llm_provider_names,
+                preferred,
+            )
+        else:
+            # Preferred not found — fall back to last discovered
+            llm_provider = llm_providers[llm_provider_names[-1]]
+            logger.warning(
+                "Multiple ILLMProvider kits discovered: %s. "
+                "Configured llm_provider '%s' not found. "
+                "Using '%s' (last discovered).",
+                llm_provider_names,
+                preferred,
+                llm_provider_names[-1],
+            )
+    elif len(llm_provider_names) == 1:
+        llm_provider = llm_providers[llm_provider_names[0]]
 
     if llm_provider is None:
         logger.warning(
