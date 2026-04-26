@@ -53,6 +53,19 @@ def _ensure_kit_paths() -> None:
             _add_kit_dir_to_path(prompted)
 
 
+def _resolve_all_kit_paths(explicit_kit: tuple[Path, ...]) -> list[Path] | None:
+    """Merge explicit --kit CLI paths with config-file kit paths.
+
+    Returns ``None`` when both sources are empty (letting
+    ``discover_kits`` fall back to its built-in defaults).
+    """
+    from beddel.cli.config import resolve_kits_paths
+
+    merged: list[Path] = list(explicit_kit)
+    merged.extend(resolve_kits_paths())
+    return merged if merged else None
+
+
 def _build_tool_registry(
     workflow: Any,
     parsed_tools: dict[str, Callable[..., Any]],
@@ -235,6 +248,9 @@ def _build_adapter_registries(
             continue
         except KitManifestError as exc:
             logger.warning("Skipping kit '%s' adapters: %s", kit_name, exc.message)
+            continue
+        except Exception as exc:
+            logger.warning("Skipping kit '%s' adapters — instantiation error: %s", kit_name, exc)
             continue
 
         for (port, name), instance in adapter_map.items():
@@ -434,7 +450,7 @@ def run(
     registry = PrimitiveRegistry()
     register_builtins(registry)
 
-    discovery_result = discover_kits(list(kit) if kit else None)
+    discovery_result = discover_kits(_resolve_all_kit_paths(kit))
     agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
 
     def _safe_workflow_loader(name: str) -> Workflow:
@@ -1083,7 +1099,7 @@ def _build_runtime_app(
 
     registry = PrimitiveRegistry()
     register_builtins(registry)
-    discovery_result = discover_kits(list(kit) if kit else None)
+    discovery_result = discover_kits(_resolve_all_kit_paths(kit))
     agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
     parsed_tools = _parse_tool_flags(tools)
 
@@ -1495,7 +1511,7 @@ def kit_list(*, is_json: bool = False) -> None:
     from beddel.tools.kits import discover_kits, load_kit
 
     _ensure_kit_paths()
-    result = discover_kits()
+    result = discover_kits(_resolve_all_kit_paths(()))
 
     if not result.manifests:
         if is_json:
