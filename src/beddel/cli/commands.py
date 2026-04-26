@@ -1464,48 +1464,42 @@ def _build_runtime_app(
                 app.include_router(agui_router, prefix=f"/ag-ui/{wf_id}")
                 click.echo(f"  AG-UI: /ag-ui/{wf_id} ({wf_path_.name})")
 
-    # ── Workflow listing endpoints (consumed by Live view) ──────────────
-    @app.get("/workflows")
-    async def list_workflows() -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        for wf_id, (wf, _wf_path) in all_workflows.items():
-            results.append(
-                {
-                    "id": wf_id,
-                    "name": wf.name,
-                    "description": wf.description or "",
-                    "version": wf.version or "1.0",
-                    "step_count": len(wf.steps),
-                }
+            # ── Unified AG-UI endpoint (CopilotKit HttpAgent target) ─────
+            from beddel_ag_ui.unified import (  # type: ignore[import-not-found]
+                create_unified_agui_endpoint,
             )
-        return results
 
-    @app.get("/workflows/{workflow_id}")
-    async def get_workflow(workflow_id: str) -> dict[str, Any]:
-        entry = all_workflows.get(workflow_id)
-        if entry is None:
-            from fastapi.responses import JSONResponse
+            from beddel.domain.executor import WorkflowExecutor as _WFExec
 
-            return JSONResponse(status_code=404, content={"detail": "Not found"})  # type: ignore[return-value]
-        wf, wf_path = entry
-        steps_list = [
-            {
-                "id": s.id,
-                "name": s.id,
-                "primitive": s.primitive,
-            }
-            for s in wf.steps
-        ]
-        return {
-            "id": wf.id,
-            "name": wf.name,
-            "description": wf.description or "",
-            "version": wf.version or "1.0",
-            "step_count": len(wf.steps),
-            "yaml_content": wf_path.read_text(),
-            "input_schema": wf.input_schema if wf.input_schema else None,
-            "steps": steps_list,
-        }
+            _agui_executors: dict[str, tuple[Any, Any]] = {}
+            for _wf_id, (_wf, _wf_path) in all_workflows.items():
+                _wf_deps = DefaultDependencies(
+                    llm_provider=llm_provider,
+                    agent_registry=agent_registry,
+                    tool_registry=_build_tool_registry(
+                        _wf,
+                        parsed_tools,
+                        kit_paths=list(kit) if kit else None,
+                        no_kits=no_kits,
+                        discovery_result=discovery_result,
+                    ),
+                    workflow_loader=_make_workflow_loader(_wf_path.parent.resolve()),
+                    registry=registry,
+                )
+                _executor = _WFExec(registry, deps=_wf_deps)
+                _agui_executors[_wf_id] = (_wf, _executor)
+
+            unified_router = create_unified_agui_endpoint(_agui_executors)
+            app.include_router(unified_router, prefix="/ag-ui")
+            click.echo(f"  AG-UI unified: /ag-ui ({len(_agui_executors)} workflow(s))")
+
+            # ── Workflow listing endpoints (consumed by Live view) ──────────────
+            from beddel_ag_ui.listing import (  # type: ignore[import-not-found]
+                create_workflow_listing_router,
+            )
+
+            listing_router = create_workflow_listing_router(all_workflows)
+            app.include_router(listing_router, prefix="/workflows")
 
     @app.get("/health")
     async def health() -> dict[str, str]:
