@@ -257,7 +257,8 @@ def _build_adapter_registries(
 
     Iterates kit manifests, calls :func:`load_kit_adapters` for each, and
     collects ``IAgentAdapter`` entries into ``agent_registry`` and
-    ``ILLMProvider`` entries into ``llm_provider`` (last-discovered wins).
+    ``ILLMProvider`` entries into ``llm_provider`` (config-driven selection
+    via ``resolve_llm_provider()``, default: ``litellm``).
 
     Args:
         discovery_result: A :class:`KitDiscoveryResult` from ``discover_kits()``.

@@ -12,7 +12,8 @@ Both files share the same JSON schema::
         "kits_paths": ["/absolute/path/to/kits"],
         "flows_paths": ["/absolute/path/to/flows"],
         "dev": true,
-        "dashboard_url": "http://localhost:3000"
+        "dashboard_url": "http://localhost:3000",
+        "llm_provider": "gemini"
     }
 
 Paths in ``.beddel.json`` may be relative (resolved against the file's
