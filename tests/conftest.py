@@ -39,6 +39,7 @@ _KIT_DIRS = [
     "tools-file-kit",
     "tools-shell-kit",
     "tools-gates-kit",
+    "provider-gemini-kit",
 ]
 
 for _kit in _KIT_DIRS:

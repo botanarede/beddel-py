@@ -73,6 +73,12 @@ dev = [
     "mypy",
     "types-jsonschema",
 ]
+bridge-adk = [
+    "google-adk>=1.0.0,<2.0.0",
+]
+provider-gemini = [
+    "google-genai>=1.0.0",
+]
 
 # -----------------------------------------------------------------------------
 # Hatch Build Configuration

@@ -271,6 +271,18 @@ ADAPT_TIMEOUT: str = "BEDDEL-ADAPT-003"
 TRACING_FAILURE: str = "BEDDEL-ADAPT-010"
 """Tracing operation failed."""
 
+ADAPT_GEMINI_AUTH: str = "BEDDEL-ADAPT-050"
+"""Gemini authentication failure."""
+
+ADAPT_GEMINI_RATE_LIMIT: str = "BEDDEL-ADAPT-051"
+"""Gemini rate limit exceeded."""
+
+ADAPT_GEMINI_MODEL_UNAVAILABLE: str = "BEDDEL-ADAPT-052"
+"""Gemini model not available."""
+
+ADAPT_GEMINI_SAFETY_BLOCKED: str = "BEDDEL-ADAPT-053"
+"""Gemini safety filter blocked response."""
+
 # ---------------------------------------------------------------------------
 # Execution codes  (EXEC prefix, 500 range)
 # ---------------------------------------------------------------------------
@@ -700,6 +712,10 @@ ALL_CODES: dict[str, str] = {
     "ADAPT_PROVIDER_ERROR": ADAPT_PROVIDER_ERROR,
     "ADAPT_TIMEOUT": ADAPT_TIMEOUT,
     "TRACING_FAILURE": TRACING_FAILURE,
+    "ADAPT_GEMINI_AUTH": ADAPT_GEMINI_AUTH,
+    "ADAPT_GEMINI_RATE_LIMIT": ADAPT_GEMINI_RATE_LIMIT,
+    "ADAPT_GEMINI_MODEL_UNAVAILABLE": ADAPT_GEMINI_MODEL_UNAVAILABLE,
+    "ADAPT_GEMINI_SAFETY_BLOCKED": ADAPT_GEMINI_SAFETY_BLOCKED,
     # Agent
     "AGENT_NOT_CONFIGURED": AGENT_NOT_CONFIGURED,
     "AGENT_EXECUTION_FAILED": AGENT_EXECUTION_FAILED,
