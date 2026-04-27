@@ -206,57 +206,54 @@ class TestBuildToolRegistry:
 
 
 class TestKitListSourceColumn:
-    """Tests for `beddel kit list` SOURCE column output."""
+    """Tests for `beddel kit list` column output (index-backed).
 
-    def test_source_column_in_output(self) -> None:
-        """kit_list displays SOURCE column with correct values."""
-        from datetime import UTC, datetime
+    After Story BC8.2, kit_list reads from IndexStore instead of
+    filesystem discovery.  The SOURCE column was replaced by
+    ENABLED, CATEGORY, PORT columns.
+    """
+
+    def test_columns_in_output(self, tmp_path: Path) -> None:
+        """kit_list displays ENABLED, CATEGORY, PORT columns."""
+        import asyncio
+        import sqlite3
 
         from click.testing import CliRunner
 
+        from beddel.adapters.index_store import IndexStore
         from beddel.cli.commands import cli
-        from beddel.domain.kit import (
-            KitDiscoveryResult,
-            KitManifest,
-            SolutionKit,
-        )
 
-        bundled_manifest = KitManifest(
-            kit=SolutionKit(
-                name="bundled-kit",
-                version="0.1.0",
-                description="t",
-                tools=[],
-            ),
-            root_path=Path("/fake/bundled"),
-            loaded_at=datetime.now(tz=UTC),
-            source="bundled",
-        )
-        local_manifest = KitManifest(
-            kit=SolutionKit(
-                name="local-kit",
-                version="0.2.0",
-                description="t",
-                tools=[],
-            ),
-            root_path=Path("/fake/local"),
-            loaded_at=datetime.now(tz=UTC),
-            source="local",
-        )
-        discovery = KitDiscoveryResult(manifests=[bundled_manifest, local_manifest], collisions=[])
+        db_path = tmp_path / "index.db"
+        store = IndexStore(db_path)
+        asyncio.run(store._ensure_initialized())
+
+        now = "2026-01-01T00:00:00+00:00"
+        conn = sqlite3.connect(str(db_path))
+        with conn:
+            conn.execute(
+                "INSERT INTO kit_index "
+                "(name, version, description, category, path, enabled, port, "
+                "discovered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("bundled-kit", "0.1.0", "t", "llm", "/fake/bundled", 1, "llm", now, now),
+            )
+            conn.execute(
+                "INSERT INTO kit_index "
+                "(name, version, description, category, path, enabled, port, "
+                "discovered_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("local-kit", "0.2.0", "t", "devops", "/fake/local", 0, "tool", now, now),
+            )
+        conn.close()
 
         runner = CliRunner()
-        with (
-            patch("beddel.tools.kits.discover_kits", return_value=discovery),
-            patch("beddel.tools.kits.load_kit", return_value={}),
-            patch("beddel.cli.commands._ensure_kit_paths"),
-        ):
+        with patch("beddel.adapters.index_store._DEFAULT_DB_PATH", db_path):
             result = runner.invoke(cli, ["kit", "list"])
 
         assert result.exit_code == 0
-        assert "SOURCE" in result.output
-        assert "bundled" in result.output
-        assert "local" in result.output
+        assert "ENABLED" in result.output
+        assert "CATEGORY" in result.output
+        assert "PORT" in result.output
+        assert "bundled-kit" in result.output
+        assert "local-kit" in result.output
 
 
 # ---------------------------------------------------------------------------
