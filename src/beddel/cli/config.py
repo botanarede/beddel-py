@@ -251,7 +251,7 @@ def resolve_dashboard_url() -> str:
     return _DASHBOARD_URL_REMOTE
 
 
-_LLM_PROVIDER_DEFAULT: str = "litellm"
+_LLM_PROVIDER_DEFAULT: str = "gemini"
 """Default LLM provider when none is configured."""
 
 
@@ -265,7 +265,7 @@ def resolve_llm_provider() -> str:
     Resolution order (first explicit value wins):
     1. ``.beddel.json`` ``llm_provider`` key
     2. ``~/.config/beddel/config.json`` ``llm_provider`` key
-    3. Default: ``"litellm"``
+    3. Default: ``"gemini"``
     """
     # 1. Project-local
     project_cfg_path = find_project_config()
