@@ -1317,7 +1317,7 @@ def _build_runtime_app(
     Returns (app, loaded_count, workflow_ids).
     """
     try:
-        from fastapi import FastAPI
+        from fastapi import FastAPI, Query
         from fastapi.middleware.cors import CORSMiddleware
     except ImportError:
         click.echo(
@@ -1616,6 +1616,39 @@ def _build_runtime_app(
                 )
             except Exception as exc:  # noqa: BLE001
                 click.echo(f"Warning: A2A server setup failed: {exc}", err=True)
+
+    # ── Index API endpoints (unconditional — not gated by dashboard flag) ──
+    from fastapi.responses import JSONResponse
+
+    @app.get("/api/kits")
+    async def api_kits(enabled: str | None = Query(None)) -> JSONResponse:
+        if _index_store is None:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Index unavailable. Run beddel connect to build the index."},
+            )
+        if enabled == "true":
+            kits = await _index_store.list_kits(enabled_only=True)
+        else:
+            kits = await _index_store.list_kits()
+        for kit_row in kits:
+            kit_row["enabled"] = bool(kit_row["enabled"])
+        return JSONResponse(content=kits)
+
+    @app.get("/api/flows")
+    async def api_flows(enabled: str | None = Query(None)) -> JSONResponse:
+        if _index_store is None:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Index unavailable. Run beddel connect to build the index."},
+            )
+        if enabled == "true":
+            flows = await _index_store.list_flows(enabled_only=True)
+        else:
+            flows = await _index_store.list_flows()
+        for flow_row in flows:
+            flow_row["enabled"] = bool(flow_row["enabled"])
+        return JSONResponse(content=flows)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
