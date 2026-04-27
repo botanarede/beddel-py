@@ -1080,7 +1080,8 @@ class EventType(StrEnum):
         PARALLEL_START: Emitted when a parallel fan-out begins.
         PARALLEL_END: Emitted when a parallel fan-in completes.
         A2UI_SURFACE: Emitted when a workflow step produces an A2UI surface (interactive UI).
-        A2UI_ACTION: Emitted when a user interacts with an A2UI surface (button click, form submit).
+        A2UI_ACTION: Emitted when a user interacts with an A2UI surface
+            (button click, form submit).
     """
 
     WORKFLOW_START = "workflow_start"
