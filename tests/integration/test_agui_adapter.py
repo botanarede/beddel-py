@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from ag_ui.core import (
     BaseEvent,
+    CustomEvent,
     RunErrorEvent,
     RunFinishedEvent,
     RunStartedEvent,
@@ -429,3 +430,69 @@ class TestCustomIds:
         # Auto-generated hex UUIDs are 32 chars
         assert len(started.thread_id) == 32
         assert len(started.run_id) == 32
+
+
+# ---------------------------------------------------------------------------
+# A2UI_SURFACE → CustomEvent passthrough (Story BC9.2, Task 3)
+# ---------------------------------------------------------------------------
+
+
+class TestA2UISurfacePassthrough:
+    """A2UI_SURFACE events pass through as CustomEvent without triggering TextMessage lifecycle."""
+
+    @pytest.mark.asyncio
+    async def test_a2ui_surface_yields_custom_event(self) -> None:
+        """A2UI_SURFACE event yields a CustomEvent in the stream."""
+        event = _make_event(EventType.A2UI_SURFACE, data={"surfaceUpdate": {"id": "s1"}})
+        adapter = BeddelAGUIAdapter()
+        events = await _collect(adapter.stream_events(_single_event_stream(event)))
+        custom_events = [e for e in events if isinstance(e, CustomEvent)]
+        assert len(custom_events) == 1
+        assert custom_events[0].name == "a2ui"
+        assert custom_events[0].value == {"surfaceUpdate": {"id": "s1"}}
+
+    @pytest.mark.asyncio
+    async def test_a2ui_surface_does_not_trigger_text_message_start(self) -> None:
+        """A2UI_SURFACE event does NOT emit TextMessageStartEvent."""
+        event = _make_event(EventType.A2UI_SURFACE, data={"surfaceUpdate": {"id": "s1"}})
+        adapter = BeddelAGUIAdapter()
+        events = await _collect(adapter.stream_events(_single_event_stream(event)))
+        text_starts = [e for e in events if isinstance(e, TextMessageStartEvent)]
+        assert len(text_starts) == 0
+
+    @pytest.mark.asyncio
+    async def test_interleaved_text_and_a2ui(self) -> None:
+        """TEXT_CHUNK and A2UI_SURFACE events interleave correctly.
+
+        TextMessage lifecycle wraps text chunks, A2UI events pass through independently.
+        Expected sequence:
+        - TextMessageStartEvent (before first text)
+        - TextMessageContentEvent (text chunk)
+        - CustomEvent (A2UI surface — independent, no text lifecycle impact)
+        - TextMessageContentEvent (second text chunk)
+        - TextMessageEndEvent (after stream ends)
+        """
+        events_list = [
+            _make_event(EventType.WORKFLOW_START),
+            _make_event(EventType.TEXT_CHUNK, data={"text": "Hello"}),
+            _make_event(EventType.A2UI_SURFACE, data={"surfaceUpdate": {"id": "form-1"}}),
+            _make_event(EventType.TEXT_CHUNK, data={"text": " world"}),
+            _make_event(EventType.WORKFLOW_END),
+        ]
+        adapter = BeddelAGUIAdapter()
+        result = await _collect(adapter.stream_events(_multi_event_stream(events_list)))
+
+        # Verify CustomEvent is in the stream
+        custom_events = [e for e in result if isinstance(e, CustomEvent)]
+        assert len(custom_events) == 1
+        assert custom_events[0].name == "a2ui"
+
+        # Verify TextMessage lifecycle is correct (start before first text, end at stream end)
+        text_starts = [e for e in result if isinstance(e, TextMessageStartEvent)]
+        text_ends = [e for e in result if isinstance(e, TextMessageEndEvent)]
+        assert len(text_starts) == 1
+        assert len(text_ends) == 1
+
+        # Verify text content events
+        text_contents = [e for e in result if isinstance(e, TextMessageContentEvent)]
+        assert len(text_contents) == 2
