@@ -327,3 +327,44 @@ class IndexStore:
             return result
 
         return await asyncio.to_thread(_update)
+
+    async def get_pref(self, key: str) -> str | None:
+        """Read a user preference by key.
+
+        Args:
+            key: Preference key (primary key in user_prefs).
+
+        Returns:
+            The stored value, or ``None`` if the key does not exist.
+        """
+        await self._ensure_initialized()
+
+        def _read() -> str | None:
+            conn = self._connect()
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT value FROM user_prefs WHERE key = ?", (key,)).fetchone()
+            conn.close()
+            return row["value"] if row else None
+
+        return await asyncio.to_thread(_read)
+
+    async def set_pref(self, key: str, value: str) -> None:
+        """Write a user preference (insert or overwrite).
+
+        Args:
+            key: Preference key (primary key in user_prefs).
+            value: Preference value to store.
+        """
+        await self._ensure_initialized()
+
+        def _write() -> None:
+            conn = self._connect()
+            now = datetime.now(tz=UTC).isoformat()
+            with conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO user_prefs (key, value, updated_at) VALUES (?, ?, ?)",
+                    (key, value, now),
+                )
+            conn.close()
+
+        await asyncio.to_thread(_write)

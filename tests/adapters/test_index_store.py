@@ -624,3 +624,64 @@ class TestSetFlowEnabled:
         await store.set_flow_enabled("flow-1", enabled=True)
         rows = await store.list_flows()
         assert rows[0]["enabled"] == 1
+
+
+# --- Task 1 (Story BC8.4) tests: get_pref, set_pref ---
+
+
+class TestGetPref:
+    """get_pref returns value or None."""
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_missing_key(self, tmp_path: Path) -> None:
+        """get_pref returns None when key does not exist."""
+        store = IndexStore(tmp_path / "index.db")
+
+        result = await store.get_pref("nonexistent_key")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_roundtrip_set_then_get(self, tmp_path: Path) -> None:
+        """set_pref + get_pref roundtrip returns the stored value."""
+        store = IndexStore(tmp_path / "index.db")
+
+        await store.set_pref("llm_provider", "gemini")
+        result = await store.get_pref("llm_provider")
+
+        assert result == "gemini"
+
+
+class TestSetPref:
+    """set_pref inserts and overwrites preferences."""
+
+    @pytest.mark.asyncio
+    async def test_overwrites_existing_value(self, tmp_path: Path) -> None:
+        """set_pref overwrites an existing key with a new value."""
+        store = IndexStore(tmp_path / "index.db")
+
+        await store.set_pref("llm_provider", "gemini")
+        await store.set_pref("llm_provider", "openai")
+        result = await store.get_pref("llm_provider")
+
+        assert result == "openai"
+
+    @pytest.mark.asyncio
+    async def test_updated_at_is_set(self, tmp_path: Path) -> None:
+        """set_pref stores an ISO timestamp in updated_at."""
+        store = IndexStore(tmp_path / "index.db")
+
+        await store.set_pref("theme", "dark")
+
+        # Verify directly in the database
+        conn = sqlite3.connect(str(tmp_path / "index.db"))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT updated_at FROM user_prefs WHERE key = ?", ("theme",)
+        ).fetchone()
+        conn.close()
+
+        assert row is not None
+        # Verify it's a valid ISO timestamp
+        parsed = _datetime.fromisoformat(row["updated_at"])
+        assert parsed.tzinfo is not None
