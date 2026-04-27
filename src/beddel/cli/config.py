@@ -263,10 +263,26 @@ def resolve_llm_provider() -> str:
     "last-discovered wins" behavior.
 
     Resolution order (first explicit value wins):
-    1. ``.beddel.json`` ``llm_provider`` key
-    2. ``~/.config/beddel/config.json`` ``llm_provider`` key
-    3. Default: ``"gemini"``
+    1. ``user_prefs`` table in ``index.db`` (key: ``llm_provider``)
+    2. ``.beddel.json`` ``llm_provider`` key
+    3. ``~/.config/beddel/config.json`` ``llm_provider`` key
+    4. Default: ``"gemini"``
+
+    If ``index.db`` is missing, corrupt, or any error occurs reading
+    user_prefs, the function silently falls through to the config layers.
     """
+    # 0. user_prefs (index.db)
+    try:
+        import asyncio
+
+        from beddel.adapters.index_store import IndexStore
+
+        pref = asyncio.run(IndexStore().get_pref("llm_provider"))
+        if pref is not None:
+            return pref
+    except Exception:
+        pass
+
     # 1. Project-local
     project_cfg_path = find_project_config()
     if project_cfg_path is not None:
