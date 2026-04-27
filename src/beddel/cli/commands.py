@@ -399,21 +399,44 @@ def config_show() -> None:
 
 
 @config_group.command("set")
-@click.argument("key", type=click.Choice(["kits-path", "flows-path"]))
-@click.argument("path_value", type=click.Path(exists=True, path_type=Path))
-def config_set(key: str, path_value: Path) -> None:
-    """Set a path in the global config.
+@click.argument("key", type=click.Choice(["kits-path", "flows-path", "llm-provider"]))
+@click.argument("value", type=click.STRING)
+def config_set(key: str, value: str) -> None:
+    """Set a configuration value.
 
-    KEY is 'kits-path' or 'flows-path'. PATH is the directory.
+    KEY is 'kits-path', 'flows-path', or 'llm-provider'.
+    VALUE is a directory path (for kits/flows) or a string (for llm-provider).
     """
-    from beddel.cli.config import load_global_config, save_global_config
+    if key == "llm-provider":
+        try:
+            from beddel.adapters.index_store import IndexStore
 
-    cfg = load_global_config()
-    resolved = path_value.resolve()
-    config_key = "kits_paths" if key == "kits-path" else "flows_paths"
-    cfg[config_key] = [str(resolved)]
-    save_global_config(cfg)
-    click.echo(f"Set {key} = {resolved}")
+            asyncio.run(IndexStore().set_pref("llm_provider", value))
+            click.echo(f"Set llm-provider = {value} (stored in index.db user_prefs)")
+        except Exception:
+            from beddel.cli.config import _SENTINEL, load_global_config, save_global_config
+
+            cfg = load_global_config()
+            cfg["llm_provider"] = value
+            # Remove sentinel values before saving
+            clean_cfg = {k: v for k, v in cfg.items() if v is not _SENTINEL}
+            save_global_config(clean_cfg)
+            click.echo(f"Warning: index.db unavailable, wrote llm_provider={value} to config.json")
+    else:
+        # kits-path / flows-path: validate path exists
+        path = Path(value)
+        if not path.exists():
+            raise click.BadParameter(f"Path '{value}' does not exist.", param_hint="'VALUE'")
+        from beddel.cli.config import _SENTINEL, load_global_config, save_global_config
+
+        cfg = load_global_config()
+        resolved = path.resolve()
+        config_key = "kits_paths" if key == "kits-path" else "flows_paths"
+        cfg[config_key] = [str(resolved)]
+        # Remove sentinel values before saving
+        clean_cfg = {k: v for k, v in cfg.items() if v is not _SENTINEL}
+        save_global_config(clean_cfg)
+        click.echo(f"Set {key} = {resolved}")
 
 
 @config_group.command("reset")
