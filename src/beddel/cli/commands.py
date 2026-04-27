@@ -735,7 +735,7 @@ def _connect_remote_flow(
             asyncio.run(_relay_loop(dashboard_url, token, user, port, uvicorn_server=uvi_server))
         else:
             # Default: tunnel-based flow — print instructions and wait
-            click.echo("Expose port 8000 via tunnel for remote dashboard access")
+            click.echo(f"Expose port {port} via tunnel for remote dashboard access")
             click.echo(f"Example: cloudflared tunnel --url http://localhost:{port}")
             asyncio.run(_wait_for_shutdown(uvicorn_server=uvi_server))
 
