@@ -636,8 +636,9 @@ def _connect_remote_flow(
     port: int,
     workflow_paths: tuple[Path, ...],
     dashboard_url: str,
+    use_relay: bool = False,
 ) -> None:
-    """Run the full remote connect flow: OAuth → token exchange → runtime → relay."""
+    """Run the full remote connect flow: OAuth → token exchange → runtime → tunnel (or relay)."""
     import datetime
     import os
 
@@ -729,8 +730,14 @@ def _connect_remote_flow(
         for wf_id in wf_ids:
             click.echo(f"  AG-UI: http://{host}:{port}/ag-ui/{wf_id}")
 
-        # Enter relay mode
-        asyncio.run(_relay_loop(dashboard_url, token, user, port, uvicorn_server=uvi_server))
+        if use_relay:
+            # Explicit opt-in: use WebSocket relay (fallback mode)
+            asyncio.run(_relay_loop(dashboard_url, token, user, port, uvicorn_server=uvi_server))
+        else:
+            # Default: tunnel-based flow — print instructions and wait
+            click.echo("Expose port 8000 via tunnel for remote dashboard access")
+            click.echo(f"Example: cloudflared tunnel --url http://localhost:{port}")
+            asyncio.run(_wait_for_shutdown(uvicorn_server=uvi_server))
 
         # Shutdown
         uvi_server.should_exit = True
@@ -763,6 +770,12 @@ def _connect_remote_flow(
     type=click.Path(exists=True, path_type=Path),
     help="Workflow YAML file to serve (repeatable).",
 )
+@click.option(
+    "--relay",
+    is_flag=True,
+    default=False,
+    help="Use WebSocket relay instead of tunnel (fallback mode).",
+)
 @click.pass_context
 def connect(
     ctx: click.Context,
@@ -775,6 +788,7 @@ def connect(
     host: str,
     port: int,
     workflow_paths: tuple[Path, ...],
+    relay: bool,
 ) -> None:
     """Connect to a dashboard for workflow execution.
 
@@ -880,33 +894,26 @@ def connect(
         dashboard_url = resolve_dashboard_url()
 
         if dev_mode:
-            # Dev mode: start runtime + relay to local dashboard
+            # Dev mode: start runtime, no relay
             uvi_server, server_thread, loaded, wf_ids = _start_runtime(host, port, workflow_paths)
             click.echo(f"Runtime: http://{host}:{port} — {loaded} workflow(s)")
             for wf_id in wf_ids:
                 click.echo(f"  AG-UI: http://{host}:{port}/ag-ui/{wf_id}")
 
-            # Enter relay loop — same as remote but without OAuth
-            asyncio.run(
-                _relay_loop(
-                    dashboard_url,
-                    token="dev-token",
-                    username="dev-user",
-                    local_port=port,
-                    uvicorn_server=uvi_server,
-                )
-            )
+            # Block until Ctrl+C — dev mode never uses relay
+            asyncio.run(_wait_for_shutdown(uvicorn_server=uvi_server))
 
             uvi_server.should_exit = True
             server_thread.join(timeout=5.0)
             click.echo("Runtime stopped.")
         else:
-            # Remote mode: OAuth + token exchange + runtime + relay
+            # Remote mode: OAuth + token exchange + runtime + tunnel (or relay if --relay)
             _connect_remote_flow(
                 host=host,
                 port=port,
                 workflow_paths=workflow_paths,
                 dashboard_url=dashboard_url,
+                use_relay=relay,
             )
 
 
