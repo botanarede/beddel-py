@@ -709,7 +709,7 @@ class TestEventTypeEnum:
         assert EventType.CIRCUIT_CLOSE == "circuit_close"
 
     def test_member_count(self) -> None:
-        assert len(EventType) == 18
+        assert len(EventType) == 19
 
 
 # ---------------------------------------------------------------------------
@@ -1095,6 +1095,23 @@ class TestA2UISurfaceEventType:
     def test_a2ui_surface_in_event_type(self) -> None:
         """A2UI_SURFACE is a valid EventType member."""
         assert hasattr(EventType, "A2UI_SURFACE")
+
+
+class TestA2UIActionEventType:
+    """Tests for the A2UI_ACTION EventType member."""
+
+    def test_a2ui_action_value(self) -> None:
+        """EventType.A2UI_ACTION maps to 'a2ui_action'."""
+        assert EventType.A2UI_ACTION.value == "a2ui_action"
+
+    def test_a2ui_action_is_valid_strenum_member(self) -> None:
+        """A2UI_ACTION is a valid StrEnum member (string comparison works)."""
+        assert EventType.A2UI_ACTION == "a2ui_action"
+        assert isinstance(EventType.A2UI_ACTION, str)
+
+    def test_a2ui_action_in_event_type(self) -> None:
+        """A2UI_ACTION is a valid EventType member."""
+        assert hasattr(EventType, "A2UI_ACTION")
 
 
 # ---------------------------------------------------------------------------

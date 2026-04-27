@@ -59,6 +59,11 @@ def _extract_inputs(body: dict[str, Any]) -> dict[str, Any]:
       workflow inputs.
     - A raw dict with workflow inputs directly.
 
+    A2UI actions (BC9.5): When the dashboard forwards an A2UI action,
+    the ``state`` dict contains an ``a2ui_action`` key with the action
+    data (name, surfaceId, context). This is passed through as a normal
+    workflow input, accessible via ``$input.a2ui_action`` in workflow steps.
+
     Args:
         body: Parsed JSON body from the POST request.
 

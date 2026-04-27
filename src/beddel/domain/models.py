@@ -1080,6 +1080,7 @@ class EventType(StrEnum):
         PARALLEL_START: Emitted when a parallel fan-out begins.
         PARALLEL_END: Emitted when a parallel fan-in completes.
         A2UI_SURFACE: Emitted when a workflow step produces an A2UI surface (interactive UI).
+        A2UI_ACTION: Emitted when a user interacts with an A2UI surface (button click, form submit).
     """
 
     WORKFLOW_START = "workflow_start"
@@ -1106,6 +1107,8 @@ class EventType(StrEnum):
     CHECKPOINT = "checkpoint"
 
     A2UI_SURFACE = "a2ui_surface"
+
+    A2UI_ACTION = "a2ui_action"
 
     # --- Reserved for future epics (not yet implemented) ---
     # SUSPENDED = "suspended"      # Epic 5: emitted when execution is suspended for HITL

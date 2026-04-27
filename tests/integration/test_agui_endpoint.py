@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from beddel_ag_ui.endpoint import create_agui_endpoint
+from beddel_ag_ui.endpoint import _extract_inputs, create_agui_endpoint
 from fastapi import FastAPI
 
 from beddel.domain.errors import ExecutionError
@@ -459,3 +459,55 @@ class TestAGUIEndpointErrors:
         error_data = json.loads(error_events[0]["data"])
         assert error_data["message"] == "Mid-stream failure"
         assert error_data["code"] == "BEDDEL-EXEC-003"
+
+
+# ---------------------------------------------------------------------------
+# _extract_inputs tests (Story BC9.5, Task 2)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractInputs:
+    """Tests for _extract_inputs function."""
+
+    def test_extracts_state_as_inputs(self) -> None:
+        body = {"state": {"name": "Alice", "provider": "gemini"}}
+        result = _extract_inputs(body)
+        assert result == {"name": "Alice", "provider": "gemini"}
+
+    def test_extracts_forwarded_props_when_no_state(self) -> None:
+        body = {"forwarded_props": {"key": "value"}}
+        result = _extract_inputs(body)
+        assert result == {"key": "value"}
+
+    def test_falls_back_to_raw_body(self) -> None:
+        body = {"name": "Alice"}
+        result = _extract_inputs(body)
+        assert result == {"name": "Alice"}
+
+    def test_a2ui_action_in_state_preserved(self) -> None:
+        """A2UI action data in state is passed through as workflow input."""
+        body = {
+            "state": {
+                "workflow_id": "onboarding",
+                "a2ui_action": {
+                    "name": "submit",
+                    "surfaceId": "form-1",
+                    "context": {"userName": "Alice", "provider": "gemini"},
+                },
+            }
+        }
+        result = _extract_inputs(body)
+        assert "a2ui_action" in result
+        assert result["a2ui_action"]["name"] == "submit"
+        assert result["a2ui_action"]["context"]["userName"] == "Alice"
+
+    def test_no_a2ui_action_returns_normal_inputs(self) -> None:
+        """Without a2ui_action, inputs are extracted normally."""
+        body = {"state": {"workflow_id": "demo", "topic": "AI"}}
+        result = _extract_inputs(body)
+        assert result == {"workflow_id": "demo", "topic": "AI"}
+        assert "a2ui_action" not in result
+
+    def test_empty_body_returns_empty_dict(self) -> None:
+        result = _extract_inputs({})
+        assert result == {}
