@@ -310,3 +310,115 @@ class TestResolveLlmProviderGracefulDegradation:
         mp.setattr(config_mod, "GLOBAL_CONFIG_PATH", global_cfg)
 
         assert config_mod.resolve_llm_provider() == "openai"
+
+
+# ---------------------------------------------------------------------------
+# Auto-migration: llm_provider from config.json to user_prefs on startup
+# ---------------------------------------------------------------------------
+
+
+class TestAutoMigrateLlmProvider:
+    """Auto-migration copies llm_provider from config.json to user_prefs."""
+
+    def test_migrates_value_from_config_json_to_user_prefs(
+        self, monkeypatch: object, tmp_path: Path
+    ) -> None:
+        """When config.json has llm_provider and user_prefs does not, copy it."""
+        mp = monkeypatch  # type: ignore[assignment]
+
+        # index.db exists but NO llm_provider pref
+        db_path = tmp_path / "index.db"
+        _create_index_db(db_path, prefs={})
+
+        mp.setattr("beddel.adapters.index_store._DEFAULT_DB_PATH", db_path)
+        original_init = IndexStore.__init__
+
+        def _patched_init(self: IndexStore, db_path: object = tmp_path / "index.db") -> None:
+            original_init(self, db_path)  # type: ignore[arg-type]
+
+        mp.setattr(IndexStore, "__init__", _patched_init)
+
+        # Global config HAS llm_provider
+        global_cfg = tmp_path / "config.json"
+        global_cfg.write_text(json.dumps({"llm_provider": "anthropic"}))
+        mp.setattr(config_mod, "GLOBAL_CONFIG_PATH", global_cfg)
+
+        # Import and run migration
+        from beddel.cli.commands import _migrate_llm_provider_to_user_prefs
+
+        store = IndexStore()
+        _migrate_llm_provider_to_user_prefs(store)
+
+        # Verify value was copied to user_prefs
+        import asyncio
+
+        result = asyncio.run(store.get_pref("llm_provider"))
+        assert result == "anthropic"
+
+    def test_no_migration_when_user_prefs_already_has_value(
+        self, monkeypatch: object, tmp_path: Path
+    ) -> None:
+        """When user_prefs already has llm_provider, do NOT overwrite."""
+        mp = monkeypatch  # type: ignore[assignment]
+
+        # index.db already has llm_provider pref
+        db_path = tmp_path / "index.db"
+        _create_index_db(db_path, prefs={"llm_provider": "openai"})
+
+        mp.setattr("beddel.adapters.index_store._DEFAULT_DB_PATH", db_path)
+        original_init = IndexStore.__init__
+
+        def _patched_init(self: IndexStore, db_path: object = tmp_path / "index.db") -> None:
+            original_init(self, db_path)  # type: ignore[arg-type]
+
+        mp.setattr(IndexStore, "__init__", _patched_init)
+
+        # Global config has a DIFFERENT value
+        global_cfg = tmp_path / "config.json"
+        global_cfg.write_text(json.dumps({"llm_provider": "anthropic"}))
+        mp.setattr(config_mod, "GLOBAL_CONFIG_PATH", global_cfg)
+
+        from beddel.cli.commands import _migrate_llm_provider_to_user_prefs
+
+        store = IndexStore()
+        _migrate_llm_provider_to_user_prefs(store)
+
+        # Value should remain unchanged (openai, not anthropic)
+        import asyncio
+
+        result = asyncio.run(store.get_pref("llm_provider"))
+        assert result == "openai"
+
+    def test_no_migration_when_config_json_has_no_llm_provider(
+        self, monkeypatch: object, tmp_path: Path
+    ) -> None:
+        """When config.json has no llm_provider key, do nothing."""
+        mp = monkeypatch  # type: ignore[assignment]
+
+        # index.db exists but NO llm_provider pref
+        db_path = tmp_path / "index.db"
+        _create_index_db(db_path, prefs={})
+
+        mp.setattr("beddel.adapters.index_store._DEFAULT_DB_PATH", db_path)
+        original_init = IndexStore.__init__
+
+        def _patched_init(self: IndexStore, db_path: object = tmp_path / "index.db") -> None:
+            original_init(self, db_path)  # type: ignore[arg-type]
+
+        mp.setattr(IndexStore, "__init__", _patched_init)
+
+        # Global config does NOT have llm_provider
+        global_cfg = tmp_path / "config.json"
+        global_cfg.write_text(json.dumps({"kits_paths": ["/some/path"]}))
+        mp.setattr(config_mod, "GLOBAL_CONFIG_PATH", global_cfg)
+
+        from beddel.cli.commands import _migrate_llm_provider_to_user_prefs
+
+        store = IndexStore()
+        _migrate_llm_provider_to_user_prefs(store)
+
+        # user_prefs should still have no llm_provider
+        import asyncio
+
+        result = asyncio.run(store.get_pref("llm_provider"))
+        assert result is None

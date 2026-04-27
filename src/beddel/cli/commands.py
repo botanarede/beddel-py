@@ -1323,6 +1323,34 @@ async def _relay_loop(
 
 
 # ---------------------------------------------------------------------------
+# Auto-migration helper
+# ---------------------------------------------------------------------------
+
+
+def _migrate_llm_provider_to_user_prefs(index_store: IndexStore) -> None:
+    """Copy llm_provider from config.json to user_prefs if not already set.
+
+    Best-effort migration — exceptions are silently swallowed so startup
+    is never blocked.
+    """
+    try:
+        from beddel.cli.config import _SENTINEL, load_global_config
+
+        _existing_pref = asyncio.run(index_store.get_pref("llm_provider"))
+        if _existing_pref is None:
+            _global_cfg = load_global_config()
+            _cfg_llm = _global_cfg.get("llm_provider", _SENTINEL)
+            if _cfg_llm is not _SENTINEL:
+                asyncio.run(index_store.set_pref("llm_provider", str(_cfg_llm)))
+                click.echo(
+                    f"Migrated llm_provider='{_cfg_llm}' from config.json to index.db user_prefs",
+                    err=True,
+                )
+    except Exception:
+        pass  # Migration is best-effort — don't block startup
+
+
+# ---------------------------------------------------------------------------
 # Shared runtime builder (used by ``serve`` and ``connect``)
 # ---------------------------------------------------------------------------
 
@@ -1403,6 +1431,10 @@ def _build_runtime_app(
             "Warning: index.db unavailable, falling back to filesystem discovery",
             err=True,
         )
+
+    # --- Auto-migrate llm_provider from config.json to user_prefs ---
+    if _index_available and _index_store is not None:
+        _migrate_llm_provider_to_user_prefs(_index_store)
 
     if _index_available and _index_store is not None:
         _enabled_kit_names = {
