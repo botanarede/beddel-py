@@ -10,9 +10,12 @@ import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
+
+if TYPE_CHECKING:
+    from beddel.adapters.index_store import IndexStore
 
 logger = logging.getLogger(__name__)
 
@@ -1731,6 +1734,28 @@ def serve(
 
 
 # ---------------------------------------------------------------------------
+# Kit / Flow shared helpers
+# ---------------------------------------------------------------------------
+
+
+def _check_index_exists() -> IndexStore:
+    """Check that index.db exists and return an IndexStore instance.
+
+    Raises SystemExit(1) with error message if index.db is missing.
+    """
+    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
+
+    db_path = Path(_DEFAULT_DB_PATH).expanduser()
+    if not db_path.exists():
+        click.echo(
+            "No index found. Run `beddel connect` first to build the index.",
+            err=True,
+        )
+        raise SystemExit(1)
+    return IndexStore(db_path)
+
+
+# ---------------------------------------------------------------------------
 # Kit management commands
 # ---------------------------------------------------------------------------
 
@@ -1900,17 +1925,7 @@ def kit_list(*, is_json: bool = False) -> None:
     """List all indexed solution kits."""
     import json as json_mod
 
-    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
-
-    db_path = Path(_DEFAULT_DB_PATH).expanduser()
-    if not db_path.exists():
-        click.echo(
-            "No index found. Run `beddel connect` first to build the index.",
-            err=True,
-        )
-        raise SystemExit(1)
-
-    index_store = IndexStore(db_path)
+    index_store = _check_index_exists()
     kits = asyncio.run(index_store.list_kits())
 
     if not kits:
@@ -1952,17 +1967,7 @@ def kit_list(*, is_json: bool = False) -> None:
 @click.argument("name")
 def kit_enable(name: str) -> None:
     """Enable a solution kit by name."""
-    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
-
-    db_path = Path(_DEFAULT_DB_PATH).expanduser()
-    if not db_path.exists():
-        click.echo(
-            "No index found. Run `beddel connect` first to build the index.",
-            err=True,
-        )
-        raise SystemExit(1)
-
-    index_store = IndexStore(db_path)
+    index_store = _check_index_exists()
     updated = asyncio.run(index_store.set_kit_enabled(name, True))
     if updated:
         click.echo(f"Enabled kit: {name}")
@@ -1975,17 +1980,7 @@ def kit_enable(name: str) -> None:
 @click.argument("name")
 def kit_disable(name: str) -> None:
     """Disable a solution kit by name."""
-    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
-
-    db_path = Path(_DEFAULT_DB_PATH).expanduser()
-    if not db_path.exists():
-        click.echo(
-            "No index found. Run `beddel connect` first to build the index.",
-            err=True,
-        )
-        raise SystemExit(1)
-
-    index_store = IndexStore(db_path)
+    index_store = _check_index_exists()
     updated = asyncio.run(index_store.set_kit_enabled(name, False))
     if updated:
         click.echo(f"Disabled kit: {name}")
@@ -2059,17 +2054,7 @@ def flow_list(*, is_json: bool = False) -> None:
     """List all indexed workflow flows."""
     import json as json_mod
 
-    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
-
-    db_path = Path(_DEFAULT_DB_PATH).expanduser()
-    if not db_path.exists():
-        click.echo(
-            "No index found. Run `beddel connect` first to build the index.",
-            err=True,
-        )
-        raise SystemExit(1)
-
-    index_store = IndexStore(db_path)
+    index_store = _check_index_exists()
     flows = asyncio.run(index_store.list_flows())
 
     if not flows:
@@ -2111,17 +2096,7 @@ def flow_list(*, is_json: bool = False) -> None:
 @click.argument("flow_id")
 def flow_enable(flow_id: str) -> None:
     """Enable a workflow flow by ID."""
-    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
-
-    db_path = Path(_DEFAULT_DB_PATH).expanduser()
-    if not db_path.exists():
-        click.echo(
-            "No index found. Run `beddel connect` first to build the index.",
-            err=True,
-        )
-        raise SystemExit(1)
-
-    index_store = IndexStore(db_path)
+    index_store = _check_index_exists()
     updated = asyncio.run(index_store.set_flow_enabled(flow_id, True))
     if updated:
         click.echo(f"Enabled flow: {flow_id}")
@@ -2134,17 +2109,7 @@ def flow_enable(flow_id: str) -> None:
 @click.argument("flow_id")
 def flow_disable(flow_id: str) -> None:
     """Disable a workflow flow by ID."""
-    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
-
-    db_path = Path(_DEFAULT_DB_PATH).expanduser()
-    if not db_path.exists():
-        click.echo(
-            "No index found. Run `beddel connect` first to build the index.",
-            err=True,
-        )
-        raise SystemExit(1)
-
-    index_store = IndexStore(db_path)
+    index_store = _check_index_exists()
     updated = asyncio.run(index_store.set_flow_enabled(flow_id, False))
     if updated:
         click.echo(f"Disabled flow: {flow_id}")
