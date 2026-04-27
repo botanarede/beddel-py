@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from beddel.domain.kit import KitManifest
+    from beddel.domain.models import Workflow
 
 _DEFAULT_DB_PATH = Path("~/.config/beddel/index.db")
 
@@ -204,6 +205,122 @@ class IndexStore:
                 cursor = conn.execute(
                     "UPDATE kit_index SET enabled = ? WHERE name = ?",
                     (int(enabled), name),
+                )
+            result = cursor.rowcount > 0
+            conn.close()
+            return result
+
+        return await asyncio.to_thread(_update)
+
+    async def sync_flows(self, workflows: list[tuple[Workflow, Path]]) -> None:
+        """Upsert flow_index rows from discovered workflows.
+
+        New flows are inserted with ``enabled=1``.  Existing flows preserve
+        their current ``enabled`` value.  Flows no longer present in
+        *workflows* are deleted (stale entry cleanup).
+
+        Args:
+            workflows: List of (Workflow, yaml_file_path) tuples from discovery.
+        """
+        await self._ensure_initialized()
+
+        def _sync() -> None:
+            conn = self._connect()
+            with conn:
+                # Read existing state to preserve enabled + discovered_at
+                cursor = conn.execute("SELECT id, enabled, discovered_at FROM flow_index")
+                existing: dict[str, tuple[int, str]] = {
+                    row[0]: (row[1], row[2]) for row in cursor.fetchall()
+                }
+
+                now = datetime.now(tz=UTC).isoformat()
+                workflow_ids: list[str] = []
+
+                for workflow, path in workflows:
+                    wf_id = workflow.id
+                    workflow_ids.append(wf_id)
+                    category = workflow.metadata.get("category", "general")
+                    step_count = len(workflow.steps)
+
+                    if wf_id in existing:
+                        enabled = existing[wf_id][0]
+                        discovered_at = existing[wf_id][1]
+                    else:
+                        enabled = 1
+                        discovered_at = now
+
+                    conn.execute(
+                        "INSERT OR REPLACE INTO flow_index "
+                        "(id, name, description, category, path, "
+                        "enabled, step_count, discovered_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            wf_id,
+                            workflow.name,
+                            workflow.description,
+                            category,
+                            str(path),
+                            enabled,
+                            step_count,
+                            discovered_at,
+                            now,
+                        ),
+                    )
+
+                # Remove stale entries
+                if workflow_ids:
+                    placeholders = ",".join("?" * len(workflow_ids))
+                    conn.execute(
+                        f"DELETE FROM flow_index WHERE id NOT IN ({placeholders})",
+                        workflow_ids,
+                    )
+                else:
+                    conn.execute("DELETE FROM flow_index")
+            conn.close()
+
+        await asyncio.to_thread(_sync)
+
+    async def list_flows(self, *, enabled_only: bool = False) -> list[dict[str, Any]]:
+        """Return all rows from flow_index as dicts.
+
+        Args:
+            enabled_only: If ``True``, filter to rows where ``enabled = 1``.
+
+        Returns:
+            List of flow index rows as dictionaries.
+        """
+        await self._ensure_initialized()
+
+        def _read() -> list[dict[str, Any]]:
+            conn = self._connect()
+            conn.row_factory = sqlite3.Row
+            query = "SELECT * FROM flow_index"
+            if enabled_only:
+                query += " WHERE enabled = 1"
+            rows = conn.execute(query).fetchall()
+            conn.close()
+            return [dict(row) for row in rows]
+
+        return await asyncio.to_thread(_read)
+
+    async def set_flow_enabled(self, flow_id: str, enabled: bool) -> bool:
+        """Toggle the enabled state of a flow.
+
+        Args:
+            flow_id: Flow ID (primary key in flow_index).
+            enabled: New enabled state.
+
+        Returns:
+            ``True`` if the row was updated, ``False`` if flow not found.
+        """
+        await self._ensure_initialized()
+
+        def _update() -> bool:
+            conn = self._connect()
+            with conn:
+                cursor = conn.execute(
+                    "UPDATE flow_index SET enabled = ? WHERE id = ?",
+                    (int(enabled), flow_id),
                 )
             result = cursor.rowcount > 0
             conn.close()

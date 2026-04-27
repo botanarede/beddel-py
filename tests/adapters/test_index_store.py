@@ -389,3 +389,238 @@ class TestSetKitEnabled:
         await store.set_kit_enabled("my-kit", enabled=True)
         rows = await store.list_kits()
         assert rows[0]["enabled"] == 1
+
+
+# --- Task 3 tests: sync_flows, list_flows, set_flow_enabled ---
+
+
+class _FakeStep(_BaseModel):
+    id: str
+    name: str
+    primitive: str
+    config: dict[str, str] = {}
+
+
+class _FakeWorkflow(_BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    version: str = "1.0"
+    steps: list[_FakeStep] = []
+    metadata: dict[str, str] = {}
+
+
+def _make_workflow(
+    wf_id: str,
+    name: str,
+    *,
+    steps: int = 2,
+    category: str | None = None,
+    path: Path | None = None,
+) -> tuple[_FakeWorkflow, Path]:
+    step_list = [
+        _FakeStep(id=f"step-{i}", name=f"Step {i}", primitive="llm") for i in range(steps)
+    ]
+    metadata: dict[str, str] = {}
+    if category is not None:
+        metadata["category"] = category
+    wf = _FakeWorkflow(id=wf_id, name=name, steps=step_list, metadata=metadata)
+    wf_path = path or Path(f"/flows/{wf_id}.yaml")
+    return wf, wf_path
+
+
+class TestSyncFlowsInsert:
+    """sync_flows inserts new flows with enabled=1."""
+
+    @pytest.mark.asyncio
+    async def test_inserts_new_flow_with_enabled_1(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        workflows = [_make_workflow("flow-1", "My Flow")]
+
+        await store.sync_flows(workflows)  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        assert len(rows) == 1
+        assert rows[0]["id"] == "flow-1"
+        assert rows[0]["name"] == "My Flow"
+        assert rows[0]["enabled"] == 1
+        assert rows[0]["step_count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_inserts_category_from_metadata(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        workflows = [_make_workflow("flow-1", "Deploy Flow", category="deployment")]
+
+        await store.sync_flows(workflows)  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        assert rows[0]["category"] == "deployment"
+
+    @pytest.mark.asyncio
+    async def test_inserts_general_category_without_metadata(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        workflows = [_make_workflow("flow-1", "Plain Flow")]
+
+        await store.sync_flows(workflows)  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        assert rows[0]["category"] == "general"
+
+    @pytest.mark.asyncio
+    async def test_inserts_path_from_tuple(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        workflows = [_make_workflow("flow-1", "My Flow", path=Path("/custom/path.yaml"))]
+
+        await store.sync_flows(workflows)  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        assert rows[0]["path"] == "/custom/path.yaml"
+
+
+class TestSyncFlowsUpdate:
+    """sync_flows updates existing flow fields."""
+
+    @pytest.mark.asyncio
+    async def test_updates_name_and_path(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        w1 = [_make_workflow("flow-1", "Old Name", path=Path("/old/path.yaml"))]
+        await store.sync_flows(w1)  # type: ignore[arg-type]
+
+        w2 = [_make_workflow("flow-1", "New Name", path=Path("/new/path.yaml"))]
+        await store.sync_flows(w2)  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        assert len(rows) == 1
+        assert rows[0]["name"] == "New Name"
+        assert rows[0]["path"] == "/new/path.yaml"
+
+    @pytest.mark.asyncio
+    async def test_updates_step_count(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        w1 = [_make_workflow("flow-1", "Flow", steps=2)]
+        await store.sync_flows(w1)  # type: ignore[arg-type]
+
+        w2 = [_make_workflow("flow-1", "Flow", steps=5)]
+        await store.sync_flows(w2)  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        assert rows[0]["step_count"] == 5
+
+
+class TestSyncFlowsDelete:
+    """sync_flows deletes removed flows."""
+
+    @pytest.mark.asyncio
+    async def test_deletes_stale_flows(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        w1 = [_make_workflow("flow-a", "A"), _make_workflow("flow-b", "B")]
+        await store.sync_flows(w1)  # type: ignore[arg-type]
+
+        # Second sync only has flow-a
+        w2 = [_make_workflow("flow-a", "A")]
+        await store.sync_flows(w2)  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        assert len(rows) == 1
+        assert rows[0]["id"] == "flow-a"
+
+    @pytest.mark.asyncio
+    async def test_deletes_all_when_empty_workflows(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        w1 = [_make_workflow("flow-a", "A")]
+        await store.sync_flows(w1)  # type: ignore[arg-type]
+
+        await store.sync_flows([])  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        assert len(rows) == 0
+
+
+class TestSyncFlowsPreservesEnabled:
+    """sync_flows preserves enabled=0 for existing disabled flows."""
+
+    @pytest.mark.asyncio
+    async def test_preserves_disabled_state(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        w1 = [_make_workflow("flow-1", "Flow")]
+        await store.sync_flows(w1)  # type: ignore[arg-type]
+
+        # Disable the flow
+        await store.set_flow_enabled("flow-1", enabled=False)
+
+        # Re-sync — should preserve enabled=0
+        w2 = [_make_workflow("flow-1", "Flow Updated", steps=4)]
+        await store.sync_flows(w2)  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        assert rows[0]["enabled"] == 0
+        assert rows[0]["name"] == "Flow Updated"
+        assert rows[0]["step_count"] == 4
+
+
+class TestListFlows:
+    """list_flows returns all rows or filters by enabled."""
+
+    @pytest.mark.asyncio
+    async def test_returns_all_flows(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        w = [_make_workflow("flow-a", "A"), _make_workflow("flow-b", "B")]
+        await store.sync_flows(w)  # type: ignore[arg-type]
+
+        rows = await store.list_flows()
+        ids = {r["id"] for r in rows}
+        assert ids == {"flow-a", "flow-b"}
+
+    @pytest.mark.asyncio
+    async def test_enabled_only_filters(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        w = [_make_workflow("flow-a", "A"), _make_workflow("flow-b", "B")]
+        await store.sync_flows(w)  # type: ignore[arg-type]
+        await store.set_flow_enabled("flow-b", enabled=False)
+
+        rows = await store.list_flows(enabled_only=True)
+        assert len(rows) == 1
+        assert rows[0]["id"] == "flow-a"
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_when_no_flows(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        await store._ensure_initialized()
+
+        rows = await store.list_flows()
+        assert rows == []
+
+
+class TestSetFlowEnabled:
+    """set_flow_enabled toggles and returns True/False."""
+
+    @pytest.mark.asyncio
+    async def test_returns_true_on_existing_flow(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        w = [_make_workflow("flow-1", "Flow")]
+        await store.sync_flows(w)  # type: ignore[arg-type]
+
+        result = await store.set_flow_enabled("flow-1", enabled=False)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_returns_false_on_missing_flow(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        await store._ensure_initialized()
+
+        result = await store.set_flow_enabled("nonexistent", enabled=True)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_toggles_enabled_state(self, tmp_path: Path) -> None:
+        store = IndexStore(tmp_path / "index.db")
+        w = [_make_workflow("flow-1", "Flow")]
+        await store.sync_flows(w)  # type: ignore[arg-type]
+
+        await store.set_flow_enabled("flow-1", enabled=False)
+        rows = await store.list_flows()
+        assert rows[0]["enabled"] == 0
+
+        await store.set_flow_enabled("flow-1", enabled=True)
+        rows = await store.list_flows()
+        assert rows[0]["enabled"] == 1
