@@ -541,6 +541,17 @@ class WorkflowExecutor:
                                         )
                                     )
 
+                        # Emit A2UI surface events from metadata
+                        # (set by output-generator a2ui format).
+                        a2ui_surfaces = context.metadata.pop("_a2ui_surfaces", [])
+                        for surface_data in a2ui_surfaces:
+                            queue.put_nowait(
+                                BeddelEvent(
+                                    event_type=EventType.A2UI_SURFACE,
+                                    data=surface_data if isinstance(surface_data, dict) else {},
+                                )
+                            )
+
                         result: dict[str, Any] = {
                             "step_results": dict(context.step_results),
                             "metadata": dict(context.metadata),
