@@ -1355,9 +1355,50 @@ def _build_runtime_app(
         allow_headers=["*"],
     )
 
+    import sqlite3
+    from collections import defaultdict
+
+    from beddel.adapters.index_store import IndexStore
+    from beddel.domain.kit import KitCollision, KitDiscoveryResult
+
     registry = PrimitiveRegistry()
     register_builtins(registry)
     discovery_result = discover_kits(_resolve_all_kit_paths(kit))
+
+    # --- Index sync + kit filtering (graceful degradation) ---
+    _index_available = False
+    _index_store: IndexStore | None = None
+    try:
+        _index_store = IndexStore()
+        asyncio.run(_index_store.sync_kits(discovery_result.manifests))
+        _index_available = True
+    except (sqlite3.DatabaseError, OSError):
+        click.echo(
+            "Warning: index.db unavailable, falling back to filesystem discovery",
+            err=True,
+        )
+
+    if _index_available and _index_store is not None:
+        _enabled_kit_names = {
+            k["name"] for k in asyncio.run(_index_store.list_kits(enabled_only=True))
+        }
+        _filtered_manifests = [
+            m for m in discovery_result.manifests if m.kit.name in _enabled_kit_names
+        ]
+        # Recalculate collisions from filtered set
+        _tool_to_kits: dict[str, list[str]] = defaultdict(list)
+        for _m in _filtered_manifests:
+            for _td in _m.kit.tools:
+                _tool_to_kits[_td.name].append(_m.kit.name)
+        _filtered_collisions = [
+            KitCollision(tool_name=name, kit_names=kits)
+            for name, kits in sorted(_tool_to_kits.items())
+            if len(kits) > 1
+        ]
+        discovery_result = KitDiscoveryResult(
+            manifests=_filtered_manifests, collisions=_filtered_collisions
+        )
+
     agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
     parsed_tools = _parse_tool_flags(tools)
 
@@ -1394,10 +1435,33 @@ def _build_runtime_app(
 
     loaded = 0
     all_workflows: dict[str, tuple[Workflow, Path]] = {}
+
+    # Phase 1: Parse all discovered workflows
     for wf_path in effective_paths:
         yaml_str = wf_path.read_text()
         workflow = WorkflowParser.parse(yaml_str)
+        all_workflows[workflow.id] = (workflow, wf_path)
 
+    # Phase 2: Sync flows to index + filter by enabled
+    if _index_available and _index_store is not None:
+        try:
+            asyncio.run(_index_store.sync_flows(list(all_workflows.values())))
+            _enabled_flow_ids = {
+                f["id"] for f in asyncio.run(_index_store.list_flows(enabled_only=True))
+            }
+            all_workflows = {
+                wf_id: (wf, p)
+                for wf_id, (wf, p) in all_workflows.items()
+                if wf_id in _enabled_flow_ids
+            }
+        except (sqlite3.DatabaseError, OSError):
+            click.echo(
+                "Warning: index.db flow sync failed, using all discovered flows",
+                err=True,
+            )
+
+    # Phase 3: Mount enabled workflows
+    for _wf_id, (workflow, wf_path) in all_workflows.items():
         wf_parent = wf_path.parent.resolve()
 
         def _make_workflow_loader(root: Path) -> Callable[[str], Workflow]:
@@ -1438,7 +1502,6 @@ def _build_runtime_app(
         )
         app.include_router(router, prefix=f"/workflows/{workflow.id}")
         click.echo(f"  Mounted: /workflows/{workflow.id} ({wf_path.name})")
-        all_workflows[workflow.id] = (workflow, wf_path)
         loaded += 1
 
     if dashboard:
