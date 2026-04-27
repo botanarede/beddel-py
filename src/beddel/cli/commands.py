@@ -2041,3 +2041,113 @@ def kit_export(workflow_path: Path, fmt: str, output_dir: Path) -> None:
 
     result_path = generators[fmt](workflow_meta, output_dir.resolve())
     click.echo(f"Exported {fmt}: {result_path}")
+
+
+# ---------------------------------------------------------------------------
+# Flow management commands
+# ---------------------------------------------------------------------------
+
+
+@cli.group()
+def flow() -> None:
+    """Manage workflow flows."""
+
+
+@flow.command("list")
+@click.option("--json", "is_json", is_flag=True, default=False, help="Output as JSON array.")
+def flow_list(*, is_json: bool = False) -> None:
+    """List all indexed workflow flows."""
+    import json as json_mod
+
+    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
+
+    db_path = Path(_DEFAULT_DB_PATH).expanduser()
+    if not db_path.exists():
+        click.echo(
+            "No index found. Run `beddel connect` first to build the index.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    index_store = IndexStore(db_path)
+    flows = asyncio.run(index_store.list_flows())
+
+    if not flows:
+        if is_json:
+            click.echo(json_mod.dumps([]))
+        else:
+            click.echo("No flows found.")
+        return
+
+    if is_json:
+        data = [
+            {
+                "id": f["id"],
+                "name": f["name"],
+                "enabled": bool(f["enabled"]),
+                "category": f["category"],
+                "step_count": f["step_count"],
+            }
+            for f in flows
+        ]
+        click.echo(json_mod.dumps(data))
+        return
+
+    rows: list[tuple[str, str, str, str, str]] = []
+    for f in flows:
+        enabled = "\u2713" if f["enabled"] else "\u2717"
+        rows.append((f["id"], f["name"], enabled, f["category"], str(f["step_count"])))
+
+    headers = ("ID", "NAME", "ENABLED", "CATEGORY", "STEPS")
+    widths = [max(len(h), max(len(r[i]) for r in rows)) for i, h in enumerate(headers)]
+    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    click.echo(fmt.format(*headers))
+    click.echo(fmt.format(*("-" * w for w in widths)))
+    for row in rows:
+        click.echo(fmt.format(*row))
+
+
+@flow.command("enable")
+@click.argument("flow_id")
+def flow_enable(flow_id: str) -> None:
+    """Enable a workflow flow by ID."""
+    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
+
+    db_path = Path(_DEFAULT_DB_PATH).expanduser()
+    if not db_path.exists():
+        click.echo(
+            "No index found. Run `beddel connect` first to build the index.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    index_store = IndexStore(db_path)
+    updated = asyncio.run(index_store.set_flow_enabled(flow_id, True))
+    if updated:
+        click.echo(f"Enabled flow: {flow_id}")
+    else:
+        click.echo(f"Flow not found: {flow_id}", err=True)
+        raise SystemExit(1)
+
+
+@flow.command("disable")
+@click.argument("flow_id")
+def flow_disable(flow_id: str) -> None:
+    """Disable a workflow flow by ID."""
+    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
+
+    db_path = Path(_DEFAULT_DB_PATH).expanduser()
+    if not db_path.exists():
+        click.echo(
+            "No index found. Run `beddel connect` first to build the index.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    index_store = IndexStore(db_path)
+    updated = asyncio.run(index_store.set_flow_enabled(flow_id, False))
+    if updated:
+        click.echo(f"Disabled flow: {flow_id}")
+    else:
+        click.echo(f"Flow not found: {flow_id}", err=True)
+        raise SystemExit(1)
