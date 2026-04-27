@@ -25,13 +25,16 @@ from __future__ import annotations
 
 from ag_ui.core import (
     BaseEvent,
-    EventType as AGUIEventType,
+    CustomEvent,
     RunErrorEvent,
     RunFinishedEvent,
     RunStartedEvent,
     StepFinishedEvent,
     StepStartedEvent,
     TextMessageContentEvent,
+)
+from ag_ui.core import (
+    EventType as AGUIEventType,
 )
 
 from beddel.domain.models import BeddelEvent, EventType
@@ -103,6 +106,9 @@ def map_event(
             message=event.data.get("message", "Unknown error"),
             code=event.data.get("code"),
         )
+
+    if et is EventType.A2UI_SURFACE:
+        return CustomEvent(name="a2ui", value=event.data)
 
     # Unmapped event type — caller should skip.
     return None

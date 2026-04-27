@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import pytest
 from ag_ui.core import (
-    EventType as AGUIEventType,
-)
-from ag_ui.core import (
+    CustomEvent,
     RunErrorEvent,
     RunFinishedEvent,
     RunStartedEvent,
     StepFinishedEvent,
     StepStartedEvent,
     TextMessageContentEvent,
+)
+from ag_ui.core import (
+    EventType as AGUIEventType,
 )
 from beddel_ag_ui.mapping import map_event
 
@@ -323,6 +324,58 @@ class TestErrorMapping:
         result = map_event(event, **_KWARGS)
 
         assert result.type == AGUIEventType.RUN_ERROR
+
+
+# ---------------------------------------------------------------------------
+# A2UI_SURFACE → CustomEvent (Story BC9.2, Task 2)
+# ---------------------------------------------------------------------------
+
+
+class TestA2UISurfaceMapping:
+    """Tests for A2UI_SURFACE → CustomEvent mapping."""
+
+    def test_returns_custom_event(self) -> None:
+        """A2UI_SURFACE maps to a CustomEvent."""
+        event = _make_event(EventType.A2UI_SURFACE, data={"surfaceUpdate": {"id": "s1"}})
+        result = map_event(event, **_KWARGS)
+        assert isinstance(result, CustomEvent)
+
+    def test_custom_event_name_is_a2ui(self) -> None:
+        """CustomEvent.name is 'a2ui'."""
+        event = _make_event(EventType.A2UI_SURFACE, data={"surfaceUpdate": {"id": "s1"}})
+        result = map_event(event, **_KWARGS)
+        assert result is not None
+        assert result.name == "a2ui"
+
+    def test_custom_event_type_is_custom(self) -> None:
+        """CustomEvent.type is AGUIEventType.CUSTOM."""
+        event = _make_event(EventType.A2UI_SURFACE, data={"surfaceUpdate": {"id": "s1"}})
+        result = map_event(event, **_KWARGS)
+        assert result is not None
+        assert result.type == AGUIEventType.CUSTOM
+
+    def test_value_preserves_complex_data(self) -> None:
+        """Complex nested A2UI data is preserved in CustomEvent.value."""
+        complex_data = {
+            "surfaceUpdate": {
+                "id": "form-1",
+                "components": [
+                    {"type": "TextInput", "id": "name", "label": "Name"},
+                    {"type": "Button", "id": "submit", "action": {"name": "submit"}},
+                ],
+            },
+        }
+        event = _make_event(EventType.A2UI_SURFACE, data=complex_data)
+        result = map_event(event, **_KWARGS)
+        assert result is not None
+        assert result.value == complex_data
+
+    def test_empty_data_returns_custom_event(self) -> None:
+        """A2UI_SURFACE with empty data returns CustomEvent with empty dict."""
+        event = _make_event(EventType.A2UI_SURFACE, data={})
+        result = map_event(event, **_KWARGS)
+        assert isinstance(result, CustomEvent)
+        assert result.value == {}
 
 
 # ---------------------------------------------------------------------------
