@@ -220,3 +220,101 @@ class TestKitListMissingIndex:
 
         assert result.exit_code == 1
         assert "No index found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# beddel kit enable
+# ---------------------------------------------------------------------------
+
+
+class TestKitEnable:
+    """Tests for ``beddel kit enable <name>``."""
+
+    def test_kit_enable_success(self, tmp_path: Path) -> None:
+        """Enabling an existing kit prints confirmation and exits 0."""
+        db_path = tmp_path / "index.db"
+        _populate_kits(
+            db_path,
+            [{"name": "my-kit", "enabled": 0}],
+        )
+
+        runner = CliRunner()
+        with patch(_INDEX_STORE_DB_PATH, db_path):
+            result = runner.invoke(cli, ["kit", "enable", "my-kit"])
+
+        assert result.exit_code == 0
+        assert "Enabled kit: my-kit" in result.output
+
+    def test_kit_enable_not_found(self, tmp_path: Path) -> None:
+        """Enabling a non-existent kit prints error and exits 1."""
+        db_path = tmp_path / "index.db"
+        _populate_kits(db_path, [{"name": "other-kit"}])
+
+        runner = CliRunner()
+        with patch(_INDEX_STORE_DB_PATH, db_path):
+            result = runner.invoke(cli, ["kit", "enable", "missing-kit"])
+
+        assert result.exit_code == 1
+        assert "Kit not found: missing-kit" in result.output
+
+    def test_kit_enable_no_index(self, tmp_path: Path) -> None:
+        """Missing index.db prints error and exits 1."""
+        db_path = tmp_path / "nonexistent" / "index.db"
+        assert not db_path.exists()
+
+        runner = CliRunner()
+        with patch(_INDEX_STORE_DB_PATH, db_path):
+            result = runner.invoke(cli, ["kit", "enable", "any-kit"])
+
+        assert result.exit_code == 1
+        assert "No index found" in result.output
+        assert "beddel connect" in result.output
+
+
+# ---------------------------------------------------------------------------
+# beddel kit disable
+# ---------------------------------------------------------------------------
+
+
+class TestKitDisable:
+    """Tests for ``beddel kit disable <name>``."""
+
+    def test_kit_disable_success(self, tmp_path: Path) -> None:
+        """Disabling an existing kit prints confirmation and exits 0."""
+        db_path = tmp_path / "index.db"
+        _populate_kits(
+            db_path,
+            [{"name": "my-kit", "enabled": 1}],
+        )
+
+        runner = CliRunner()
+        with patch(_INDEX_STORE_DB_PATH, db_path):
+            result = runner.invoke(cli, ["kit", "disable", "my-kit"])
+
+        assert result.exit_code == 0
+        assert "Disabled kit: my-kit" in result.output
+
+    def test_kit_disable_not_found(self, tmp_path: Path) -> None:
+        """Disabling a non-existent kit prints error and exits 1."""
+        db_path = tmp_path / "index.db"
+        _populate_kits(db_path, [{"name": "other-kit"}])
+
+        runner = CliRunner()
+        with patch(_INDEX_STORE_DB_PATH, db_path):
+            result = runner.invoke(cli, ["kit", "disable", "missing-kit"])
+
+        assert result.exit_code == 1
+        assert "Kit not found: missing-kit" in result.output
+
+    def test_kit_disable_no_index(self, tmp_path: Path) -> None:
+        """Missing index.db prints error and exits 1."""
+        db_path = tmp_path / "nonexistent" / "index.db"
+        assert not db_path.exists()
+
+        runner = CliRunner()
+        with patch(_INDEX_STORE_DB_PATH, db_path):
+            result = runner.invoke(cli, ["kit", "disable", "any-kit"])
+
+        assert result.exit_code == 1
+        assert "No index found" in result.output
+        assert "beddel connect" in result.output

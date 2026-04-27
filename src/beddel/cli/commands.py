@@ -1948,6 +1948,52 @@ def kit_list(*, is_json: bool = False) -> None:
         click.echo(fmt.format(*row))
 
 
+@kit.command("enable")
+@click.argument("name")
+def kit_enable(name: str) -> None:
+    """Enable a solution kit by name."""
+    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
+
+    db_path = Path(_DEFAULT_DB_PATH).expanduser()
+    if not db_path.exists():
+        click.echo(
+            "No index found. Run `beddel connect` first to build the index.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    index_store = IndexStore(db_path)
+    updated = asyncio.run(index_store.set_kit_enabled(name, True))
+    if updated:
+        click.echo(f"Enabled kit: {name}")
+    else:
+        click.echo(f"Kit not found: {name}", err=True)
+        raise SystemExit(1)
+
+
+@kit.command("disable")
+@click.argument("name")
+def kit_disable(name: str) -> None:
+    """Disable a solution kit by name."""
+    from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
+
+    db_path = Path(_DEFAULT_DB_PATH).expanduser()
+    if not db_path.exists():
+        click.echo(
+            "No index found. Run `beddel connect` first to build the index.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    index_store = IndexStore(db_path)
+    updated = asyncio.run(index_store.set_kit_enabled(name, False))
+    if updated:
+        click.echo(f"Disabled kit: {name}")
+    else:
+        click.echo(f"Kit not found: {name}", err=True)
+        raise SystemExit(1)
+
+
 @kit.command("export")
 @click.argument("workflow_path", type=click.Path(exists=True, path_type=Path))
 @click.option(
