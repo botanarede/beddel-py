@@ -57,6 +57,7 @@ default = [
     "opentelemetry-api>=1.0",
     "httpx>=0.27",
     "websockets>=13.0",
+    "a2a-sdk>=0.2.6",
 ]
 dev = [
     "beddel[default]",
@@ -148,3 +149,4 @@ warn_unused_configs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+timeout = 30

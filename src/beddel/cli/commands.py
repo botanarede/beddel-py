@@ -1501,6 +1501,52 @@ def _build_runtime_app(
             listing_router = create_workflow_listing_router(all_workflows)
             app.include_router(listing_router, prefix="/workflows")
 
+            # ── A2A server (Agent Card + task lifecycle) ───────────────────
+            try:
+                from a2a.server.apps.rest import A2ARESTFastAPIApplication
+                from a2a.server.request_handlers import DefaultRequestHandler
+                from a2a.server.tasks import InMemoryTaskStore
+
+                from beddel.adapters.a2a_server import (
+                    BeddelA2AExecutor,
+                    build_agent_card,
+                )
+
+                # Reuse the same executor registry built for AG-UI unified
+                a2a_registry = _agui_executors
+                agent_card = build_agent_card(a2a_registry)
+                a2a_executor = BeddelA2AExecutor(a2a_registry)
+                task_store = InMemoryTaskStore()
+                a2a_handler = DefaultRequestHandler(
+                    agent_executor=a2a_executor,
+                    task_store=task_store,
+                )
+                a2a_app = A2ARESTFastAPIApplication(
+                    agent_card=agent_card,
+                    http_handler=a2a_handler,
+                )
+
+                # Mount A2A sub-app and root-level Agent Card route
+                a2a_fastapi = a2a_app.build()
+                app.mount("/a2a", a2a_fastapi)
+                click.echo(
+                    f"  A2A: /.well-known/agent.json ({len(a2a_registry)} workflow(s))"
+                )
+
+                # Serve Agent Card at root /.well-known/agent.json (A2A spec)
+                @app.get("/.well-known/agent.json")
+                async def agent_card_route() -> dict:  # type: ignore[return]
+                    return agent_card.model_dump(exclude_none=True, by_alias=True)
+
+            except ImportError:
+                click.echo(
+                    "Warning: a2a-sdk not available. "
+                    "Install a2a-sdk to enable A2A endpoints.",
+                    err=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                click.echo(f"Warning: A2A server setup failed: {exc}", err=True)
+
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
