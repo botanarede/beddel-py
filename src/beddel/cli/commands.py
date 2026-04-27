@@ -423,14 +423,13 @@ def config_set(key: str, value: str) -> None:
             save_global_config(clean_cfg)
             click.echo(f"Warning: index.db unavailable, wrote llm_provider={value} to config.json")
     else:
-        # kits-path / flows-path: validate path exists
-        path = Path(value)
-        if not path.exists():
+        # kits-path / flows-path: resolve symlinks, then validate path exists
+        resolved = Path(value).resolve()
+        if not resolved.exists():
             raise click.BadParameter(f"Path '{value}' does not exist.", param_hint="'VALUE'")
         from beddel.cli.config import _SENTINEL, load_global_config, save_global_config
 
         cfg = load_global_config()
-        resolved = path.resolve()
         config_key = "kits_paths" if key == "kits-path" else "flows_paths"
         cfg[config_key] = [str(resolved)]
         # Remove sentinel values before saving
