@@ -25,6 +25,7 @@ from a2a.types import (
     AgentSkill,
     DataPart,
     Message,
+    Part,
     Role,
     TaskState,
     TextPart,
@@ -45,7 +46,7 @@ def _agent_message(text: str) -> Message:
     """Create an A2A :class:`Message` with a single :class:`TextPart`."""
     return Message(
         role=Role.agent,
-        parts=[TextPart(text=text)],
+        parts=[Part(root=TextPart(text=text))],
         message_id=str(uuid.uuid4()),
     )
 
@@ -74,6 +75,9 @@ def _extract_workflow_params(
     """
     workflow_id: str | None = None
     inputs: dict[str, Any] | None = None
+
+    if context.message is None:
+        return workflow_id, inputs
 
     for part in context.message.parts:
         # Unwrap the Part discriminated union to get the concrete type.
@@ -185,14 +189,14 @@ class BeddelA2AExecutor(AgentExecutor):
         elif et == EventType.TEXT_CHUNK:
             chunk = str(event.data.get("chunk", ""))
             await updater.add_artifact(
-                parts=[TextPart(text=chunk)],
+                parts=[Part(root=TextPart(text=chunk))],
                 append=True,
             )
 
         elif et == EventType.STEP_END:
             result_data = event.data.get("result", "")
             await updater.add_artifact(
-                parts=[TextPart(text=str(result_data))],
+                parts=[Part(root=TextPart(text=str(result_data)))],
                 name=event.step_id,
             )
 

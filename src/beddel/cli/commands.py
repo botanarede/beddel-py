@@ -1529,9 +1529,7 @@ def _build_runtime_app(
                 # Mount A2A sub-app and root-level Agent Card route
                 a2a_fastapi = a2a_app.build()
                 app.mount("/a2a", a2a_fastapi)
-                click.echo(
-                    f"  A2A: /.well-known/agent.json ({len(a2a_registry)} workflow(s))"
-                )
+                click.echo(f"  A2A: /.well-known/agent.json ({len(a2a_registry)} workflow(s))")
 
                 # Serve Agent Card at root /.well-known/agent.json (A2A spec)
                 @app.get("/.well-known/agent.json")
@@ -1540,8 +1538,7 @@ def _build_runtime_app(
 
             except ImportError:
                 click.echo(
-                    "Warning: a2a-sdk not available. "
-                    "Install a2a-sdk to enable A2A endpoints.",
+                    "Warning: a2a-sdk not available. Install a2a-sdk to enable A2A endpoints.",
                     err=True,
                 )
             except Exception as exc:  # noqa: BLE001
