@@ -27,7 +27,7 @@ __all__ = [
     "OutputGeneratorPrimitive",
 ]
 
-_SUPPORTED_FORMATS = frozenset({"json", "markdown", "text"})
+_SUPPORTED_FORMATS = frozenset({"json", "markdown", "text", "a2ui"})
 
 
 class OutputGeneratorPrimitive(IPrimitive):
@@ -79,7 +79,19 @@ class OutputGeneratorPrimitive(IPrimitive):
         resolved = self._resolve_template(template, context)
         format_type = config.get("format", "text")
         indent = config.get("indent", 2)
-        return self._format_output(resolved, format_type, indent=indent)
+        formatted = self._format_output(resolved, format_type, indent=indent)
+
+        if format_type == "a2ui":
+            # Store parsed A2UI surface data in metadata for executor to emit
+            # as A2UI_SURFACE BeddelEvents.
+            try:
+                a2ui_data = json.loads(formatted) if isinstance(formatted, str) else formatted
+            except (json.JSONDecodeError, TypeError):
+                a2ui_data = {}
+            surfaces = context.metadata.setdefault("_a2ui_surfaces", [])
+            surfaces.append(a2ui_data)
+
+        return formatted
 
     @staticmethod
     def _validate_config(config: dict[str, Any], context: ExecutionContext) -> str:
@@ -168,6 +180,25 @@ class OutputGeneratorPrimitive(IPrimitive):
                 raise PrimitiveError(
                     code=PRIM_OUTPUT_FORMAT_FAILED,
                     message=f"Failed to serialize output as JSON: {exc}",
+                    details={
+                        "primitive": "output-generator",
+                        "format": format_type,
+                        "original_error": str(exc),
+                    },
+                ) from exc
+
+        if format_type == "a2ui":
+            # A2UI format: validate/parse as JSON, return JSON string.
+            if isinstance(resolved, (dict, list)):
+                return json.dumps(resolved, ensure_ascii=False)
+            # String template — must be valid JSON
+            try:
+                parsed = json.loads(str(resolved))
+                return json.dumps(parsed, ensure_ascii=False)
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise PrimitiveError(
+                    code=PRIM_OUTPUT_FORMAT_FAILED,
+                    message=f"A2UI format requires valid JSON template: {exc}",
                     details={
                         "primitive": "output-generator",
                         "format": format_type,

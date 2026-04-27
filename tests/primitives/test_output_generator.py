@@ -335,3 +335,92 @@ class TestRegisterBuiltins:
         register_builtins(registry)
 
         assert isinstance(registry.get("output-generator"), OutputGeneratorPrimitive)
+
+
+# ---------------------------------------------------------------------------
+# Tests: A2UI format (Story BC9.3, Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestA2UIFormat:
+    """Tests for format: a2ui in output-generator."""
+
+    async def test_a2ui_valid_json_string_returns_json(self) -> None:
+        """A2UI format with valid JSON string template returns JSON string."""
+        prim = OutputGeneratorPrimitive()
+        ctx = make_context()
+        result = await prim.execute(
+            {"template": '{"surfaceUpdate": {"id": "s1"}}', "format": "a2ui"},
+            ctx,
+        )
+        parsed = json.loads(result)
+        assert parsed == {"surfaceUpdate": {"id": "s1"}}
+
+    async def test_a2ui_dict_template_returns_json_string(self) -> None:
+        """A2UI format with dict template (resolved from $input) returns JSON string."""
+        prim = OutputGeneratorPrimitive()
+        ctx = make_context(inputs={"ui": {"surfaceUpdate": {"id": "form-1"}}})
+        result = await prim.execute(
+            {"template": "$input.ui", "format": "a2ui"},
+            ctx,
+        )
+        parsed = json.loads(result)
+        assert parsed == {"surfaceUpdate": {"id": "form-1"}}
+
+    async def test_a2ui_with_variable_resolution(self) -> None:
+        """A2UI format resolves variables before JSON parsing."""
+        prim = OutputGeneratorPrimitive()
+        ctx = make_context(inputs={"form": {"type": "TextInput", "label": "Name"}})
+        result = await prim.execute(
+            {"template": "$input.form", "format": "a2ui"},
+            ctx,
+        )
+        parsed = json.loads(result)
+        assert parsed == {"type": "TextInput", "label": "Name"}
+
+    async def test_a2ui_invalid_json_raises_primitive_error(self) -> None:
+        """A2UI format with invalid JSON raises PrimitiveError."""
+        prim = OutputGeneratorPrimitive()
+        ctx = make_context()
+        with pytest.raises(PrimitiveError) as exc_info:
+            await prim.execute(
+                {"template": "not valid json {{{", "format": "a2ui"},
+                ctx,
+            )
+        assert exc_info.value.code == "BEDDEL-PRIM-102"
+
+    async def test_a2ui_populates_metadata_surfaces(self) -> None:
+        """A2UI format stores parsed data in context.metadata['_a2ui_surfaces']."""
+        prim = OutputGeneratorPrimitive()
+        ctx = make_context()
+        await prim.execute(
+            {"template": '{"surfaceUpdate": {"id": "s1"}}', "format": "a2ui"},
+            ctx,
+        )
+        assert "_a2ui_surfaces" in ctx.metadata
+        assert len(ctx.metadata["_a2ui_surfaces"]) == 1
+        assert ctx.metadata["_a2ui_surfaces"][0] == {"surfaceUpdate": {"id": "s1"}}
+
+    async def test_a2ui_multiple_calls_append_to_surfaces(self) -> None:
+        """Multiple A2UI format calls append to the surfaces list."""
+        prim = OutputGeneratorPrimitive()
+        ctx = make_context()
+        await prim.execute(
+            {"template": '{"id": "surface-1"}', "format": "a2ui"},
+            ctx,
+        )
+        await prim.execute(
+            {"template": '{"id": "surface-2"}', "format": "a2ui"},
+            ctx,
+        )
+        assert len(ctx.metadata["_a2ui_surfaces"]) == 2
+
+    async def test_non_a2ui_format_does_not_populate_surfaces(self) -> None:
+        """Non-a2ui formats do NOT populate _a2ui_surfaces in metadata."""
+        prim = OutputGeneratorPrimitive()
+        ctx = make_context()
+        await prim.execute(
+            {"template": "Hello", "format": "text"},
+            ctx,
+        )
+        assert "_a2ui_surfaces" not in ctx.metadata
