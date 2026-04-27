@@ -511,3 +511,15 @@ class TestExtractInputs:
     def test_empty_body_returns_empty_dict(self) -> None:
         result = _extract_inputs({})
         assert result == {}
+
+    def test_a2ui_action_non_dict_raises_value_error(self) -> None:
+        """Malformed a2ui_action (non-dict) raises ValueError."""
+        body = {"state": {"workflow_id": "demo", "a2ui_action": "not-a-dict"}}
+        with pytest.raises(ValueError, match="a2ui_action must be a dict"):
+            _extract_inputs(body)
+
+    def test_a2ui_action_null_is_allowed(self) -> None:
+        """Null a2ui_action is treated as absent (no error)."""
+        body = {"state": {"workflow_id": "demo", "a2ui_action": None}}
+        result = _extract_inputs(body)
+        assert result["a2ui_action"] is None

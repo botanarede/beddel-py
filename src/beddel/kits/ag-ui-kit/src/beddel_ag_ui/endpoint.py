@@ -72,7 +72,13 @@ def _extract_inputs(body: dict[str, Any]) -> dict[str, Any]:
     """
     # RunAgentInput format: prefer state, then forwarded_props
     if "state" in body and isinstance(body["state"], dict):
-        return body["state"]
+        inputs = body["state"]
+        # Validate a2ui_action is a dict if present (BC9.5)
+        a2ui = inputs.get("a2ui_action")
+        if a2ui is not None and not isinstance(a2ui, dict):
+            msg = f"a2ui_action must be a dict, got {type(a2ui).__name__}"
+            raise ValueError(msg)
+        return inputs
     if "forwarded_props" in body and isinstance(body["forwarded_props"], dict):
         return body["forwarded_props"]
     # Fall back to the raw body as inputs
