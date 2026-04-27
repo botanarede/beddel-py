@@ -14,6 +14,7 @@ from beddel.adapters.circuit_breaker import InMemoryCircuitBreaker
 from beddel.adapters.decision_store import InMemoryDecisionStore
 from beddel.adapters.event_store import InMemoryEventStore, SQLiteEventStore
 from beddel.adapters.hooks import LifecycleHookManager
+from beddel.adapters.index_store import IndexStore
 from beddel.adapters.knowledge_provider import YAMLKnowledgeAdapter
 from beddel.adapters.memory_provider import CompositeMemoryProvider, InMemoryMemoryProvider
 from beddel.adapters.pii_middleware import PIIMiddleware
@@ -29,6 +30,7 @@ __all__ = [
     "InMemoryBudgetEnforcer",
     "InMemoryCircuitBreaker",
     "InMemoryDecisionStore",
+    "IndexStore",
     "InMemoryEventStore",
     "InMemoryMemoryProvider",
     "InMemoryStateStore",
