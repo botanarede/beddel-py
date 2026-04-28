@@ -1430,3 +1430,215 @@ class TestConnectRemoteDeprecationWarning:
         # CliRunner mixes stderr into output by default
         assert "deprecated" in result.output.lower()
         assert "config.json" in result.output
+
+
+# ---------------------------------------------------------------------------
+# BC10.2 — HTTP long-poll relay tests
+# ---------------------------------------------------------------------------
+
+
+class TestRelayLoopHttpLongPoll:
+    """Tests for _relay_loop HTTP long-poll behavior (Story BC10.2)."""
+
+    async def test_relay_loop_connected_on_204(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """HTTP long-poll prints 'Connected to' on first 204 response."""
+        import httpx
+
+        from beddel.cli.commands import _relay_loop
+
+        call_count = 0
+
+        async def _mock_get(self_client: Any, url: str, **kwargs: Any) -> Any:
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                # Stop after second poll by raising an error that triggers break
+                raise SystemExit(0)
+            return httpx.Response(204, request=httpx.Request("GET", url))
+
+        monkeypatch.setattr("httpx.AsyncClient.get", _mock_get)
+
+        # Capture click output
+        output_lines: list[str] = []
+        monkeypatch.setattr("click.echo", lambda msg="", **kw: output_lines.append(str(msg)))
+
+        # Suppress signal registration in test
+        import signal
+
+        monkeypatch.setattr(signal, "signal", lambda *_a: None)
+
+        with pytest.raises(SystemExit):
+            await _relay_loop(
+                dashboard_url="https://dash.example.com",
+                token="test-token",
+                username="testuser",
+                local_port=8000,
+            )
+
+        assert any("Connected to" in line for line in output_lines)
+
+    async def test_relay_loop_auth_error_401(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """HTTP long-poll raises SystemExit(1) on 401 and prints auth error."""
+        import httpx
+
+        from beddel.cli.commands import _relay_loop
+
+        async def _mock_get(self_client: Any, url: str, **kwargs: Any) -> Any:
+            return httpx.Response(401, request=httpx.Request("GET", url))
+
+        monkeypatch.setattr("httpx.AsyncClient.get", _mock_get)
+
+        # Capture stderr output
+        stderr_lines: list[str] = []
+
+        def _mock_echo(msg: str = "", err: bool = False, **kw: Any) -> None:
+            if err:
+                stderr_lines.append(str(msg))
+
+        monkeypatch.setattr("click.echo", _mock_echo)
+
+        import signal
+
+        monkeypatch.setattr(signal, "signal", lambda *_a: None)
+
+        with pytest.raises(SystemExit) as exc_info:
+            await _relay_loop(
+                dashboard_url="https://dash.example.com",
+                token="bad-token",
+                username="testuser",
+                local_port=8000,
+            )
+
+        assert exc_info.value.code == 1
+        assert any("Authentication failed" in line for line in stderr_lines)
+
+    async def test_relay_loop_backoff_on_5xx(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """HTTP long-poll reconnects with backoff on 500 response."""
+        import httpx
+
+        from beddel.cli.commands import _relay_loop
+
+        call_count = 0
+
+        async def _mock_get(self_client: Any, url: str, **kwargs: Any) -> Any:
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                raise SystemExit(0)
+            return httpx.Response(500, request=httpx.Request("GET", url))
+
+        monkeypatch.setattr("httpx.AsyncClient.get", _mock_get)
+
+        # Capture stderr output
+        stderr_lines: list[str] = []
+
+        def _mock_echo(msg: str = "", err: bool = False, **kw: Any) -> None:
+            if err:
+                stderr_lines.append(str(msg))
+
+        monkeypatch.setattr("click.echo", _mock_echo)
+
+        # Patch asyncio.sleep to avoid real delays
+        monkeypatch.setattr("asyncio.sleep", AsyncMock())
+
+        import signal
+
+        monkeypatch.setattr(signal, "signal", lambda *_a: None)
+
+        with pytest.raises(SystemExit):
+            await _relay_loop(
+                dashboard_url="https://dash.example.com",
+                token="test-token",
+                username="testuser",
+                local_port=8000,
+            )
+
+        assert any("Reconnecting..." in line for line in stderr_lines)
+
+    async def test_handle_relay_run_posts_events(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_handle_relay_run collects SSE events and POSTs them to relay endpoint."""
+        import httpx
+
+        from beddel.cli.commands import _handle_relay_run
+
+        # Simulate SSE stream lines from local AG-UI endpoint
+        sse_lines = [
+            "event: message",
+            'data: {"type": "TEXT_MESSAGE_START", "messageId": "m1"}',
+            "",
+            "event: message",
+            'data: {"type": "TEXT_MESSAGE_END", "messageId": "m1"}',
+            "",
+        ]
+
+        # Track POSTed events
+        posted_payloads: list[dict[str, Any]] = []
+
+        class MockStreamResponse:
+            """Mock for httpx streaming response context manager."""
+
+            status_code = 200
+
+            def raise_for_status(self) -> None:
+                pass
+
+            async def aiter_lines(self):  # type: ignore[no-untyped-def]
+                for line in sse_lines:
+                    yield line
+
+            async def aclose(self) -> None:
+                pass
+
+        class MockClient:
+            """Mock httpx.AsyncClient that handles both stream and post."""
+
+            def __init__(self, **kwargs: Any) -> None:
+                self._timeout = kwargs.get("timeout")
+
+            async def __aenter__(self) -> MockClient:
+                return self
+
+            async def __aexit__(self, *args: Any) -> None:
+                pass
+
+            def stream(self, method: str, url: str, **kwargs: Any) -> Any:
+                """Return an async context manager yielding MockStreamResponse."""
+
+                class _StreamCtx:
+                    async def __aenter__(self_ctx) -> MockStreamResponse:  # noqa: N805
+                        return MockStreamResponse()
+
+                    async def __aexit__(self_ctx, *args: Any) -> None:  # noqa: N805
+                        pass
+
+                return _StreamCtx()
+
+            async def post(self, url: str, **kwargs: Any) -> Any:
+                posted_payloads.append({"url": url, **kwargs})
+                return httpx.Response(200, request=httpx.Request("POST", url))
+
+        monkeypatch.setattr("httpx.AsyncClient", MockClient)
+
+        command = {
+            "agent_name": "beddel",
+            "input": {"state": {"workflow_id": "test-wf"}},
+        }
+
+        await _handle_relay_run(
+            command=command,
+            local_port=9000,
+            dashboard_url="https://dash.example.com",
+            token="test-token",
+        )
+
+        # Verify events were POSTed to the relay endpoint
+        assert len(posted_payloads) == 1
+        post_call = posted_payloads[0]
+        assert post_call["url"] == "https://dash.example.com/api/relay/events"
+        assert "json" in post_call
+        events = post_call["json"]["events"]
+        assert len(events) == 2
+        assert events[0]["type"] == "TEXT_MESSAGE_START"
+        assert events[1]["type"] == "TEXT_MESSAGE_END"
+        # Verify auth header was sent
+        assert post_call["headers"]["Authorization"] == "Bearer test-token"

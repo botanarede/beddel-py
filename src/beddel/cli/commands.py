@@ -1139,26 +1139,26 @@ async def _wait_for_shutdown(*, uvicorn_server: Any | None = None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# WebSocket relay helpers (used by ``connect remote``)
+# HTTP relay helpers (used by ``connect remote``)
 # ---------------------------------------------------------------------------
 
 
 async def _handle_relay_run(
-    ws: Any,
-    payload: dict[str, Any],
+    command: dict[str, Any],
     local_port: int,
+    dashboard_url: str,
+    token: str,
 ) -> None:
-    """Forward a relay ``run`` message to the local AG-UI endpoint.
+    """Execute a relay command locally and POST events back to the dashboard.
 
-    Extracts the ``RunAgentInput`` from *payload* and POSTs it to the
+    Extracts the ``RunAgentInput`` from *command* and POSTs it to the
     local AG-UI endpoint.  The SSE response is parsed line-by-line and
-    each ``BaseEvent`` is relayed back over the WebSocket as an
-    ``event`` message.
+    collected events are POSTed to ``/api/relay/events``.
     """
     import httpx
 
-    agent_name: str = payload.get("agent_name", "beddel")
-    run_input: Any = payload.get("input", {})
+    agent_name: str = command.get("agent_name", "beddel")
+    run_input: Any = command.get("input", {})
 
     # Extract workflow_id from the coagent state in the RunAgentInput
     workflow_id: str = agent_name
@@ -1171,8 +1171,11 @@ async def _handle_relay_run(
             workflow_id = forwarded["workflow_id"]
 
     url = f"http://127.0.0.1:{local_port}/ag-ui/{workflow_id}"
+    events_url = f"{dashboard_url.rstrip('/')}/api/relay/events"
+    headers = {"Authorization": f"Bearer {token}"}
 
     try:
+        collected_events: list[dict[str, Any]] = []
         async with (
             httpx.AsyncClient(timeout=None) as client,
             client.stream("POST", url, json=run_input) as resp,
@@ -1186,49 +1189,45 @@ async def _handle_relay_run(
                     event = json.loads(data_str)
                 except json.JSONDecodeError:
                     continue
-                msg = json.dumps(
-                    {
-                        "type": "event",
-                        "payload": {
-                            "event_type": event.get("type", ""),
-                            "data": event,
-                        },
-                    },
-                )
-                await ws.send(msg)
+                collected_events.append(event)
+
+        # POST collected events to the dashboard relay endpoint
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            await client.post(
+                events_url,
+                json={"events": collected_events},
+                headers=headers,
+            )
     except Exception as exc:  # noqa: BLE001
-        err_msg = json.dumps(
-            {
-                "type": "error",
-                "payload": {
-                    "message": str(exc),
-                    "code": "RELAY_EXEC_ERROR",
-                },
-            },
-        )
-        await ws.send(err_msg)
+        # POST a single error event to the relay endpoint
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                await client.post(
+                    events_url,
+                    json={"events": [{"type": "RUN_ERROR", "message": str(exc)}]},
+                    headers=headers,
+                )
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def _relay_loop(
     dashboard_url: str,
     token: str,
-    username: str,
+    username: str,  # noqa: ARG001
     local_port: int,
     *,
     uvicorn_server: Any | None = None,
 ) -> None:
-    """Maintain a WebSocket connection to the dashboard relay.
+    """Poll the dashboard for relay commands via HTTP long-poll.
 
-    Sends a ``register`` message on connect, responds to application-level
-    ``ping`` with ``pong``, and dispatches ``run`` messages to
-    :func:`_handle_relay_run`.  Reconnects with exponential backoff on
-    disconnect.
+    GETs ``/api/relay/commands`` (server holds up to 30s), executes
+    received commands locally, and POSTs events back.  Reconnects with
+    exponential backoff on errors.
     """
     import signal
 
-    import websockets
-
-    from beddel import __version__ as sdk_version
+    import httpx
 
     stop_event = asyncio.Event()
 
@@ -1241,82 +1240,62 @@ async def _relay_loop(
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    # Build WebSocket URL: http(s) → ws(s), append path.
-    ws_url = (
-        dashboard_url.replace("https://", "wss://").replace("http://", "ws://").rstrip("/")
-        + "/api/relay/ws"
-    )
+    commands_url = f"{dashboard_url.rstrip('/')}/api/relay/commands"
+    headers = {"Authorization": f"Bearer {token}"}
+    poll_timeout = httpx.Timeout(connect=10.0, read=35.0, write=10.0, pool=10.0)
 
-    backoff = 1.0
+    backoff = 0.0
     max_backoff = 8.0
+    connected = False
 
     while not stop_event.is_set():
         try:
-            async with websockets.connect(
-                ws_url,
-                additional_headers={
-                    "Authorization": f"Bearer {token}",
-                },
-            ) as ws:
-                # --- Register ---
-                await ws.send(
-                    json.dumps(
-                        {
-                            "type": "register",
-                            "payload": {
-                                "username": username,
-                                "sdk_version": sdk_version,
-                            },
-                        }
-                    )
+            async with httpx.AsyncClient(timeout=poll_timeout) as client:
+                resp = await client.get(commands_url, headers=headers)
+
+            if resp.status_code == 200:
+                if not connected:
+                    click.echo(f"Connected to {dashboard_url}")
+                    connected = True
+                backoff = 0.0
+                command: dict[str, Any] = resp.json()
+                await _handle_relay_run(command, local_port, dashboard_url, token)
+
+            elif resp.status_code == 204:
+                if not connected:
+                    click.echo(f"Connected to {dashboard_url}")
+                    connected = True
+                backoff = 0.0
+                continue
+
+            elif resp.status_code in (401, 403):
+                click.echo(
+                    "Authentication failed. Check your token and try again.",
+                    err=True,
                 )
-                click.echo(f"Connected to relay at {dashboard_url}")
+                raise SystemExit(1)
 
-                backoff = 1.0  # Reset on successful connection
+            else:
+                # 5xx or unexpected status — treat as transient error
+                backoff = min(max(backoff * 2, 1.0), max_backoff)
+                click.echo(
+                    f"Reconnecting... (server returned {resp.status_code}, "
+                    f"retrying in {backoff:.0f}s)",
+                    err=True,
+                )
+                await asyncio.sleep(backoff)
 
-                # --- Message loop ---
-                async for raw_msg in ws:
-                    if stop_event.is_set():
-                        break
-
-                    try:
-                        msg: dict[str, Any] = json.loads(raw_msg)
-                    except (json.JSONDecodeError, TypeError):
-                        continue
-
-                    msg_type = msg.get("type")
-
-                    if msg_type == "ping":
-                        await ws.send(json.dumps({"type": "pong"}))
-                    elif msg_type == "run":
-                        await _handle_relay_run(
-                            ws,
-                            msg["payload"],
-                            local_port,
-                        )
-                    elif msg_type == "error":
-                        err_payload = msg.get("payload", {})
-                        click.echo(
-                            f"Relay error: {err_payload.get('message', msg)}",
-                            err=True,
-                        )
-
-        except websockets.ConnectionClosed:
+        except SystemExit:
+            raise
+        except (httpx.HTTPError, OSError):
             if stop_event.is_set():
                 break
-            click.echo("Reconnecting...")
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, max_backoff)
-
-        except OSError as exc:
-            if stop_event.is_set():
-                break
+            backoff = min(max(backoff * 2, 1.0), max_backoff)
             click.echo(
-                f"Connection failed: {exc}. Retrying in {backoff:.0f}s...",
+                f"Reconnecting... (retrying in {backoff:.0f}s)",
                 err=True,
             )
             await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, max_backoff)
 
     click.echo("Disconnected.")
 
