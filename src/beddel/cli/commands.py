@@ -756,7 +756,7 @@ def _connect_remote_flow(
             click.echo(f"  AG-UI: http://{host}:{port}/ag-ui/{wf_id}")
 
         if use_relay:
-            # Explicit opt-in: use WebSocket relay (fallback mode)
+            # Explicit opt-in: use HTTP relay (long-poll mode)
             asyncio.run(_relay_loop(dashboard_url, token, user, port, uvicorn_server=uvi_server))
         else:
             # Default: tunnel-based flow — print instructions and wait
