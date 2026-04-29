@@ -932,13 +932,15 @@ def connect(
             server_thread.join(timeout=5.0)
             click.echo("Runtime stopped.")
         else:
-            # Remote mode: OAuth + token exchange + runtime + tunnel (or relay if --relay)
+            # Remote mode: OAuth + token exchange + runtime + relay
+            # Relay is always enabled for remote — no tunnel needed.
+            # The --relay flag is kept for backward compat but ignored.
             _connect_remote_flow(
                 host=host,
                 port=port,
                 workflow_paths=workflow_paths,
                 dashboard_url=dashboard_url,
-                use_relay=relay,
+                use_relay=True,
             )
 
 
@@ -1241,12 +1243,34 @@ async def _relay_loop(
     signal.signal(signal.SIGTERM, _handle_signal)
 
     commands_url = f"{dashboard_url.rstrip('/')}/api/relay/commands"
+    metadata_url = f"{dashboard_url.rstrip('/')}/api/relay/metadata"
     headers = {"Authorization": f"Bearer {token}"}
     poll_timeout = httpx.Timeout(connect=10.0, read=35.0, write=10.0, pool=10.0)
+
+    # Report available workflows to the dashboard on connect and periodically
+    async def _report_metadata() -> None:
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(10.0), follow_redirects=True
+            ) as client:
+                # Fetch workflow list from local runtime
+                resp = await client.get(f"http://127.0.0.1:{local_port}/workflows")
+                if resp.status_code == 200:
+                    workflows = resp.json()
+                    await client.post(
+                        metadata_url,
+                        json={"workflows": workflows},
+                        headers=headers,
+                    )
+                    click.echo(f"Reported {len(workflows)} workflow(s) to dashboard.")
+        except Exception:  # noqa: BLE001
+            pass  # Best-effort — don't block the relay loop
 
     backoff = 0.0
     max_backoff = 8.0
     connected = False
+    metadata_interval = 60.0  # Re-report metadata every 60s
+    last_metadata_report = 0.0
 
     while not stop_event.is_set():
         try:
@@ -1257,6 +1281,8 @@ async def _relay_loop(
                 if not connected:
                     click.echo(f"Connected to {dashboard_url}")
                     connected = True
+                    await _report_metadata()
+                    last_metadata_report = asyncio.get_event_loop().time()
                 backoff = 0.0
                 command: dict[str, Any] = resp.json()
                 await _handle_relay_run(command, local_port, dashboard_url, token)
@@ -1265,7 +1291,14 @@ async def _relay_loop(
                 if not connected:
                     click.echo(f"Connected to {dashboard_url}")
                     connected = True
+                    await _report_metadata()
+                    last_metadata_report = asyncio.get_event_loop().time()
                 backoff = 0.0
+                # Periodically refresh metadata
+                now = asyncio.get_event_loop().time()
+                if now - last_metadata_report > metadata_interval:
+                    await _report_metadata()
+                    last_metadata_report = now
                 continue
 
             elif resp.status_code in (401, 403):
