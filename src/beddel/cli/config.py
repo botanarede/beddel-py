@@ -6,12 +6,16 @@ Implements a 3-layer configuration hierarchy:
 2. **Global** (``~/.config/beddel/config.json``)
 3. **Interactive prompt** (when no kits found, asks user and saves to global)
 
-Both files share the same JSON schema::
+Both files use JSONC format (JSON with Comments) — single-line ``//``
+comments are stripped before parsing.  This follows the same convention
+as VS Code (``settings.json``), TypeScript (``tsconfig.json``), and
+ESLint configs::
 
     {
         "kits_paths": ["/absolute/path/to/kits"],
         "flows_paths": ["/absolute/path/to/flows"],
         "dev": true,
+        // "dashboard_url": "https://connect.beddel.com.br",
         "dashboard_url": "http://localhost:3000",
         "llm_provider": "gemini"
     }
@@ -23,6 +27,7 @@ parent directory).  Paths in the global config must be absolute.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -38,6 +43,37 @@ GLOBAL_CONFIG_PATH: Path = Path("~/.config/beddel/config.json").expanduser()
 
 PROJECT_CONFIG_NAME: str = ".beddel.json"
 """Project-local config filename."""
+
+
+# ---------------------------------------------------------------------------
+# JSONC support (JSON with Comments)
+# ---------------------------------------------------------------------------
+
+# Matches single-line // comments that are NOT inside a JSON string value.
+# Strategy: split each line at the first // that is outside quotes.
+_JSONC_LINE_COMMENT = re.compile(
+    r'("(?:[^"\\]|\\.)*")|//.*$',
+)
+
+
+def _strip_jsonc_comments(text: str) -> str:
+    """Remove single-line ``//`` comments from JSONC text.
+
+    Preserves ``//`` inside quoted strings (e.g. URLs like
+    ``"http://localhost:3000"``).  Does NOT handle block comments
+    ``/* ... */`` — those are rare in config files.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        # Group 1 is a quoted string — keep it intact
+        if match.group(1) is not None:
+            return match.group(1)
+        # Otherwise it's a // comment — remove it
+        return ""
+
+    lines = text.split("\n")
+    stripped = [_JSONC_LINE_COMMENT.sub(_replace, line) for line in lines]
+    return "\n".join(stripped)
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +139,7 @@ def load_project_config(config_path: Path) -> dict[str, Any]:
 
     Relative paths are resolved against the config file's parent directory.
     """
-    raw = json.loads(config_path.read_text())
+    raw = json.loads(_strip_jsonc_comments(config_path.read_text()))
     base_dir = config_path.parent
     result = _empty_config()
     if "kits_paths" in raw:
@@ -129,7 +165,7 @@ def load_global_config() -> dict[str, Any]:
     if not GLOBAL_CONFIG_PATH.exists():
         return _empty_config()
     try:
-        raw = json.loads(GLOBAL_CONFIG_PATH.read_text())
+        raw = json.loads(_strip_jsonc_comments(GLOBAL_CONFIG_PATH.read_text()))
     except (json.JSONDecodeError, OSError):
         return _empty_config()
     result = _empty_config()

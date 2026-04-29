@@ -275,3 +275,75 @@ class TestLoadGlobalConfigPreservesNewKeys:
 
         assert result["dev"] is config_mod._SENTINEL
         assert result["dashboard_url"] is config_mod._SENTINEL
+
+# ---------------------------------------------------------------------------
+# JSONC support (JSON with Comments)
+# ---------------------------------------------------------------------------
+
+
+class TestStripJsoncComments:
+    """_strip_jsonc_comments removes // comments but preserves URLs in strings."""
+
+    def test_strips_line_comment(self) -> None:
+        text = '{\n  "key": "value" // this is a comment\n}'
+        result = config_mod._strip_jsonc_comments(text)
+        assert json.loads(result) == {"key": "value"}
+
+    def test_strips_full_line_comment(self) -> None:
+        text = '{\n  // "commented_out": true,\n  "key": "value"\n}'
+        result = config_mod._strip_jsonc_comments(text)
+        assert json.loads(result) == {"key": "value"}
+
+    def test_preserves_url_in_string(self) -> None:
+        text = '{\n  "url": "http://localhost:3000"\n}'
+        result = config_mod._strip_jsonc_comments(text)
+        assert json.loads(result) == {"url": "http://localhost:3000"}
+
+    def test_preserves_url_with_trailing_comment(self) -> None:
+        text = '{\n  "url": "http://localhost:3000" // dashboard\n}'
+        result = config_mod._strip_jsonc_comments(text)
+        assert json.loads(result) == {"url": "http://localhost:3000"}
+
+    def test_real_config_with_comments(self) -> None:
+        """Reproduces the actual config.json that caused the bug."""
+        text = """{
+  "kits_paths": [
+    "/home/user/kits"
+  ],
+  "flows_paths": [
+    "/home/user/flows"
+  ],
+  "dev": true,
+  // "dashboard_url": "https://connect.beddel.com.br",
+  "dashboard_url": "http://localhost:3000",
+  "llm_provider": "gemini"
+}"""
+        result = config_mod._strip_jsonc_comments(text)
+        parsed = json.loads(result)
+        assert parsed["kits_paths"] == ["/home/user/kits"]
+        assert parsed["dev"] is True
+        assert parsed["dashboard_url"] == "http://localhost:3000"
+        assert parsed["llm_provider"] == "gemini"
+
+
+class TestGlobalConfigWithComments:
+    """load_global_config handles JSONC files correctly."""
+
+    def test_loads_config_with_comments(self, monkeypatch: object, tmp_path: Path) -> None:
+        mp = monkeypatch  # type: ignore[assignment]
+        global_cfg = tmp_path / "config.json"
+        global_cfg.write_text(
+            '{\n'
+            '  "kits_paths": ["/path/to/kits"],\n'
+            '  // "dashboard_url": "https://prod.example.com",\n'
+            '  "dashboard_url": "http://localhost:3000",\n'
+            '  "dev": true\n'
+            '}'
+        )
+        mp.setattr(config_mod, "GLOBAL_CONFIG_PATH", global_cfg)
+
+        result = config_mod.load_global_config()
+
+        assert result["kits_paths"] == ["/path/to/kits"]
+        assert result["dashboard_url"] == "http://localhost:3000"
+        assert result["dev"] is True
