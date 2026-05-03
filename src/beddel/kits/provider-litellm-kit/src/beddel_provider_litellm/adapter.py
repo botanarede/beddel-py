@@ -44,6 +44,7 @@ _PREFIX_ENV_MAP: dict[str, str] = {
     "azure/": "AZURE_API_KEY",
     "cohere/": "COHERE_API_KEY",
     "mistral/": "MISTRAL_API_KEY",
+    "xiaomi_mimo/": "XIAOMI_MIMO_API_KEY",
 }
 
 
