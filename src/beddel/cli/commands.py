@@ -1182,7 +1182,13 @@ async def _handle_relay_run_agent_engine(
 
     # Build Agent Engine URL
     # agent_engine_url is like: projects/beddel-beta/locations/us-central1/reasoningEngines/123
-    base_url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/{agent_engine_url}"
+    # Extract region from the resource path for the hostname
+    _parts = agent_engine_url.split("/")
+    _loc_idx = _parts.index("locations") if "locations" in _parts else -1
+    _region = (
+        _parts[_loc_idx + 1] if _loc_idx >= 0 and _loc_idx + 1 < len(_parts) else "us-central1"
+    )
+    base_url = f"https://{_region}-aiplatform.googleapis.com/v1beta1/{agent_engine_url}"
     query_url = f"{base_url}:query"
 
     events_url = f"{dashboard_url.rstrip('/')}/api/relay/events"
@@ -1203,8 +1209,8 @@ async def _handle_relay_run_agent_engine(
             ae_data = ae_resp.json()
 
         # Convert Agent Engine response to ADK events
-        from beddel_ag_ui.adapter import BeddelAGUIAdapter
-        from beddel_ag_ui.adk_mapper import map_adk_events
+        from beddel_ag_ui.adapter import BeddelAGUIAdapter  # type: ignore[import-not-found]
+        from beddel_ag_ui.adk_mapper import map_adk_events  # type: ignore[import-not-found]
 
         # Build synthetic ADK events from the Agent Engine response
         adk_events_list: list[dict[str, Any]] = []
