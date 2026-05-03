@@ -6,6 +6,7 @@ Re-exports the public API from the kit's modules:
 - :func:`create_agui_endpoint` — FastAPI AG-UI endpoint factory
 - :func:`create_unified_agui_endpoint` — Unified multi-workflow AG-UI endpoint factory
 - :func:`create_workflow_listing_router` — Workflow listing endpoint factory
+- :func:`map_adk_events` — ADK Event → BeddelEvent translation layer
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ __all__ = [
     "create_agui_endpoint",
     "create_unified_agui_endpoint",
     "create_workflow_listing_router",
+    "map_adk_events",
 ]
 
 
@@ -36,4 +38,8 @@ def __getattr__(name: str) -> object:
         from beddel_ag_ui.listing import create_workflow_listing_router
 
         return create_workflow_listing_router
+    if name == "map_adk_events":
+        from beddel_ag_ui.adk_mapper import map_adk_events
+
+        return map_adk_events
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

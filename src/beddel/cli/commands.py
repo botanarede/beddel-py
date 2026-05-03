@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -1145,18 +1145,147 @@ async def _wait_for_shutdown(*, uvicorn_server: Any | None = None) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def _handle_relay_run_agent_engine(
+    command: dict[str, Any],
+    agent_engine_url: str,
+    dashboard_url: str,
+    token: str,
+) -> None:
+    """Execute a relay command via Agent Engine and POST events back to the dashboard.
+
+    Gets a Bearer token via Application Default Credentials, calls the
+    Agent Engine ``:query`` endpoint, translates the response through the
+    two-stage ADK → BeddelEvent → AG-UI pipeline, and POSTs the resulting
+    events to the dashboard relay endpoint.
+    """
+    import httpx
+
+    # Extract message from the relay command input
+    run_input: Any = command.get("input", {})
+    message = ""
+    if isinstance(run_input, dict):
+        state = run_input.get("state", {})
+        if isinstance(state, dict):
+            message = state.get("message", "")
+        forwarded = run_input.get("forwarded_props", {})
+        if isinstance(forwarded, dict) and not message:
+            message = forwarded.get("message", "")
+
+    # Get Bearer token via ADC (lazy imports)
+    import google.auth
+    import google.auth.transport.requests
+
+    credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)  # type: ignore[no-untyped-call]
+    bearer_token: str = credentials.token  # type: ignore[assignment]
+
+    # Build Agent Engine URL
+    # agent_engine_url is like: projects/beddel-beta/locations/us-central1/reasoningEngines/123
+    base_url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/{agent_engine_url}"
+    query_url = f"{base_url}:query"
+
+    events_url = f"{dashboard_url.rstrip('/')}/api/relay/events"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    try:
+        # Call Agent Engine :query
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+            ae_resp = await client.post(
+                query_url,
+                json={"input": {"message": message}},
+                headers={
+                    "Authorization": f"Bearer {bearer_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            ae_resp.raise_for_status()
+            ae_data = ae_resp.json()
+
+        # Convert Agent Engine response to ADK events
+        from beddel_ag_ui.adapter import BeddelAGUIAdapter
+        from beddel_ag_ui.adk_mapper import map_adk_events
+
+        # Build synthetic ADK events from the Agent Engine response
+        adk_events_list: list[dict[str, Any]] = []
+        output = ae_data.get("output", "")
+        if isinstance(output, str) and output:
+            adk_events_list.append(
+                {
+                    "content": {
+                        "role": "model",
+                        "parts": [{"text": output}],
+                    },
+                }
+            )
+        elif isinstance(output, dict):
+            # Structured output — may contain parts
+            content = output.get("content", output)
+            if isinstance(content, dict):
+                adk_events_list.append({"content": content})
+            else:
+                adk_events_list.append(
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [{"text": str(content)}],
+                        },
+                    }
+                )
+
+        async def _adk_stream() -> AsyncGenerator[dict[str, Any], None]:
+            for event in adk_events_list:
+                yield event
+
+        # Two-stage pipeline: ADK events → BeddelEvent → AG-UI events
+        collected_events: list[dict[str, Any]] = []
+        async for agui_event in BeddelAGUIAdapter.stream_events(
+            map_adk_events(_adk_stream()),
+        ):
+            collected_events.append(agui_event.model_dump(mode="json"))
+
+        # POST collected events to the dashboard relay endpoint
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            await client.post(
+                events_url,
+                json={"events": collected_events},
+                headers=headers,
+            )
+    except Exception as exc:  # noqa: BLE001
+        # POST a single error event to the relay endpoint
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                await client.post(
+                    events_url,
+                    json={"events": [{"type": "RUN_ERROR", "message": str(exc)}]},
+                    headers=headers,
+                )
+        except Exception:  # noqa: BLE001
+            pass
+
+
 async def _handle_relay_run(
     command: dict[str, Any],
     local_port: int,
     dashboard_url: str,
     token: str,
+    *,
+    agent_engine_url: str | None = None,
 ) -> None:
     """Execute a relay command locally and POST events back to the dashboard.
 
     Extracts the ``RunAgentInput`` from *command* and POSTs it to the
     local AG-UI endpoint.  The SSE response is parsed line-by-line and
     collected events are POSTed to ``/api/relay/events``.
+
+    When *agent_engine_url* is set, delegates to
+    :func:`_handle_relay_run_agent_engine` instead of calling the local
+    FastAPI runtime.
     """
+    if agent_engine_url is not None:
+        await _handle_relay_run_agent_engine(command, agent_engine_url, dashboard_url, token)
+        return
+
     import httpx
 
     agent_name: str = command.get("agent_name", "beddel")
@@ -1231,6 +1360,13 @@ async def _relay_loop(
 
     import httpx
 
+    # Resolve Agent Engine URL from config (project-local → global → None)
+    from beddel.cli.config import resolve_agent_engine_url
+
+    agent_engine_url = resolve_agent_engine_url()
+    if agent_engine_url:
+        click.echo(f"Agent Engine: {agent_engine_url}")
+
     stop_event = asyncio.Event()
 
     def _handle_signal(*_: object) -> None:
@@ -1285,7 +1421,13 @@ async def _relay_loop(
                     last_metadata_report = asyncio.get_event_loop().time()
                 backoff = 0.0
                 command: dict[str, Any] = resp.json()
-                await _handle_relay_run(command, local_port, dashboard_url, token)
+                await _handle_relay_run(
+                    command,
+                    local_port,
+                    dashboard_url,
+                    token,
+                    agent_engine_url=agent_engine_url,
+                )
 
             elif resp.status_code == 204:
                 if not connected:

@@ -99,6 +99,7 @@ def _empty_config() -> dict[str, Any]:
         "dev": _SENTINEL,
         "dashboard_url": _SENTINEL,
         "llm_provider": _SENTINEL,
+        "agent_engine": _SENTINEL,
     }
 
 
@@ -152,6 +153,8 @@ def load_project_config(config_path: Path) -> dict[str, Any]:
         result["dashboard_url"] = str(raw["dashboard_url"])
     if "llm_provider" in raw:
         result["llm_provider"] = str(raw["llm_provider"])
+    if "agent_engine" in raw:
+        result["agent_engine"] = str(raw["agent_engine"])
     return result
 
 
@@ -179,6 +182,8 @@ def load_global_config() -> dict[str, Any]:
         result["dashboard_url"] = str(raw["dashboard_url"])
     if "llm_provider" in raw:
         result["llm_provider"] = str(raw["llm_provider"])
+    if "agent_engine" in raw:
+        result["agent_engine"] = str(raw["agent_engine"])
     return result
 
 
@@ -285,6 +290,30 @@ def resolve_dashboard_url() -> str:
     if resolve_dev_mode():
         return _DASHBOARD_URL_DEV
     return _DASHBOARD_URL_REMOTE
+
+
+def resolve_agent_engine_url() -> str | None:
+    """Return the Agent Engine resource URL, or ``None`` if not configured.
+
+    Resolution order (first explicit value wins):
+    1. ``.beddel.json`` ``agent_engine`` key
+    2. ``~/.config/beddel/config.json`` ``agent_engine`` key
+    3. Default: ``None`` (use local execution)
+    """
+    # 1. Project-local
+    project_cfg_path = find_project_config()
+    if project_cfg_path is not None:
+        cfg = load_project_config(project_cfg_path)
+        if cfg["agent_engine"] is not _SENTINEL:
+            return str(cfg["agent_engine"])
+
+    # 2. Global
+    global_cfg = load_global_config()
+    if global_cfg["agent_engine"] is not _SENTINEL:
+        return str(global_cfg["agent_engine"])
+
+    # 3. Default — no Agent Engine
+    return None
 
 
 _LLM_PROVIDER_DEFAULT: str = "gemini"

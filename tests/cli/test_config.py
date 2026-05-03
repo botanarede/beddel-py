@@ -276,6 +276,7 @@ class TestLoadGlobalConfigPreservesNewKeys:
         assert result["dev"] is config_mod._SENTINEL
         assert result["dashboard_url"] is config_mod._SENTINEL
 
+
 # ---------------------------------------------------------------------------
 # JSONC support (JSON with Comments)
 # ---------------------------------------------------------------------------
@@ -333,12 +334,12 @@ class TestGlobalConfigWithComments:
         mp = monkeypatch  # type: ignore[assignment]
         global_cfg = tmp_path / "config.json"
         global_cfg.write_text(
-            '{\n'
+            "{\n"
             '  "kits_paths": ["/path/to/kits"],\n'
             '  // "dashboard_url": "https://prod.example.com",\n'
             '  "dashboard_url": "http://localhost:3000",\n'
             '  "dev": true\n'
-            '}'
+            "}"
         )
         mp.setattr(config_mod, "GLOBAL_CONFIG_PATH", global_cfg)
 
