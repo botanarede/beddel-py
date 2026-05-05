@@ -354,6 +354,10 @@ def _traverse(data: dict[str, Any], path: str, namespace: str, raw_ref: str) -> 
     for segment in segments:
         if current is SKIPPED:
             return SKIPPED
+        if current is None:
+            # Safe navigation: traversing into None returns None
+            # (analogous to optional chaining ?. in other languages).
+            return None
         if isinstance(current, dict) and segment in current:
             current = current[segment]
             if current is SKIPPED:

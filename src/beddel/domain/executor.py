@@ -18,7 +18,7 @@ import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from beddel.domain.errors import BudgetError, ExecutionError, TracingError
+from beddel.domain.errors import BudgetError, ExecutionError, ResolveError, TracingError
 from beddel.domain.models import (
     SKIPPED,
     BeddelEvent,
@@ -63,13 +63,13 @@ logger = logging.getLogger(__name__)
 _COMPARISON_RE = re.compile(r"^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$")
 
 
-def _parse_literal(value: str) -> int | float | bool | str:
+def _parse_literal(value: str) -> int | float | bool | None | str:
     """Parse a literal value from the right side of a comparison.
 
     Strips surrounding single or double quotes, then attempts to
-    interpret *value* as an int, float, or boolean
-    (``"true"``/``"false"`` case-insensitive).  Falls back to returning
-    the raw string.
+    interpret *value* as an int, float, boolean, or null
+    (``"true"``/``"false"``/``"null"`` case-insensitive).  Falls back to
+    returning the raw string.
 
     Args:
         value: The string to parse.
@@ -85,6 +85,8 @@ def _parse_literal(value: str) -> int | float | bool | str:
         return True
     if lower == "false":
         return False
+    if lower == "null" or lower == "none":
+        return None
     try:
         return int(value)
     except ValueError:
@@ -922,7 +924,13 @@ class WorkflowExecutor:
         match = _COMPARISON_RE.match(condition)
         if match:
             left_expr, operator, right_expr = match.group(1), match.group(2), match.group(3)
-            left = self._resolver.resolve(left_expr.strip(), context)
+            try:
+                left = self._resolver.resolve(left_expr.strip(), context)
+            except ResolveError:
+                # Unresolvable variable in condition context is treated as None.
+                # This enables safe null-checks like "$input.x == null" when the
+                # key doesn't exist in inputs (common in A2UI action routing).
+                left = None
             right = _parse_literal(right_expr.strip())
 
             try:
@@ -955,7 +963,11 @@ class WorkflowExecutor:
                     },
                 ) from exc
 
-        resolved = self._resolver.resolve(condition, context)
+        try:
+            resolved = self._resolver.resolve(condition, context)
+        except ResolveError:
+            # Unresolvable single-value condition is falsy (variable doesn't exist).
+            return False
 
         if isinstance(resolved, str):
             lower = resolved.lower()
