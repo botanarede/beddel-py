@@ -35,23 +35,25 @@ def _ensure_kit_paths() -> None:
 
     Resolution order:
 
-    1. Bundled kits shipped inside the ``beddel`` package.
+    1. kits_path from SQLite (set by ``beddel init``).
     2. User-configured paths from ``.beddel.json`` (project) or
        ``~/.config/beddel/config.json`` (global).
     3. Interactive prompt if no kits found and running in a TTY.
     """
     from beddel.cli.config import prompt_kits_path, resolve_kits_paths
-    from beddel.kits import BUNDLED_KITS_PATH
+    from beddel.setup import _resolve_kits_path
 
-    # 1. Bundled kits shipped inside the package
-    _add_kit_dir_to_path(BUNDLED_KITS_PATH)
+    # 1. kits_path from SQLite (beddel init)
+    db_kits = _resolve_kits_path()
+    if db_kits and db_kits.is_dir():
+        _add_kit_dir_to_path(db_kits)
 
-    # 2. User-configured paths
+    # 2. User-configured paths (config.json / .beddel.json)
     for kits_dir in resolve_kits_paths():
         _add_kit_dir_to_path(kits_dir)
 
-    # 3. Interactive prompt if nothing was added beyond bundled
-    if not resolve_kits_paths():
+    # 3. Interactive prompt if nothing found
+    if not db_kits and not resolve_kits_paths():
         prompted = prompt_kits_path()
         if prompted:
             _add_kit_dir_to_path(prompted)
@@ -364,9 +366,14 @@ def version() -> None:
 # beddel init — first-run setup
 # ---------------------------------------------------------------------------
 
-from beddel.cli.init import register_init_command
 
-register_init_command(cli)
+def _register_init() -> None:
+    from beddel.cli.init import register_init_command
+
+    register_init_command(cli)
+
+
+_register_init()
 
 
 # ---------------------------------------------------------------------------

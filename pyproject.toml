@@ -87,27 +87,14 @@ provider-gemini = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/beddel"]
-artifacts = [
-    "src/beddel/kits/__init__.py",
-    "src/beddel/kits/*/kit.yaml",
-    "src/beddel/kits/*/py.typed",
-    "src/beddel/kits/*/src/**/*.py",
-]
 
 [tool.hatch.build.targets.sdist]
 include = [
     "src/beddel/",
-    "examples/",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
     "pyproject.toml",
-]
-artifacts = [
-    "src/beddel/kits/__init__.py",
-    "src/beddel/kits/*/kit.yaml",
-    "src/beddel/kits/*/py.typed",
-    "src/beddel/kits/*/src/**/*.py",
 ]
 
 # -----------------------------------------------------------------------------

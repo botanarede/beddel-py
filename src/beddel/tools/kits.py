@@ -22,7 +22,6 @@ from typing import Any
 from beddel.domain.errors import KitDependencyError, KitManifestError
 from beddel.domain.kit import KitCollision, KitDiscoveryResult, KitManifest, parse_kit_manifest
 from beddel.error_codes import KIT_DEPENDENCY_MISSING, KIT_LOAD_FAILED
-from beddel.kits import BUNDLED_KITS_PATH
 
 __all__ = ["discover_kits", "load_kit", "load_kit_adapters"]
 
@@ -71,7 +70,17 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
             paths = [Path(p) for p in env_val.split(":") if p]
             use_custom = True
         else:
-            paths = [BUNDLED_KITS_PATH, Path("./kits"), Path.home() / ".beddel" / "kits"]
+            # Read kits_path from SQLite (set by beddel init)
+            from beddel.setup import _resolve_kits_path
+
+            kits_path = _resolve_kits_path()
+            paths = []
+            if kits_path and kits_path.is_dir():
+                paths.append(kits_path)
+            # Also check local ./kits/ for development convenience
+            local = Path("./kits")
+            if local.is_dir():
+                paths.append(local)
 
     # Map each path to its source label (order matters for priority)
     _SOURCE_LABELS = {0: "bundled", 1: "local", 2: "global"}
