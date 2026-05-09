@@ -79,7 +79,7 @@ class TestStatusImportGuard:
         _rc, out = _run_guarded("beddel_auth_github", ["status"])
         assert "EXIT:1" in out, f"Expected exit 1, got: {out}"
         assert "Missing dependency" in out, f"Missing 'Missing dependency' in: {out}"
-        assert "pip install beddel[default]" in out, f"Missing install hint in: {out}"
+        assert "beddel init" in out, f"Missing install hint in: {out}"
 
 
 # ── beddel connect ────────────────────────────────────────────────
@@ -92,7 +92,7 @@ class TestConnectImportGuard:
         _rc, out = _run_guarded("beddel_auth_github", ["connect"])
         assert "EXIT:1" in out, f"Expected exit 1, got: {out}"
         assert "Missing dependency" in out, f"Missing 'Missing dependency' in: {out}"
-        assert "pip install beddel[default]" in out, f"Missing install hint in: {out}"
+        assert "beddel init" in out, f"Missing install hint in: {out}"
 
 
 # ── beddel serve --mcp ────────────────────────────────────────────
@@ -105,7 +105,7 @@ class TestServeMcpImportGuard:
         _rc, out = _run_guarded("beddel_serve_mcp", ["serve", "--mcp"])
         assert "EXIT:1" in out, f"Expected exit 1, got: {out}"
         assert "Missing dependency" in out, f"Missing 'Missing dependency' in: {out}"
-        assert "pip install beddel[mcp]" in out, f"Missing install hint in: {out}"
+        assert "beddel init" in out, f"Missing install hint in: {out}"
 
 
 # ── beddel serve (FastAPI mode) ───────────────────────────────────
@@ -130,7 +130,7 @@ class TestServeFastapiImportGuard:
         # Accept either guard's wording
         has_guard = "Missing dependency" in out or "Missing dependencies" in out
         assert has_guard, f"Missing dependency message in: {out}"
-        assert "beddel[default]" in out, f"Missing install hint in: {out}"
+        assert "beddel init" in out, f"Missing install hint in: {out}"
 
 
 # ── beddel run ────────────────────────────────────────────────────

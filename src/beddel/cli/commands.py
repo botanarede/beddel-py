@@ -629,7 +629,7 @@ def status() -> None:
         )
     except ImportError:
         click.echo(
-            "Missing dependency. Install: pip install beddel[default]",
+            "Missing dependency. Install missing kits: beddel init",
             err=True,
         )
         raise SystemExit(1) from None
@@ -694,7 +694,7 @@ def _connect_remote_flow(
         )
     except ImportError:
         click.echo(
-            "Missing dependency. Install: pip install beddel[default]",
+            "Missing dependency. Install missing kits: beddel init",
             err=True,
         )
         raise SystemExit(1) from None
@@ -845,7 +845,7 @@ def connect(
         )
     except ImportError:
         click.echo(
-            "Missing dependency. Install: pip install beddel[default]",
+            "Missing dependency. Install missing kits: beddel init",
             err=True,
         )
         raise SystemExit(1) from None
@@ -1035,7 +1035,7 @@ def connect_remote(ctx: click.Context, *, url: str) -> None:
         )
     except ImportError:
         click.echo(
-            "Missing dependency. Install: pip install beddel[default]",
+            "Missing dependency. Install missing kits: beddel init",
             err=True,
         )
         raise SystemExit(1) from None
@@ -1547,7 +1547,7 @@ def _build_runtime_app(
         from fastapi.middleware.cors import CORSMiddleware
     except ImportError:
         click.echo(
-            "Missing dependencies. Install with: pip install beddel[default]",
+            "Missing dependencies. Install missing kits: beddel init",
             err=True,
         )
         raise SystemExit(1) from None
@@ -1563,7 +1563,7 @@ def _build_runtime_app(
         )
     except ImportError:
         click.echo(
-            "Missing dependency. Install: pip install beddel[default]",
+            "Missing dependency. Install missing kits: beddel init",
             err=True,
         )
         raise SystemExit(1) from None
@@ -1950,7 +1950,7 @@ def serve(
             from beddel_serve_mcp.server import BeddelMCPServer  # type: ignore[import-not-found]
         except ImportError:
             click.echo(
-                "Missing dependency. Install: pip install beddel[mcp]",
+                "Missing dependency. Install missing kits: beddel init",
                 err=True,
             )
             raise SystemExit(1) from None
@@ -1980,7 +1980,7 @@ def serve(
         import uvicorn
     except ImportError:
         click.echo(
-            "Missing dependencies. Install with: pip install beddel[default]",
+            "Missing dependencies. Install missing kits: beddel init",
             err=True,
         )
         raise SystemExit(1) from None

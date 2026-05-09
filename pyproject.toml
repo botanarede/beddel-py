@@ -51,36 +51,6 @@ Documentation = "https://beddel.com.br/docs"
 [project.scripts]
 beddel = "beddel.cli:main"
 
-[project.optional-dependencies]
-default = [
-    "litellm>=1.40,!=1.82.7,!=1.82.8",
-    "opentelemetry-api>=1.0",
-    "httpx>=0.27",
-    "websockets>=13.0",
-    "a2a-sdk>=0.2.6",
-]
-dev = [
-    "beddel[default]",
-    "opentelemetry-sdk>=1.0",
-    "langfuse>=3.0",
-    "mcp>=1.0",
-    "jsonschema>=4.0",
-    "claude-agent-sdk>=0.1.0",
-    "pytest",
-    "pytest-asyncio",
-    "pytest-cov",
-    "pytest-timeout",
-    "ruff",
-    "mypy",
-    "types-jsonschema",
-]
-bridge-adk = [
-    "google-adk>=1.0.0,<2.0.0",
-]
-provider-gemini = [
-    "google-genai>=1.0.0",
-]
-
 # -----------------------------------------------------------------------------
 # Hatch Build Configuration
 # -----------------------------------------------------------------------------

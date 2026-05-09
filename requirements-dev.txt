@@ -1,0 +1,29 @@
+# Beddel — Development Environment
+#
+# Bootstraps everything needed to develop, test, lint, type-check, and publish Beddel.
+# The first line installs Beddel itself in editable mode; subsequent lines pin dev tools.
+#
+# Usage:
+#   source src/beddel-py/.venv/bin/activate
+#   pip install -r src/beddel-py/requirements-dev.txt
+#
+# Runtime deps (pydantic, pyyaml, click) come transitively via `-e`.
+# Kit-specific deps (litellm, httpx, fastapi, etc.) are managed by `beddel init`
+# and the per-kit kit.yaml manifests — they are NOT installed here.
+
+-e src/beddel-py/
+
+# Test runners
+pytest
+pytest-asyncio
+pytest-cov
+pytest-timeout
+
+# Lint + type check
+ruff
+mypy
+types-jsonschema
+
+# Packaging + publish
+build
+twine

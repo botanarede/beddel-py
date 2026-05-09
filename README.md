@@ -107,19 +107,26 @@ The YAML version gets you retry with backoff, tracing, lifecycle hooks, and stre
 ## Install
 
 ```bash
-pip install beddel                          # core (3 deps: pydantic, pyyaml, click)
-beddel kit install provider-litellm-kit     # LLM provider adapter
+pip install beddel        # slim core (3 deps: pydantic, pyyaml, click)
+beddel init               # provisions SQLite registry and downloads required kits
 ```
 
-Or install with batteries included:
-
-```bash
-pip install "beddel[default]"   # core + litellm + opentelemetry + fastapi + httpx
-```
+`beddel init` downloads `serve-fastapi-kit`, `ag-ui-kit`, and `provider-litellm-kit` from the GitHub `kits/` directory and pip-installs their dependencies. Add more kits later with `beddel kit install <kit-name>`.
 
 Requires Python 3.11+.
 
 > **Python API users:** Call `beddel.setup()` before importing kit modules. This activates kit paths. CLI commands (`beddel run`, `beddel serve`) handle this automatically.
+
+### Developer setup (contributors)
+
+```bash
+git clone https://github.com/botanarede/beddel-py && cd beddel-py
+python -m venv src/beddel-py/.venv
+source src/beddel-py/.venv/bin/activate
+pip install -r src/beddel-py/requirements-dev.txt
+```
+
+This installs the package in editable mode plus the test, lint, and publish tooling (`pytest`, `ruff`, `mypy`, `build`, `twine`).
 
 ## Why Beddel
 
