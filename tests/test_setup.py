@@ -16,24 +16,8 @@ class TestSetupImportable:
     def test_setup_callable_no_error(self) -> None:
         import beddel
 
-        # Should not raise
+        # Should not raise (no-op when SQLite db doesn't exist)
         beddel.setup()
-
-
-class TestSetupAddsKitPaths:
-    """setup() adds bundled kit src/ directories to sys.path."""
-
-    def test_setup_adds_bundled_kit_paths(self) -> None:
-        from beddel.kits import BUNDLED_KITS_PATH
-        from beddel.setup import setup
-
-        setup()
-
-        if BUNDLED_KITS_PATH.is_dir():
-            for kit_dir in BUNDLED_KITS_PATH.iterdir():
-                kit_src = kit_dir / "src"
-                if kit_src.is_dir():
-                    assert str(kit_src) in sys.path
 
 
 class TestSetupIdempotent:
@@ -49,3 +33,15 @@ class TestSetupIdempotent:
         paths_after_second = list(sys.path)
 
         assert paths_after_first == paths_after_second
+
+
+class TestResolveKitsPath:
+    """_resolve_kits_path reads from SQLite when available."""
+
+    def test_returns_none_when_no_db(self, tmp_path, monkeypatch) -> None:
+        """Returns None when index.db doesn't exist."""
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+        from beddel.setup import _resolve_kits_path
+
+        result = _resolve_kits_path()
+        assert result is None

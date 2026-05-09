@@ -127,9 +127,7 @@ def download_kit(kit_name: str, kits_dir: Path) -> Path:
         with urllib.request.urlopen(manifest_url, timeout=30) as resp:
             manifest_content = resp.read()
     except Exception as exc:
-        raise click.ClickException(
-            f"Failed to download {manifest_url}: {exc}"
-        ) from exc
+        raise click.ClickException(f"Failed to download {manifest_url}: {exc}") from exc
 
     kit_dir.mkdir(parents=True, exist_ok=True)
     (kit_dir / "kit.yaml").write_bytes(manifest_content)

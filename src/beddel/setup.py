@@ -52,9 +52,7 @@ def _resolve_kits_path() -> Path | None:
         import sqlite3
 
         conn = sqlite3.connect(str(db_path))
-        cursor = conn.execute(
-            "SELECT value FROM user_prefs WHERE key = 'kits_path'"
-        )
+        cursor = conn.execute("SELECT value FROM user_prefs WHERE key = 'kits_path'")
         row = cursor.fetchone()
         conn.close()
         if row:

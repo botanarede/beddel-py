@@ -54,9 +54,8 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
 
     Args:
         paths: Directories to scan. If *None*, uses ``BEDDEL_KIT_PATHS``
-            env var (colon-separated) or the 3-path defaults:
-            bundled (``beddel/kits/``) → local (``./kits/``) → global
-            (``~/.beddel/kits/``).
+            env var (colon-separated) or the 2-path defaults:
+            sqlite (``~/.config/beddel/kits/``) → local (``./kits/``).
 
     Returns:
         A :class:`KitDiscoveryResult` with alphabetically sorted manifests
@@ -83,7 +82,7 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
                 paths.append(local)
 
     # Map each path to its source label (order matters for priority)
-    _SOURCE_LABELS = {0: "bundled", 1: "local", 2: "global"}
+    _SOURCE_LABELS = {0: "sqlite", 1: "local"}
 
     def _source_for(path_index: int) -> str:
         if use_custom:
