@@ -397,9 +397,9 @@ Hexagonal Architecture (Ports & Adapters) with a Solution Kit ecosystem. The dom
 ```bash
 git clone https://github.com/botanarede/beddel-py.git
 cd beddel-py
-pip install -e ".[dev]"
+pip install -r requirements-dev.txt
 
-pytest                  # 2073 tests
+pytest                  # 2000+ tests
 ruff check . && ruff format .
 mypy src/
 ```

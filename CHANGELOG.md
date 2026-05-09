@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking
+
+- **Removed all pip extras** (`[default]`, `[dev]`, `[bridge-adk]`, `[provider-gemini]`). `pip install beddel` now installs ONLY the slim core (3 deps: `pydantic>=2.13,<3`, `pyyaml>=6.0`, `click>=8.0`). Kit capabilities (LiteLLM, FastAPI, OpenTelemetry, etc.) are installed on demand via `beddel init` and `beddel kit install <kit-name>`.
+- **Migration:** replace `pip install "beddel[default]"` with `pip install beddel && beddel init`. Pip silently ignores unknown extras, so commands referencing removed extras will install the slim core but leave you without kits — run `beddel init` to provision them.
+- **Developers:** replace `pip install -e ".[dev]"` with `pip install -r src/beddel-py/requirements-dev.txt` (installs pytest, ruff, mypy, types-jsonschema, build, twine, plus beddel in editable mode).
+- CLI error guards now say `"Install missing kits: beddel init"` instead of suggesting a pip extra.
+
+### Changed
+
+- `pydantic` dependency range bumped from `>=2.0` to `>=2.13,<3` (both SDK and gateway) to honor Story K2.1 AC #7.
+
 ## [0.1.8] - 2026-04-07
 
 ### Changed
