@@ -129,6 +129,10 @@ class TestDiscoverKitsValid:
 class TestDiscoverKitsBundled:
     """Tests for 3-path discovery: bundled → local → global."""
 
+    @pytest.mark.skip(
+        reason="Removed by Story K2.1 — BUNDLED_KITS_PATH no longer exists; "
+        "discovery is now SQLite-first (user_prefs.kits_path) + ./kits/."
+    )
     def test_bundled_path_included_by_default(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -152,42 +156,17 @@ class TestDiscoverKitsBundled:
 
     def test_local_overrides_bundled_same_name(self, tmp_path: Path) -> None:
         """A local kit with the same name as a bundled kit wins (later path)."""
-        bundled = tmp_path / "bundled"
-        local = tmp_path / "local"
-        _write_kit_yaml(
-            bundled / "shared-kit",
-            _minimal_kit("shared-kit"),
+        pytest.skip(
+            "Removed by Story K2.1 — 'bundled' source label no longer exists; "
+            "discovery labels are now 'sqlite' (index 0) and 'local' (index 1)."
         )
-        _write_kit_yaml(
-            local / "shared-kit",
-            {**_minimal_kit("shared-kit"), "description": "local version"},
-        )
-
-        result = discover_kits([bundled, local])
-
-        assert len(result.manifests) == 1
-        assert result.manifests[0].kit.name == "shared-kit"
-        # Later path (local) wins
-        assert result.manifests[0].kit.description == "local version"
-        assert result.manifests[0].source == "local"
 
     def test_global_overrides_local_and_bundled(self, tmp_path: Path) -> None:
         """Global path (index 2) overrides both bundled (0) and local (1)."""
-        bundled = tmp_path / "bundled"
-        local = tmp_path / "local"
-        global_ = tmp_path / "global"
-        _write_kit_yaml(bundled / "shared-kit", _minimal_kit("shared-kit"))
-        _write_kit_yaml(local / "shared-kit", _minimal_kit("shared-kit"))
-        _write_kit_yaml(
-            global_ / "shared-kit",
-            {**_minimal_kit("shared-kit"), "description": "global version"},
+        pytest.skip(
+            "Removed by Story K2.1 — 3-path model (bundled/local/global) replaced "
+            "by 2-path model (sqlite/local); no 'global' label in _SOURCE_LABELS."
         )
-
-        result = discover_kits([bundled, local, global_])
-
-        assert len(result.manifests) == 1
-        assert result.manifests[0].kit.description == "global version"
-        assert result.manifests[0].source == "global"
 
     def test_env_var_replaces_all_defaults(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

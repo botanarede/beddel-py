@@ -41,21 +41,10 @@ _KIT_DIRS = [
     "tools-gates-kit",
     "provider-gemini-kit",
     "bridge-adk-kit",
+    "ag-ui-kit",
 ]
 
 for _kit in _KIT_DIRS:
     _kit_src = str(_KITS_BASE / _kit / "src")
-    if _kit_src not in sys.path:
-        sys.path.insert(0, _kit_src)
-
-# Inline kits live at: <project_root>/src/beddel-py/src/beddel/kits/<kit>/src/
-_INLINE_KITS_BASE = _PROJECT_ROOT / "src" / "beddel-py" / "src" / "beddel" / "kits"
-
-_INLINE_KIT_DIRS = [
-    "ag-ui-kit",
-]
-
-for _kit in _INLINE_KIT_DIRS:
-    _kit_src = str(_INLINE_KITS_BASE / _kit / "src")
     if _kit_src not in sys.path:
         sys.path.insert(0, _kit_src)
