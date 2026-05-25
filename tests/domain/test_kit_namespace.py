@@ -76,6 +76,7 @@ def _minimal_kit(
         "name": name,
         "version": "0.1.0",
         "description": f"Test kit {name}",
+        "targets": {"python": {"module": name.replace("-", "_"), "status": "implemented"}},
     }
     if tools:
         d["tools"] = tools

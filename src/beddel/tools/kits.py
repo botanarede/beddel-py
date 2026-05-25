@@ -19,11 +19,14 @@ from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
 from beddel.domain.errors import KitDependencyError, KitManifestError
 from beddel.domain.kit import (
     KitCollision,
     KitDiscoveryError,
     KitDiscoveryResult,
+    KitLanguageTarget,
     KitManifest,
     parse_kit_manifest,
 )
@@ -96,6 +99,8 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
         return _SOURCE_LABELS.get(path_index, "local")
 
     manifests: list[KitManifest] = []
+    skipped: list[str] = []
+    errors: list[KitDiscoveryError] = []
     for path_index, base in enumerate(paths):
         if not base.is_dir():
             continue
@@ -110,7 +115,36 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
                 manifest = parse_kit_manifest(kit_yaml, source=source)
             except KitManifestError as exc:
                 logger.warning("Skipping kit at %s: %s", kit_yaml, exc.message)
+                errors.append(
+                    KitDiscoveryError(kit_name=child.name, path=kit_yaml, reason=exc.message)
+                )
                 continue
+
+            # Gate: kit must declare targets.python with status "implemented"
+            raw_python = manifest.kit.targets.get("python")
+            if raw_python is None:
+                skipped.append(manifest.kit.name)
+                continue
+            try:
+                lang_target = KitLanguageTarget(**raw_python)
+            except ValidationError as exc:
+                logger.warning(
+                    "Skipping kit %s: invalid targets.python: %s",
+                    manifest.kit.name,
+                    exc,
+                )
+                errors.append(
+                    KitDiscoveryError(
+                        kit_name=manifest.kit.name,
+                        path=kit_yaml,
+                        reason=f"Invalid targets.python: {exc}",
+                    )
+                )
+                continue
+            if lang_target.status != "implemented":
+                skipped.append(manifest.kit.name)
+                continue
+
             manifests.append(manifest)
 
     # Deduplicate: later paths override earlier ones for same kit name.
@@ -134,7 +168,9 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
         if len(kits) > 1
     ]
 
-    return KitDiscoveryResult(manifests=manifests, collisions=collisions)
+    return KitDiscoveryResult(
+        manifests=manifests, collisions=collisions, skipped=skipped, errors=errors
+    )
 
 
 def load_kit(manifest: KitManifest) -> dict[str, Callable[..., Any]]:

@@ -34,8 +34,18 @@ def _write_kit_yaml(kit_dir: Path, data: dict[str, Any]) -> Path:
     return kit_dir
 
 
-def _minimal_kit(name: str, *, tools: list[dict[str, str]] | None = None) -> dict[str, Any]:
-    """Return a minimal valid kit manifest dict."""
+def _minimal_kit(
+    name: str,
+    *,
+    tools: list[dict[str, str]] | None = None,
+    targets: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return a minimal valid kit manifest dict.
+
+    By default includes ``targets.python`` with ``status: implemented``
+    so the kit passes the python-target gate in ``discover_kits()``.
+    Pass ``targets={}`` or a custom dict to override.
+    """
     d: dict[str, Any] = {
         "name": name,
         "version": "0.1.0",
@@ -43,6 +53,10 @@ def _minimal_kit(name: str, *, tools: list[dict[str, str]] | None = None) -> dic
     }
     if tools:
         d["tools"] = tools
+    if targets is not None:
+        d["targets"] = targets
+    else:
+        d["targets"] = {"python": {"module": f"{name.replace('-', '_')}", "status": "implemented"}}
     return d
 
 
@@ -742,3 +756,108 @@ class TestLoadKitAdapters:
         result = load_kit_adapters(manifest)
 
         assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# discover_kits — targets.python gate + skipped/errors population
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverKitsPythonGate:
+    """Tests for targets.python gate in discover_kits() (AC #4)."""
+
+    def test_kit_without_targets_python_is_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Kit with no targets.python key is added to skipped list."""
+        monkeypatch.setenv("BEDDEL_KIT_PATHS", str(tmp_path))
+        # Kit with no targets at all
+        _write_kit_yaml(tmp_path / "no-target-kit", _minimal_kit("no-target-kit", targets={}))
+
+        result = discover_kits()
+
+        assert result.manifests == []
+        assert "no-target-kit" in result.skipped
+
+    def test_kit_with_status_planned_is_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Kit with targets.python.status != 'implemented' is skipped."""
+        monkeypatch.setenv("BEDDEL_KIT_PATHS", str(tmp_path))
+        _write_kit_yaml(
+            tmp_path / "planned-kit",
+            _minimal_kit(
+                "planned-kit",
+                targets={"python": {"module": "planned_kit", "status": "planned"}},
+            ),
+        )
+
+        result = discover_kits()
+
+        assert result.manifests == []
+        assert "planned-kit" in result.skipped
+
+    def test_kit_with_parse_error_goes_to_errors(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Kit that fails parse_kit_manifest() is added to errors list."""
+        monkeypatch.setenv("BEDDEL_KIT_PATHS", str(tmp_path))
+        bad_dir = tmp_path / "bad-kit"
+        bad_dir.mkdir()
+        (bad_dir / "kit.yaml").write_text("not_a_kit: true", encoding="utf-8")
+
+        result = discover_kits()
+
+        assert result.manifests == []
+        assert len(result.errors) == 1
+        assert result.errors[0].kit_name == "bad-kit"
+        assert result.errors[0].path == bad_dir / "kit.yaml"
+
+    def test_kit_with_status_implemented_in_manifests(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Kit with targets.python.status == 'implemented' passes gate."""
+        monkeypatch.setenv("BEDDEL_KIT_PATHS", str(tmp_path))
+        _write_kit_yaml(
+            tmp_path / "good-kit",
+            _minimal_kit("good-kit"),  # default includes targets.python.status=implemented
+        )
+
+        result = discover_kits()
+
+        assert len(result.manifests) == 1
+        assert result.manifests[0].kit.name == "good-kit"
+        assert result.skipped == []
+        assert result.errors == []
+
+    def test_mixed_kits_correct_classification(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Multiple kits are correctly classified into manifests/skipped/errors."""
+        monkeypatch.setenv("BEDDEL_KIT_PATHS", str(tmp_path))
+
+        # Good kit (implemented)
+        _write_kit_yaml(tmp_path / "impl-kit", _minimal_kit("impl-kit"))
+        # Skipped (no targets.python)
+        _write_kit_yaml(tmp_path / "no-py-kit", _minimal_kit("no-py-kit", targets={}))
+        # Skipped (status planned)
+        _write_kit_yaml(
+            tmp_path / "planned-kit",
+            _minimal_kit(
+                "planned-kit",
+                targets={"python": {"module": "x", "status": "planned"}},
+            ),
+        )
+        # Error (invalid YAML manifest)
+        err_dir = tmp_path / "err-kit"
+        err_dir.mkdir()
+        (err_dir / "kit.yaml").write_text("garbage: yes", encoding="utf-8")
+
+        result = discover_kits()
+
+        assert len(result.manifests) == 1
+        assert result.manifests[0].kit.name == "impl-kit"
+        assert "no-py-kit" in result.skipped
+        assert "planned-kit" in result.skipped
+        assert len(result.errors) == 1
+        assert result.errors[0].kit_name == "err-kit"
