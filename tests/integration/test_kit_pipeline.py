@@ -75,6 +75,12 @@ def _reference_kit_data() -> dict[str, Any]:
                 "description": "Create epic scaffolding (directories, template files)",
             },
         ],
+        "targets": {
+            "python": {
+                "module": "kits.software_development_kit",
+                "status": "implemented",
+            },
+        },
     }
 
 
@@ -88,6 +94,12 @@ def _stdlib_kit_data(name: str = "stdlib-kit") -> dict[str, Any]:
             {"name": "dumps", "target": "json:dumps", "category": "util"},
             {"name": "exists", "target": "os.path:exists", "category": "util"},
         ],
+        "targets": {
+            "python": {
+                "module": name.replace("-", "_"),
+                "status": "implemented",
+            },
+        },
     }
 
 
