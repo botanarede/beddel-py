@@ -149,17 +149,26 @@ class KitLanguageTarget(BaseModel):
     ``dict[str, Any]`` so unknown languages pass through without validation.
 
     Attributes:
-        module: Python module path for the target package.
+        module: Python module path for the target package (None for non-Python kits).
         dependencies: Language-specific dependency specifiers.
         tools: Tool declarations scoped to this language target.
         adapters: Adapter declarations scoped to this language target.
+        status: Implementation status — "implemented", "planned", or "unavailable".
+        implementation_path: Repo-relative path to future entry point (when status=planned).
+        unavailable_reason: Human-readable rationale when status=unavailable.
+        dev_note: Free-form note for contributors.
     """
 
-    module: str
+    model_config = {"extra": "allow"}
+
+    module: str | None = None
     dependencies: list[str] = Field(default_factory=list)
     tools: list[KitToolDeclaration] = Field(default_factory=list)
     adapters: list[KitAdapterDeclaration] = Field(default_factory=list)
     status: str = "implemented"
+    implementation_path: str | None = None
+    unavailable_reason: str | None = None
+    dev_note: str | None = None
 
 
 class SolutionKit(BaseModel):
