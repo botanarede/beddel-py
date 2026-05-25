@@ -21,12 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 def _add_kit_dir_to_path(base: Path) -> None:
-    """Scan *base* for kit subdirectories and add their ``src/`` to sys.path."""
+    """Scan *base* for kit subdirectories and add their source dir to sys.path."""
+    from beddel.setup import _resolve_kit_src_dir
+
     if not base.is_dir():
         return
     for kit_dir in base.iterdir():
-        kit_src = kit_dir / "src"
-        if kit_src.is_dir() and str(kit_src) not in sys.path:
+        kit_src = _resolve_kit_src_dir(kit_dir)
+        if kit_src and str(kit_src) not in sys.path:
             sys.path.insert(0, str(kit_src))
 
 
