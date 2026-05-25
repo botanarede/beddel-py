@@ -160,7 +160,17 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
     # Detect collisions: tool names declared by 2+ kits
     tool_to_kits: dict[str, list[str]] = defaultdict(list)
     for m in manifests:
-        for tool_decl in m.kit.tools:
+        # Prefer targets.python.tools for collision detection (same source as load_kit)
+        raw_py = m.kit.targets.get("python")
+        tool_list = m.kit.tools  # fallback
+        if raw_py:
+            try:
+                lt = KitLanguageTarget(**raw_py)
+                if lt.tools:
+                    tool_list = lt.tools
+            except ValidationError:
+                pass
+        for tool_decl in tool_list:
             tool_to_kits[tool_decl.name].append(m.kit.name)
 
     collisions = [

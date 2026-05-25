@@ -1061,3 +1061,125 @@ class TestLoadKitTargetsPythonDependencies:
         # Should NOT raise — pydantic is installed in dev env
         result = load_kit(manifest)
         assert "tool-a" in result
+
+
+# ---------------------------------------------------------------------------
+# discover_kits — collision detection uses targets.python.tools
+# ---------------------------------------------------------------------------
+
+
+class TestCollisionDetectionTargetsPython:
+    """Tests that collision detection uses targets.python.tools when available."""
+
+    def test_collision_detected_via_targets_python_tools(self, tmp_path: Path) -> None:
+        """Two kits with overlapping tool names in targets.python.tools → collision."""
+        # Kit A: declares "shared-tool" in targets.python.tools (not top-level)
+        _write_kit_yaml(
+            tmp_path / "kit-a",
+            _minimal_kit(
+                "kit-a",
+                tools=[{"name": "top-level-a", "target": "json:dumps"}],
+                targets={
+                    "python": {
+                        "module": "kit_a",
+                        "status": "implemented",
+                        "tools": [{"name": "shared-tool", "target": "json:dumps"}],
+                    }
+                },
+            ),
+        )
+        # Kit B: also declares "shared-tool" in targets.python.tools
+        _write_kit_yaml(
+            tmp_path / "kit-b",
+            _minimal_kit(
+                "kit-b",
+                tools=[{"name": "top-level-b", "target": "json:loads"}],
+                targets={
+                    "python": {
+                        "module": "kit_b",
+                        "status": "implemented",
+                        "tools": [{"name": "shared-tool", "target": "json:loads"}],
+                    }
+                },
+            ),
+        )
+
+        result = discover_kits([tmp_path])
+
+        assert len(result.collisions) == 1
+        assert result.collisions[0].tool_name == "shared-tool"
+        assert sorted(result.collisions[0].kit_names) == ["kit-a", "kit-b"]
+
+    def test_collision_falls_back_to_top_level_tools(self, tmp_path: Path) -> None:
+        """Kit without targets.python.tools uses top-level tools for collision check."""
+        # Kit A: has targets.python.tools
+        _write_kit_yaml(
+            tmp_path / "kit-a",
+            _minimal_kit(
+                "kit-a",
+                tools=[{"name": "other-tool", "target": "json:dumps"}],
+                targets={
+                    "python": {
+                        "module": "kit_a",
+                        "status": "implemented",
+                        "tools": [{"name": "shared-tool", "target": "json:dumps"}],
+                    }
+                },
+            ),
+        )
+        # Kit B: NO targets.python.tools → falls back to top-level
+        _write_kit_yaml(
+            tmp_path / "kit-b",
+            _minimal_kit(
+                "kit-b",
+                tools=[{"name": "shared-tool", "target": "json:loads"}],
+                targets={
+                    "python": {
+                        "module": "kit_b",
+                        "status": "implemented",
+                    }
+                },
+            ),
+        )
+
+        result = discover_kits([tmp_path])
+
+        assert len(result.collisions) == 1
+        assert result.collisions[0].tool_name == "shared-tool"
+        assert sorted(result.collisions[0].kit_names) == ["kit-a", "kit-b"]
+
+    def test_no_collision_when_targets_python_tools_differ(self, tmp_path: Path) -> None:
+        """No collision when targets.python.tools have different names."""
+        _write_kit_yaml(
+            tmp_path / "kit-a",
+            _minimal_kit(
+                "kit-a",
+                tools=[{"name": "shared-top", "target": "json:dumps"}],
+                targets={
+                    "python": {
+                        "module": "kit_a",
+                        "status": "implemented",
+                        "tools": [{"name": "tool-a", "target": "json:dumps"}],
+                    }
+                },
+            ),
+        )
+        _write_kit_yaml(
+            tmp_path / "kit-b",
+            _minimal_kit(
+                "kit-b",
+                tools=[{"name": "shared-top", "target": "json:loads"}],
+                targets={
+                    "python": {
+                        "module": "kit_b",
+                        "status": "implemented",
+                        "tools": [{"name": "tool-b", "target": "json:loads"}],
+                    }
+                },
+            ),
+        )
+
+        result = discover_kits([tmp_path])
+
+        # Top-level tools overlap but targets.python.tools do NOT → no collision
+        assert result.collisions == []
