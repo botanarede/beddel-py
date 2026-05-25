@@ -9,6 +9,7 @@ instantiated adapter objects.
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import logging
 import os
@@ -188,8 +189,18 @@ def load_kit(manifest: KitManifest) -> dict[str, Callable[..., Any]]:
         KitManifestError: ``BEDDEL-KIT-652`` if a tool target cannot be
             imported or the function attribute is missing.
     """
+    # --- Parse targets.python once (reused for deps + tools) --------------
+    raw_python = manifest.kit.targets.get("python")
+    lang_target: KitLanguageTarget | None = None
+    if raw_python:
+        with contextlib.suppress(ValidationError):
+            lang_target = KitLanguageTarget(**raw_python)
+
     # --- Dependency validation -------------------------------------------
-    deps = manifest.kit.dependencies
+    # Prefer targets.python.dependencies over top-level manifest.kit.dependencies
+    deps = manifest.kit.dependencies  # fallback
+    if lang_target and lang_target.dependencies:
+        deps = lang_target.dependencies
     if deps:
         missing = _validate_dependencies(deps)
         if missing:
@@ -206,15 +217,9 @@ def load_kit(manifest: KitManifest) -> dict[str, Callable[..., Any]]:
             )
 
     # --- Determine tool source: targets.python.tools[] preferred, top-level fallback
-    raw_python = manifest.kit.targets.get("python")
     tool_declarations = manifest.kit.tools  # fallback
-    if raw_python:
-        try:
-            lang_target = KitLanguageTarget(**raw_python)
-            if lang_target.tools:
-                tool_declarations = lang_target.tools
-        except ValidationError:
-            pass  # malformed targets.python — use top-level tools as fallback
+    if lang_target and lang_target.tools:
+        tool_declarations = lang_target.tools
 
     # --- Tool resolution -------------------------------------------------
     tools: dict[str, Callable[..., Any]] = {}

@@ -970,3 +970,94 @@ class TestLoadKitTargetsPythonTools:
         assert "tool-a" in result
         assert "tool-b" in result
         assert "ignored" not in result
+
+
+# ---------------------------------------------------------------------------
+# load_kit — targets.python.dependencies preferred over top-level (AC #2)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadKitTargetsPythonDependencies:
+    """Tests for load_kit() reading deps from targets.python.dependencies."""
+
+    def test_uses_targets_python_dependencies_when_present(self) -> None:
+        """AC #2: load_kit validates targets.python.dependencies over top-level."""
+        manifest = _make_manifest(
+            name="py-deps-kit",
+            tools=[KitToolDeclaration(name="tool-a", target="json:dumps")],
+            targets={
+                "python": {
+                    "module": "py_deps_kit",
+                    "status": "implemented",
+                    "dependencies": ["nonexistent-pkg-xyz>=1.0"],
+                    "tools": [{"name": "tool-a", "target": "json:dumps"}],
+                }
+            },
+        )
+        # Top-level dependencies are empty — if load_kit used them, no error
+        manifest.kit.dependencies = []
+
+        with pytest.raises(KitDependencyError) as exc_info:
+            load_kit(manifest)
+
+        assert "nonexistent-pkg-xyz>=1.0" in exc_info.value.missing_packages
+
+    def test_falls_back_to_top_level_when_targets_python_deps_empty(self) -> None:
+        """AC #2 fallback: targets.python.dependencies empty → uses top-level."""
+        manifest = _make_manifest(
+            name="fallback-deps-kit",
+            tools=[KitToolDeclaration(name="tool-a", target="json:dumps")],
+            targets={
+                "python": {
+                    "module": "fallback_deps_kit",
+                    "status": "implemented",
+                    "dependencies": [],
+                    "tools": [{"name": "tool-a", "target": "json:dumps"}],
+                }
+            },
+        )
+        # Top-level has a missing dep — should trigger error via fallback
+        manifest.kit.dependencies = ["another-nonexistent-pkg>=2.0"]
+
+        with pytest.raises(KitDependencyError) as exc_info:
+            load_kit(manifest)
+
+        assert "another-nonexistent-pkg>=2.0" in exc_info.value.missing_packages
+
+    def test_falls_back_to_top_level_when_targets_python_malformed(self) -> None:
+        """AC #2 fallback: malformed targets.python → uses top-level deps."""
+        manifest = _make_manifest(
+            name="malformed-deps-kit",
+            tools=[KitToolDeclaration(name="tool-a", target="json:dumps")],
+            targets={
+                "python": {
+                    # missing required 'module' → ValidationError
+                    "garbage": True,
+                }
+            },
+        )
+        manifest.kit.dependencies = ["yet-another-nonexistent-pkg>=3.0"]
+
+        with pytest.raises(KitDependencyError) as exc_info:
+            load_kit(manifest)
+
+        assert "yet-another-nonexistent-pkg>=3.0" in exc_info.value.missing_packages
+
+    def test_no_error_when_all_deps_installed(self) -> None:
+        """No error when targets.python.dependencies are all installed."""
+        manifest = _make_manifest(
+            name="installed-deps-kit",
+            tools=[KitToolDeclaration(name="tool-a", target="json:dumps")],
+            targets={
+                "python": {
+                    "module": "installed_deps_kit",
+                    "status": "implemented",
+                    "dependencies": ["pydantic"],
+                    "tools": [{"name": "tool-a", "target": "json:dumps"}],
+                }
+            },
+        )
+
+        # Should NOT raise — pydantic is installed in dev env
+        result = load_kit(manifest)
+        assert "tool-a" in result
