@@ -20,10 +20,16 @@ from pathlib import Path
 from typing import Any
 
 from beddel.domain.errors import KitDependencyError, KitManifestError
-from beddel.domain.kit import KitCollision, KitDiscoveryResult, KitManifest, parse_kit_manifest
+from beddel.domain.kit import (
+    KitCollision,
+    KitDiscoveryError,
+    KitDiscoveryResult,
+    KitManifest,
+    parse_kit_manifest,
+)
 from beddel.error_codes import KIT_DEPENDENCY_MISSING, KIT_LOAD_FAILED
 
-__all__ = ["discover_kits", "load_kit", "load_kit_adapters"]
+__all__ = ["KitDiscoveryError", "discover_kits", "load_kit", "load_kit_adapters"]
 
 logger = logging.getLogger(__name__)
 

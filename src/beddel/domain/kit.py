@@ -14,7 +14,7 @@ and ``beddel.domain.errors`` — no adapters or integrations.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -29,6 +29,7 @@ __all__ = [
     "KitAdapterDeclaration",
     "KitCollision",
     "KitContractDeclaration",
+    "KitDiscoveryError",
     "KitDiscoveryResult",
     "KitLanguageTarget",
     "KitManifest",
@@ -158,6 +159,7 @@ class KitLanguageTarget(BaseModel):
     dependencies: list[str] = Field(default_factory=list)
     tools: list[KitToolDeclaration] = Field(default_factory=list)
     adapters: list[KitAdapterDeclaration] = Field(default_factory=list)
+    status: str = "implemented"
 
 
 class SolutionKit(BaseModel):
@@ -249,16 +251,35 @@ class KitCollision:
 
 
 @dataclass(frozen=True)
+class KitDiscoveryError:
+    """An error encountered during kit discovery.
+
+    Attributes:
+        kit_name: Name of the kit that failed to load.
+        path: Filesystem path where the kit was found.
+        reason: Human-readable explanation of the failure.
+    """
+
+    kit_name: str
+    path: Path
+    reason: str
+
+
+@dataclass(frozen=True)
 class KitDiscoveryResult:
     """Result of kit discovery including collision information.
 
     Attributes:
         manifests: Alphabetically sorted list of validated kit manifests.
         collisions: Tool names declared by multiple kits.
+        skipped: Kit names that were skipped during discovery.
+        errors: Errors encountered during kit discovery.
     """
 
     manifests: list[KitManifest]
     collisions: list[KitCollision]
+    skipped: list[str] = field(default_factory=list)
+    errors: list[KitDiscoveryError] = field(default_factory=list)
 
 
 def parse_kit_manifest(path: Path, *, source: str = "local") -> KitManifest:
