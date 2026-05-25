@@ -205,9 +205,20 @@ def load_kit(manifest: KitManifest) -> dict[str, Callable[..., Any]]:
                 details={"kit": manifest.kit.name, "missing": missing},
             )
 
+    # --- Determine tool source: targets.python.tools[] preferred, top-level fallback
+    raw_python = manifest.kit.targets.get("python")
+    tool_declarations = manifest.kit.tools  # fallback
+    if raw_python:
+        try:
+            lang_target = KitLanguageTarget(**raw_python)
+            if lang_target.tools:
+                tool_declarations = lang_target.tools
+        except ValidationError:
+            pass  # malformed targets.python — use top-level tools as fallback
+
     # --- Tool resolution -------------------------------------------------
     tools: dict[str, Callable[..., Any]] = {}
-    for tool_decl in manifest.kit.tools:
+    for tool_decl in tool_declarations:
         if ":" not in tool_decl.target:
             raise KitManifestError(
                 code=KIT_LOAD_FAILED,

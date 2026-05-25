@@ -861,3 +861,112 @@ class TestDiscoverKitsPythonGate:
         assert "planned-kit" in result.skipped
         assert len(result.errors) == 1
         assert result.errors[0].kit_name == "err-kit"
+
+
+# ---------------------------------------------------------------------------
+# load_kit — targets.python.tools[] preferred over top-level tools (AC #1)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadKitTargetsPythonTools:
+    """Tests for load_kit() reading from targets.python.tools[] when available."""
+
+    def test_uses_targets_python_tools_when_present(self) -> None:
+        """AC #1: load_kit reads from targets.python.tools[] when available."""
+        manifest = _make_manifest(
+            name="targeted-kit",
+            tools=[KitToolDeclaration(name="top-level-tool", target="json:dumps")],
+            targets={
+                "python": {
+                    "module": "targeted_kit",
+                    "tools": [{"name": "py-tool", "target": "json:loads"}],
+                }
+            },
+        )
+
+        result = load_kit(manifest)
+
+        # Should use targets.python.tools, NOT top-level tools
+        assert "py-tool" in result
+        assert "top-level-tool" not in result
+        import json
+
+        assert result["py-tool"] is json.loads
+
+    def test_falls_back_to_top_level_when_targets_python_missing(self) -> None:
+        """AC #1 fallback: no targets.python → uses manifest.kit.tools."""
+        manifest = _make_manifest(
+            name="legacy-kit",
+            tools=[KitToolDeclaration(name="legacy-tool", target="json:dumps")],
+            targets={},
+        )
+
+        result = load_kit(manifest)
+
+        assert "legacy-tool" in result
+        import json
+
+        assert result["legacy-tool"] is json.dumps
+
+    def test_falls_back_when_targets_python_tools_empty(self) -> None:
+        """AC #1 fallback: targets.python.tools is empty list → uses top-level."""
+        manifest = _make_manifest(
+            name="empty-target-kit",
+            tools=[KitToolDeclaration(name="fallback-tool", target="json:loads")],
+            targets={
+                "python": {
+                    "module": "empty_target_kit",
+                    "tools": [],
+                }
+            },
+        )
+
+        result = load_kit(manifest)
+
+        assert "fallback-tool" in result
+        import json
+
+        assert result["fallback-tool"] is json.loads
+
+    def test_falls_back_when_targets_python_malformed(self) -> None:
+        """AC #1 fallback: malformed targets.python → uses top-level tools."""
+        manifest = _make_manifest(
+            name="malformed-kit",
+            tools=[KitToolDeclaration(name="safe-tool", target="json:dumps")],
+            targets={
+                "python": {
+                    # missing required 'module' field → ValidationError
+                    "garbage": True,
+                }
+            },
+        )
+
+        result = load_kit(manifest)
+
+        assert "safe-tool" in result
+        import json
+
+        assert result["safe-tool"] is json.dumps
+
+    def test_multiple_tools_from_targets_python(self) -> None:
+        """Multiple tools in targets.python.tools all get resolved."""
+        manifest = _make_manifest(
+            name="multi-kit",
+            tools=[KitToolDeclaration(name="ignored", target="json:dumps")],
+            targets={
+                "python": {
+                    "module": "multi_kit",
+                    "tools": [
+                        {"name": "tool-a", "target": "json:dumps"},
+                        {"name": "tool-b", "target": "json:loads"},
+                    ],
+                }
+            },
+        )
+
+        result = load_kit(manifest)
+
+        assert len(result) == 2
+        assert "tool-a" in result
+        assert "tool-b" in result
+        assert "ignored" not in result
