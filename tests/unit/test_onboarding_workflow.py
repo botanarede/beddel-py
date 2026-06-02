@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 from beddel.domain.parser import WorkflowParser
+from beddel.flows import get_onboarding_workflow_path
 
-_WORKFLOW_PATH = (
-    Path(__file__).resolve().parents[4]
-    / "src"
-    / "beddel-flows"
-    / "private"
-    / "beddel"
-    / "onboarding.yaml"
-)
+_WORKFLOW_PATH = get_onboarding_workflow_path()
 
 
 class TestOnboardingWorkflowParsing:
@@ -62,18 +55,20 @@ class TestOnboardingA2UITemplates:
         yaml_content = _WORKFLOW_PATH.read_text()
         return WorkflowParser.parse(yaml_content)
 
-    def test_show_form_template_is_valid_json(self, workflow) -> None:
+    def test_show_form_template_is_valid_structure(self, workflow) -> None:
         template = workflow.steps[0].config["template"]
-        parsed = json.loads(template)
-        assert "surfaceUpdate" in parsed
+        # Template is parsed as a dict from YAML (not a JSON string)
+        assert isinstance(template, dict)
+        assert "surfaceUpdate" in template
 
     def test_show_form_has_components(self, workflow) -> None:
         template = workflow.steps[0].config["template"]
-        parsed = json.loads(template)
-        components = parsed["surfaceUpdate"]["components"]
+        components = template["surfaceUpdate"]["components"]
         assert len(components) >= 3  # At least: title, name input, provider select
 
     def test_show_config_template_contains_step_result_ref(self, workflow) -> None:
         """The config card template references $stepResult for dynamic content."""
         template = workflow.steps[2].config["template"]
-        assert "$stepResult.generate_config" in template
+        # Search recursively through dict values for the reference
+        template_str = str(template)
+        assert "$stepResult.generate_config" in template_str
