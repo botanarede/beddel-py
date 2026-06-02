@@ -25,7 +25,7 @@ from beddel.domain.registry import PrimitiveRegistry
 # Fixture paths
 # ---------------------------------------------------------------------------
 
-FIXTURES_DIR = Path(__file__).resolve().parents[4] / "spec" / "fixtures"
+FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 
 
 def _load_yaml(relative_path: str) -> str:

@@ -14,9 +14,9 @@ from beddel.domain.parser import WorkflowParser
 # Helpers
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_VALID_DIR = _REPO_ROOT / "spec" / "fixtures" / "valid"
-_INVALID_DIR = _REPO_ROOT / "spec" / "fixtures" / "invalid"
+_FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
+_VALID_DIR = _FIXTURES_DIR / "valid"
+_INVALID_DIR = _FIXTURES_DIR / "invalid"
 
 
 def _load_fixture(path: Path) -> str:

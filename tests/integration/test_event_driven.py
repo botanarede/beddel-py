@@ -30,8 +30,7 @@ from beddel.domain.strategies.event_driven import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_VALID_DIR = _REPO_ROOT / "spec" / "fixtures" / "valid"
+_VALID_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "valid"
 
 
 def _make_context(**kwargs: object) -> ExecutionContext:

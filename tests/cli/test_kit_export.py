@@ -12,7 +12,7 @@ from click.testing import CliRunner
 
 from beddel.cli.commands import cli
 
-FIXTURE = Path(__file__).resolve().parents[4] / "spec" / "fixtures" / "valid" / "simple.yaml"
+FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "valid" / "simple.yaml"
 
 
 class TestExportSkill:
