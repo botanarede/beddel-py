@@ -114,6 +114,7 @@ def _download_kits_via_git(kit_names: list[str], kits_dir: Path) -> bool:
 
         # Copy each kit to the target directory
         kits_dir.mkdir(parents=True, exist_ok=True)
+        copied_any = False
         for name in kit_names:
             src = Path(tmpdir) / "kits" / name
             dest = kits_dir / name
@@ -121,6 +122,11 @@ def _download_kits_via_git(kit_names: list[str], kits_dir: Path) -> bool:
                 if dest.exists():
                     shutil.rmtree(dest)
                 shutil.copytree(src, dest)
+                copied_any = True
+
+        if not copied_any:
+            logger.warning("git sparse-checkout produced no kit directories")
+            return False
 
         return True
     finally:
