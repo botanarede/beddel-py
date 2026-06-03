@@ -1586,6 +1586,16 @@ def _build_runtime_app(
         allow_headers=["*"],
     )
 
+    # Standalone A2UI HTML renderer (GET / + favicon). No-op if kit absent.
+    try:
+        from beddel_serve_fastapi.static_routes import (  # type: ignore[import-not-found]
+            register_static_routes,
+        )
+
+        register_static_routes(app)
+    except ImportError:
+        pass
+
     import sqlite3
     from collections import defaultdict
 
@@ -1885,6 +1895,14 @@ def _build_runtime_app(
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
+
+    # Lightweight workflow listing for the standalone A2UI renderer.
+    # In dashboard mode the richer listing router is mounted at /workflows.
+    if not dashboard:
+
+        @app.get("/workflows")
+        async def list_workflows() -> list[dict[str, str]]:
+            return [{"id": wf.id, "name": wf.name} for wf, _ in all_workflows.values()]
 
     return app, loaded, list(all_workflows.keys())
 
