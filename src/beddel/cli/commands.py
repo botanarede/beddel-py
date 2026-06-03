@@ -2016,6 +2016,43 @@ def serve(
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
+@cli.command()
+@click.option("--port", default=8080, type=int, help="Bind port (default: 8080).")
+@click.option("--no-browser", is_flag=True, default=False, help="Do not open the browser.")
+def setup(port: int, *, no_browser: bool) -> None:
+    """Open the interactive onboarding wizard in your browser.
+
+    Serves the bundled onboarding workflow with the standalone A2UI
+    renderer and opens ``http://localhost:<port>``.  Runs until Ctrl+C.
+    Requires ``beddel init`` to have been run first.
+    """
+    from beddel.adapters.index_store import _DEFAULT_DB_PATH
+
+    if not Path(_DEFAULT_DB_PATH).expanduser().exists():
+        click.echo("Beddel is not initialized. Run `beddel init` first.", err=True)
+        raise SystemExit(1)
+
+    try:
+        import uvicorn
+    except ImportError:
+        click.echo("Missing dependencies. Install missing kits: beddel init", err=True)
+        raise SystemExit(1) from None
+
+    from beddel.flows import get_onboarding_workflow_path
+
+    app, _loaded, _wf_ids = _build_runtime_app((get_onboarding_workflow_path(),))
+
+    url = f"http://localhost:{port}"
+    click.echo(f"Beddel Setup — open {url}")
+    if not no_browser:
+        import threading
+        import webbrowser
+
+        threading.Timer(1.0, webbrowser.open, args=[url]).start()
+
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+
+
 # ---------------------------------------------------------------------------
 # Kit / Flow shared helpers
 # ---------------------------------------------------------------------------

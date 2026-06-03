@@ -34,20 +34,30 @@ REQUIRED_KITS: list[dict[str, str]] = [
     {
         "name": "serve-fastapi-kit",
         "reason": "HTTP server for dashboard and A2UI",
-        "pip_extras": "fastapi>=0.100,uvicorn>=0.20,sse-starlette>=1.6",
     },
     {
         "name": "ag-ui-kit",
         "reason": "A2UI interactive surfaces for onboarding",
-        "pip_extras": "ag-ui-protocol>=0.1",
-    },
-    {
-        "name": "provider-litellm-kit",
-        "reason": "Multi-provider LLM adapter (Gemini, OpenAI, etc.)",
-        "pip_extras": "litellm>=1.40",
     },
 ]
-"""Kits required for the onboarding wizard to function."""
+"""Kits always installed regardless of provider choice."""
+
+PROVIDER_KITS: dict[str, list[dict[str, str]]] = {
+    "gemini": [
+        {"name": "provider-gemini-kit", "reason": "Google Gemini LLM provider (ADC)"},
+    ],
+    "litellm": [
+        {
+            "name": "provider-litellm-kit",
+            "reason": "Multi-provider LLM adapter (Gemini, OpenAI, etc.)",
+        },
+    ],
+    "adk": [
+        {"name": "bridge-adk-kit", "reason": "ADK Bridge for Agent Engine deploy"},
+        {"name": "provider-gemini-kit", "reason": "Google Gemini LLM provider (ADC)"},
+    ],
+}
+"""Provider-specific kits selected via --provider flag."""
 
 BEDDEL_DATA_DIR = Path.home() / ".config" / "beddel"
 """User-level config directory (only stores index.db)."""
@@ -102,9 +112,9 @@ def _download_kits_via_git(kit_names: list[str], kits_dir: Path) -> bool:
             logger.warning("git clone failed: %s", result.stderr[:300])
             return False
 
-        # Set sparse-checkout paths
+        # Set sparse-checkout paths (--no-cone allows file + directory patterns)
         result = subprocess.run(
-            ["git", "-C", tmpdir, "sparse-checkout", "set", *sparse_paths],
+            ["git", "-C", tmpdir, "sparse-checkout", "set", "--no-cone", *sparse_paths],
             capture_output=True,
             text=True,
         )
@@ -267,57 +277,61 @@ def register_kit_in_db(
     conn.close()
 
 
-def install_required_kits(db_path: Path, kits_dir: Path) -> bool:
-    """Install all required kits via git sparse-checkout (with urllib fallback).
+def install_required_kits(db_path: Path, kits_dir: Path, kits: list[dict[str, str]]) -> bool:
+    """Install all required kits via kit_manager (full mode: kit.yaml + python/).
+
+    Uses beddel.kit_manager.sources.install_kit with mode="full" to perform
+    git sparse-checkout of the complete kit source including the python/ tree.
+
+    Args:
+        db_path: Path to the SQLite database.
+        kits_dir: Target directory for kit installation.
+        kits: List of kit dicts with 'name' and 'reason' keys.
 
     Returns:
         True if all kits installed successfully.
     """
-    kit_names = [k["name"] for k in REQUIRED_KITS]
+    from beddel.kit_manager.sources import install_kit as _install_kit
 
-    # Check which kits already have both kit.yaml AND python/
-    kits_to_download = []
-    for name in kit_names:
-        kit_dir = kits_dir / name
-        if kit_dir.exists() and (kit_dir / "kit.yaml").exists() and (kit_dir / "python").is_dir():
-            click.echo(f"\n  ✓ Kit '{name}' already present (with modules)")
-        else:
-            kits_to_download.append(name)
+    kit_names = [k["name"] for k in kits]
 
-    # Download missing kits via git sparse-checkout
-    git_success = False
-    if kits_to_download:
-        if _check_git_available():
-            click.echo(f"\n  ↓ Cloning kit sources via git ({len(kits_to_download)} kits)...")
-            git_success = _download_kits_via_git(kits_to_download, kits_dir)
-            if git_success:
-                click.echo("  ✓ Git sparse-checkout complete")
-            else:
-                click.echo(
-                    "  ⚠ git clone failed; falling back to manifest-only download.\n"
-                    "    Kit modules will NOT be importable until you run: "
-                    "beddel kit install <kit-name>",
-                    err=True,
-                )
-        else:
-            raise click.ClickException(
-                "beddel init requires git. Install git and try again.\n"
-                "  See: https://git-scm.com/downloads"
-            )
-
-    # Fallback: download manifests only for kits that git didn't provide
-    if kits_to_download and not git_success:
-        for name in kits_to_download:
-            download_kit(name, kits_dir)
-
-    # Install pip deps and register each kit
+    # Install each kit via kit_manager (full mode)
     all_ok = True
-    for kit_info in REQUIRED_KITS:
+    for kit_info in kits:
         kit_name = kit_info["name"]
-        kit_path = kits_dir / kit_name
         click.echo(f"\n  [{kit_name}] — {kit_info['reason']}")
 
-        if not install_kit_deps(kit_name, kit_info["pip_extras"]):
+        try:
+            kit_path = _install_kit(kit_name, kits_dir, mode="full")
+            if (kit_path / "python").is_dir():
+                click.echo(f"  ✓ Kit '{kit_name}' installed (with modules)")
+            else:
+                click.echo(f"  ✓ Kit '{kit_name}' installed (manifest only)")
+        except RuntimeError as exc:
+            click.echo(f"  ✗ Kit '{kit_name}' failed: {exc}", err=True)
+            # Fallback to manifest-only download
+            try:
+                download_kit(kit_name, kits_dir)
+            except click.ClickException as fallback_exc:
+                click.echo(f"  ✗ Fallback also failed: {fallback_exc}", err=True)
+                all_ok = False
+                continue
+
+        kit_path = kits_dir / kit_name
+
+        # Read deps from manifest (single source of truth)
+        kit_yaml_path = kit_path / "kit.yaml"
+        pip_deps: list[str] = []
+        if kit_yaml_path.exists():
+            import yaml
+
+            with open(kit_yaml_path) as f:
+                manifest_data = yaml.safe_load(f)
+            targets = manifest_data.get("targets", {})
+            py_target = targets.get("python", {})
+            pip_deps = py_target.get("dependencies", [])
+
+        if pip_deps and not install_kit_deps(kit_name, ",".join(pip_deps)):
             all_ok = False
             continue
 
@@ -363,7 +377,13 @@ def register_init_command(cli: Any) -> None:
 
     @cli.command()
     @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
-    def init(*, yes: bool) -> None:
+    @click.option(
+        "--provider",
+        type=click.Choice(["gemini", "litellm", "adk"], case_sensitive=False),
+        default="gemini",
+        help="LLM provider to install (default: gemini).",
+    )
+    def init(*, yes: bool, provider: str) -> None:
         """Initialize Beddel — provision database and install required kits.
 
         First command after `pip install beddel`. Provisions SQLite,
@@ -371,15 +391,17 @@ def register_init_command(cli: Any) -> None:
         Then run `beddel setup` for the interactive onboarding wizard.
         """
         kits_dir = DEFAULT_KITS_DIR
+        all_kits = REQUIRED_KITS + PROVIDER_KITS[provider]
 
         click.echo()
         click.echo("🔧 Beddel Init")
         click.echo("=" * 40)
         click.echo()
         click.echo("  ℹ Requires: git (for kit source download)")
+        click.echo(f"  Provider: {provider}")
         click.echo(f"  Kits: {kits_dir}")
         click.echo("  Required:")
-        for kit_info in REQUIRED_KITS:
+        for kit_info in all_kits:
             click.echo(f"    • {kit_info['name']}")
         click.echo()
 
@@ -395,19 +417,19 @@ def register_init_command(cli: Any) -> None:
 
         # Step 2: Install required kits
         click.echo("\nStep 2/3: Installing kits (requires git)...")
-        if not install_required_kits(db_path, kits_dir):
+        if not install_required_kits(db_path, kits_dir, all_kits):
             click.echo("\n⚠ Some kits failed. Run 'beddel init' again.", err=True)
             raise SystemExit(1)
 
         # Step 3: Save preferences
         click.echo("\nStep 3/3: Saving preferences...")
         save_pref(db_path, "kits_path", str(kits_dir))
-        save_pref(db_path, "llm_provider", "litellm")
+        save_pref(db_path, "llm_provider", provider)
         save_pref(db_path, "initialized", "true")
 
         click.echo()
         click.echo("=" * 40)
-        click.echo("✅ Beddel initialized!")
+        click.echo(f"✅ Beddel initialized! (provider: {provider})")
         click.echo()
-        click.echo("Next: export GEMINI_API_KEY='...' && beddel setup")
+        click.echo("Next: beddel setup")
         click.echo()
