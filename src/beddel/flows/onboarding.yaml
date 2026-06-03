@@ -3,18 +3,19 @@
 # =============================================================================
 #
 # Interactive onboarding workflow using A2UI surfaces (output-generator primitive).
-# 3-step pipeline: show form → generate config → show config card
+# 5-step pipeline: show form → generate config → show config card →
+# save config (on Apply) → show saved confirmation.
 #
-# A2UI action handling implemented in BC9.5. Form inputs from workflow
-# input_schema defaults, CLI -i flags, or dashboard form submission.
+# The generate/show steps run on the initial submit ($input.apply != true).
+# The save/confirmation steps run only when the user clicks Apply, which
+# re-runs the workflow with apply=true and the generated config_json.
 #
 # Usage (CLI):
 #   beddel run src/beddel-flows/public/beddel/onboarding.yaml \
 #     -i name="Alice" -i provider="gemini" -i project_type="research"
 #
-# Usage (Dashboard):
-#   Start: beddel connect
-#   Open: http://localhost:3000 → Workflows → Beddel Onboarding → Execute
+# Usage (browser):
+#   beddel setup   → opens http://localhost:8080 with the A2UI renderer
 #
 # =============================================================================
 
@@ -23,8 +24,12 @@ name: Beddel Onboarding
 description: >
   Interactive onboarding workflow with A2UI form surfaces.
   Shows a setup form, generates a recommended config via Gemini,
-  and displays it as an A2UI card.
+  displays it as an A2UI card, and persists it on Apply.
 version: "1.0"
+
+tools:
+  - name: save_config
+    target: "beddel.cli.config:save_wizard_config"
 
 input_schema:
   type: object
@@ -41,6 +46,14 @@ input_schema:
       type: string
       description: Project type (general, research, automation).
       default: "general"
+    apply:
+      type: boolean
+      description: When true, persist the generated config instead of generating.
+      default: false
+    config_json:
+      type: string
+      description: The generated config JSON passed back on Apply.
+      default: ""
   required: []
 
 steps:
@@ -92,6 +105,7 @@ steps:
 
   - id: generate_config
     primitive: llm
+    if: "$input.apply != true"
     config:
       model: gemini-2.5-flash
       prompt: >
@@ -114,6 +128,7 @@ steps:
 
   - id: show_config
     primitive: output-generator
+    if: "$input.apply != true"
     config:
       format: a2ui
       template:
@@ -138,5 +153,36 @@ steps:
             - type: Button
               id: apply-btn
               props:
-                label: Copy Config
+                label: Apply Config
                 variant: primary
+
+  - id: save_config
+    primitive: tool
+    if: "$input.apply == true"
+    config:
+      tool: save_config
+      arguments:
+        config_json: "$input.config_json"
+        name: "$input.name"
+        provider: "$input.provider"
+        project_type: "$input.project_type"
+
+  - id: show_saved
+    primitive: output-generator
+    if: "$input.apply == true"
+    config:
+      format: a2ui
+      template:
+        surfaceUpdate:
+          id: saved-card
+          components:
+            - type: Text
+              id: saved-title
+              props:
+                content: "Config Saved"
+                variant: h3
+            - type: Text
+              id: saved-body
+              props:
+                content: "Your configuration was saved to ~/.config/beddel/config.json. Run: beddel run <workflow>"
+                variant: body1

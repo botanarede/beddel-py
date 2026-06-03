@@ -26,15 +26,41 @@ class TestOnboardingWorkflowParsing:
         assert workflow.name == "Beddel Onboarding"
 
     def test_step_count(self, workflow) -> None:
-        assert len(workflow.steps) == 3
+        assert len(workflow.steps) == 5
 
     def test_step_ids(self, workflow) -> None:
         step_ids = [s.id for s in workflow.steps]
-        assert step_ids == ["show_form", "generate_config", "show_config"]
+        assert step_ids == [
+            "show_form",
+            "generate_config",
+            "show_config",
+            "save_config",
+            "show_saved",
+        ]
 
     def test_step_primitives(self, workflow) -> None:
         primitives = [s.primitive for s in workflow.steps]
-        assert primitives == ["output-generator", "llm", "output-generator"]
+        assert primitives == [
+            "output-generator",
+            "llm",
+            "output-generator",
+            "tool",
+            "output-generator",
+        ]
+
+    def test_apply_steps_are_gated(self, workflow) -> None:
+        """save_config / show_saved run only when apply is true; generate/show only when not."""
+        by_id = {s.id: s for s in workflow.steps}
+        assert by_id["generate_config"].if_condition == "$input.apply != true"
+        assert by_id["show_config"].if_condition == "$input.apply != true"
+        assert by_id["save_config"].if_condition == "$input.apply == true"
+        assert by_id["show_saved"].if_condition == "$input.apply == true"
+
+    def test_save_config_uses_save_tool(self, workflow) -> None:
+        """The save step invokes the save_config tool resolved from the tools section."""
+        save_step = next(s for s in workflow.steps if s.id == "save_config")
+        assert save_step.config["tool"] == "save_config"
+        assert workflow.metadata["_inline_tools"]["save_config"] is not None
 
     def test_show_form_a2ui_format(self, workflow) -> None:
         show_form = workflow.steps[0]

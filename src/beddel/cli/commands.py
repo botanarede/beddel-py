@@ -409,9 +409,14 @@ def config_show() -> None:
 
     click.echo(f"Global config:  {GLOBAL_CONFIG_PATH}")
     if GLOBAL_CONFIG_PATH.exists():
+        from beddel.cli.config import _SENTINEL
+
         gcfg = load_global_config()
         click.echo(f"  kits_paths: {gcfg['kits_paths'] or '(none)'}")
         click.echo(f"  flows_paths: {gcfg['flows_paths'] or '(none)'}")
+        for _key in ("llm_provider", "default_model", "project_name", "features"):
+            if gcfg.get(_key, _SENTINEL) is not _SENTINEL:
+                click.echo(f"  {_key}: {gcfg[_key]}")
     else:
         click.echo("  (not created yet)")
 

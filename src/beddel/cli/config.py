@@ -100,6 +100,9 @@ def _empty_config() -> dict[str, Any]:
         "dashboard_url": _SENTINEL,
         "llm_provider": _SENTINEL,
         "agent_engine": _SENTINEL,
+        "default_model": _SENTINEL,
+        "project_name": _SENTINEL,
+        "features": _SENTINEL,
     }
 
 
@@ -184,6 +187,12 @@ def load_global_config() -> dict[str, Any]:
         result["llm_provider"] = str(raw["llm_provider"])
     if "agent_engine" in raw:
         result["agent_engine"] = str(raw["agent_engine"])
+    if "default_model" in raw:
+        result["default_model"] = str(raw["default_model"])
+    if "project_name" in raw:
+        result["project_name"] = str(raw["project_name"])
+    if "features" in raw:
+        result["features"] = raw["features"]
     return result
 
 
@@ -192,6 +201,54 @@ def save_global_config(data: dict[str, Any]) -> None:
     GLOBAL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     GLOBAL_CONFIG_PATH.write_text(json.dumps(data, indent=2) + "\n")
     GLOBAL_CONFIG_PATH.chmod(0o644)
+
+
+def save_wizard_config(
+    config_json: str = "",
+    name: str | None = None,
+    provider: str | None = None,
+    project_type: str | None = None,
+) -> dict[str, Any]:
+    """Persist onboarding-wizard config to the global config file.
+
+    Parses the LLM-generated config (tolerating surrounding markdown fences
+    or prose) and merges ``llm_provider``, ``default_model``,
+    ``project_name``, and ``features`` into the existing global config.
+
+    Args:
+        config_json: The generated config as a JSON string.
+        name: Optional user name (unused in persisted config; for context).
+        provider: Fallback provider when ``config_json`` omits it.
+        project_type: Optional project type (for context).
+
+    Returns:
+        A dict with ``saved`` (bool), ``path`` (str), and the persisted
+        ``config`` dict.
+    """
+    parsed: dict[str, Any] = {}
+    if config_json:
+        text = str(config_json)
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end > start:
+            try:
+                parsed = json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                parsed = {}
+
+    cfg = {k: v for k, v in load_global_config().items() if v is not _SENTINEL}
+
+    llm_provider = parsed.get("llm_provider") or provider
+    if llm_provider:
+        cfg["llm_provider"] = llm_provider
+    if parsed.get("default_model"):
+        cfg["default_model"] = parsed["default_model"]
+    if parsed.get("project_name"):
+        cfg["project_name"] = parsed["project_name"]
+    if "features" in parsed:
+        cfg["features"] = parsed["features"]
+
+    save_global_config(cfg)
+    return {"saved": True, "path": str(GLOBAL_CONFIG_PATH), "config": cfg}
 
 
 # ---------------------------------------------------------------------------
