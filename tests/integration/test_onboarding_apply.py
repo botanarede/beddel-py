@@ -58,3 +58,25 @@ async def test_apply_flow_persists_config(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert saved["llm_provider"] == "gemini"
     assert saved["default_model"] == "gemini-2.0-flash"
     assert saved["project_name"] == "demo"
+
+
+async def test_preview_renders_form_without_llm() -> None:
+    """With no flags, only show_form runs — generate/show are gated out (no LLM)."""
+    workflow = WorkflowParser.parse(get_onboarding_workflow_path().read_text())
+    registry = PrimitiveRegistry()
+    register_builtins(registry)
+    deps = DefaultDependencies(
+        registry=registry,
+        tool_registry=workflow.metadata["_inline_tools"],
+    )
+    executor = WorkflowExecutor(registry, deps=deps)
+
+    result = await executor.execute(workflow, inputs={})
+
+    step_results = result["step_results"]
+    assert step_results["show_form"] is not SKIPPED
+    assert step_results["generate_config"] is SKIPPED
+    assert step_results["show_config"] is SKIPPED
+    # show_form emitted the interactive form surface.
+    surfaces = result["metadata"].get("_a2ui_surfaces", [])
+    assert any(s.get("surfaceUpdate", {}).get("id") == "onboarding-form" for s in surfaces)

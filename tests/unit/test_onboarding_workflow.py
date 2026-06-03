@@ -49,10 +49,10 @@ class TestOnboardingWorkflowParsing:
         ]
 
     def test_apply_steps_are_gated(self, workflow) -> None:
-        """save_config / show_saved run only when apply is true; generate/show only when not."""
+        """generate/show run on generate==true; save/confirm on apply==true."""
         by_id = {s.id: s for s in workflow.steps}
-        assert by_id["generate_config"].if_condition == "$input.apply != true"
-        assert by_id["show_config"].if_condition == "$input.apply != true"
+        assert by_id["generate_config"].if_condition == "$input.generate == true"
+        assert by_id["show_config"].if_condition == "$input.generate == true"
         assert by_id["save_config"].if_condition == "$input.apply == true"
         assert by_id["show_saved"].if_condition == "$input.apply == true"
 
