@@ -10,6 +10,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Kit sys.path bootstrap (ADR-0008, Story 5.1.1 Task 5)
 # ---------------------------------------------------------------------------
@@ -24,42 +26,51 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 # (moved from <project_root>/kits/ during kit ecosystem restructure)
 _KITS_BASE = _PROJECT_ROOT / "repo" / "kits"
 
-_KIT_DIRS = [
-    "agent-openclaw-kit",
-    "agent-claude-kit",
-    "agent-codex-kit",
-    "agent-kiro-kit",
-    "provider-litellm-kit",
-    "observability-otel-kit",
-    "observability-langfuse-kit",
-    "protocol-mcp-kit",
-    "auth-github-kit",
-    "serve-fastapi-kit",
-    "tools-http-kit",
-    "tools-file-kit",
-    "tools-shell-kit",
-    "tools-gates-kit",
-    "provider-gemini-kit",
-    "bridge-adk-kit",
-    "ag-ui-kit",
-]
+# Dynamic discovery: add python/ (or src/) directory of every kit that has one
+if _KITS_BASE.is_dir():
+    for _kit_dir in sorted(_KITS_BASE.iterdir()):
+        if not _kit_dir.is_dir():
+            continue
+        # Prefer python/ layout, fall back to src/
+        _kit_python = _kit_dir / "python"
+        _kit_src_alt = _kit_dir / "src"
+        _kit_src_dir = (
+            _kit_python
+            if _kit_python.is_dir()
+            else _kit_src_alt
+            if _kit_src_alt.is_dir()
+            else None
+        )
+        if _kit_src_dir and str(_kit_src_dir) not in sys.path:
+            sys.path.insert(0, str(_kit_src_dir))
 
 
-def _resolve_kit_test_src(kit_dir: Path) -> Path | None:
-    """Resolve kit source dir: python/ first, then src/ fallback."""
-    python_dir = kit_dir / "python"
-    if python_dir.is_dir():
-        return python_dir
-    src_dir = kit_dir / "src"
-    if src_dir.is_dir():
-        return src_dir
-    return None
+# ---------------------------------------------------------------------------
+# Integration marker — opt-in tests that need network/git (skipped by default)
+# ---------------------------------------------------------------------------
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register the ``--run-integration`` opt-in flag."""
+    parser.addoption(
+        "--run-integration",
+        action="store_true",
+        default=False,
+        help="Run integration tests that require network/git access.",
+    )
 
 
-for _kit in _KIT_DIRS:
-    _kit_path = _KITS_BASE / _kit
-    _kit_src_dir = _resolve_kit_test_src(_kit_path)
-    if _kit_src_dir:
-        _kit_src = str(_kit_src_dir)
-        if _kit_src not in sys.path:
-            sys.path.insert(0, _kit_src)
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the ``integration`` marker."""
+    config.addinivalue_line(
+        "markers",
+        "integration: requires network/git; opt-in via --run-integration.",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip ``integration``-marked tests unless ``--run-integration`` is given."""
+    if config.getoption("--run-integration"):
+        return
+    skip_marker = pytest.mark.skip(reason="needs --run-integration")
+    for item in items:
+        if item.get_closest_marker("integration") is not None:
+            item.add_marker(skip_marker)
