@@ -1,0 +1,39 @@
+# =============================================================================
+# Hello Agent — minimal interactive workflow
+# =============================================================================
+#
+# Smallest possible workflow to exercise beddel with user input.
+# Asks a question, answers via LLM.
+#
+# Usage (CLI):
+#   beddel run --bundled hello -i question="What is Beddel?"
+#
+# Usage (browser):
+#   beddel setup → pick "Hello Agent" from the launcher
+#
+# =============================================================================
+
+id: hello_agent
+name: Hello Agent
+description: Ask a question, get a concise answer from the LLM.
+version: "1.0"
+interaction: interactive
+
+input_schema:
+  type: object
+  properties:
+    question:
+      type: string
+      description: The question to answer.
+      default: "Explain Beddel in one sentence."
+  required: []
+
+steps:
+  - id: answer
+    primitive: llm
+    config:
+      model: gemini-2.5-flash
+      prompt: "Answer concisely and helpfully: $input.question"
+      temperature: 0.3
+      max_tokens: 256
+    timeout: 30.0

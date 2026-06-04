@@ -1,32 +1,32 @@
 # =============================================================================
-# Beddel Onboarding — A2UI Interactive Form
+# Beddel Setup — A2UI Interactive Configuration Wizard
 # =============================================================================
 #
-# Interactive onboarding workflow using A2UI surfaces (output-generator primitive).
+# Interactive setup workflow using A2UI surfaces (output-generator primitive).
 # 5-step pipeline: show form → generate config → show config card →
 # save config (on Apply) → show saved confirmation.
 #
 # The generate/show steps run only when generate=true (form submit); the
-# save/confirmation steps run only when apply=true.  An initial request with
+# save/confirmation steps run only when apply=true. An initial request with
 # neither flag runs just show_form, so the renderer can display the form
 # without invoking the LLM.
 #
 # Usage (CLI):
-#   beddel run src/beddel-flows/public/beddel/onboarding.yaml \
-#     -i name="Alice" -i provider="gemini" -i project_type="research"
+#   beddel run --bundled setup -i name="Alice" -i provider="gemini"
 #
 # Usage (browser):
 #   beddel setup   → opens http://localhost:8080 with the A2UI renderer
 #
 # =============================================================================
 
-id: beddel_onboarding
-name: Beddel Onboarding
+id: beddel_setup
+name: Beddel Setup
 description: >
-  Interactive onboarding workflow with A2UI form surfaces.
-  Shows a setup form, generates a recommended config via Gemini,
+  Interactive setup workflow with A2UI form surfaces.
+  Shows a configuration form, generates a recommended config via Gemini,
   displays it as an A2UI card, and persists it on Apply.
 version: "1.0"
+interaction: interactive
 
 tools:
   - name: save_config
@@ -68,7 +68,7 @@ steps:
       format: a2ui
       template:
         surfaceUpdate:
-          id: onboarding-form
+          id: setup-form
           components:
             - type: Text
               id: title
@@ -126,7 +126,7 @@ steps:
         - "features": an array of recommended features for the project type
 
         Example:
-        {"llm_provider": "gemini", "default_model": "gemini-2.0-flash", "project_name": "my-research", "features": ["memory", "reflection"]}
+        {"llm_provider": "gemini", "default_model": "gemini-2.5-flash", "project_name": "my-research", "features": ["memory", "reflection"]}
       temperature: 0.3
       max_tokens: 200
     timeout: 30.0

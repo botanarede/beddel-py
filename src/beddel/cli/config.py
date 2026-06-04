@@ -251,6 +251,17 @@ def save_wizard_config(
     return {"saved": True, "path": str(GLOBAL_CONFIG_PATH), "config": cfg}
 
 
+def is_onboarding_complete() -> bool:
+    """Return True if the onboarding wizard has been completed.
+
+    Detection: ``project_name`` is set by ``save_wizard_config`` at the end
+    of the onboarding flow — its presence in the global config indicates a
+    completed onboarding.
+    """
+    cfg = load_global_config()
+    return cfg.get("project_name", _SENTINEL) is not _SENTINEL
+
+
 # ---------------------------------------------------------------------------
 # Merged resolution
 # ---------------------------------------------------------------------------

@@ -388,7 +388,7 @@ def register_init_command(cli: Any) -> None:
 
         First command after `pip install beddel`. Provisions SQLite,
         installs required kits, saves preferences.
-        Then run `beddel setup` for the interactive onboarding wizard.
+        Then run `beddel launch` for the interactive onboarding wizard.
         """
         kits_dir = DEFAULT_KITS_DIR
         all_kits = REQUIRED_KITS + PROVIDER_KITS[provider]
@@ -431,5 +431,5 @@ def register_init_command(cli: Any) -> None:
         click.echo("=" * 40)
         click.echo(f"✅ Beddel initialized! (provider: {provider})")
         click.echo()
-        click.echo("Next: beddel setup")
+        click.echo("Next: beddel launch")
         click.echo()

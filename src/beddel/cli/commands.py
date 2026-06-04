@@ -74,16 +74,29 @@ def _resolve_all_kit_paths(explicit_kit: tuple[Path, ...]) -> list[Path] | None:
     return merged if merged else None
 
 
-def _resolve_all_flow_paths(explicit_workflows: tuple[Path, ...]) -> list[Path]:
+def _resolve_all_flow_paths(
+    explicit_workflows: tuple[Path, ...],
+    *,
+    include_bundled: bool = False,
+) -> list[Path]:
     """Merge explicit ``-w`` CLI paths with config-file flow paths.
 
-    Returns an empty list when nothing is configured (no bundled-flow
-    equivalent exists).
+    When *include_bundled* is True, the package-embedded flows directory
+    (``beddel.flows``) is appended so that bundled workflows are always
+    discoverable by ``beddel launch`` / ``beddel connect``.
     """
     from beddel.cli.config import resolve_flows_paths
 
     merged: list[Path] = list(explicit_workflows)
     merged.extend(resolve_flows_paths())
+
+    if include_bundled:
+        from beddel.flows import get_bundled_flows_dir
+
+        bundled = get_bundled_flows_dir()
+        if bundled.is_dir() and bundled not in merged:
+            merged.append(bundled)
+
     return merged
 
 
@@ -1906,8 +1919,21 @@ def _build_runtime_app(
     if not dashboard:
 
         @app.get("/workflows")
-        async def list_workflows() -> list[dict[str, str]]:
-            return [{"id": wf.id, "name": wf.name} for wf, _ in all_workflows.values()]
+        async def list_workflows() -> list[dict[str, Any]]:
+            return [
+                {
+                    "id": wf.id,
+                    "name": wf.name,
+                    "description": wf.description or "",
+                    "input_schema": wf.input_schema or {},
+                    "has_a2ui_steps": any(
+                        s.config.get("format") == "a2ui"
+                        for s in wf.steps
+                        if hasattr(s, "config") and isinstance(s.config, dict)
+                    ),
+                }
+                for wf, _ in all_workflows.values()
+            ]
 
     return app, loaded, list(all_workflows.keys())
 
@@ -2024,11 +2050,15 @@ def serve(
 @cli.command()
 @click.option("--port", default=8080, type=int, help="Bind port (default: 8080).")
 @click.option("--no-browser", is_flag=True, default=False, help="Do not open the browser.")
-def setup(port: int, *, no_browser: bool) -> None:
-    """Open the interactive onboarding wizard in your browser.
+def launch(port: int, *, no_browser: bool) -> None:
+    """Launch the Beddel flow runner in your browser.
 
-    Serves the bundled onboarding workflow with the standalone A2UI
-    renderer and opens ``http://localhost:<port>``.  Runs until Ctrl+C.
+    On first run (before onboarding is completed), only the interactive
+    onboarding wizard is served.  After onboarding, all discovered flows
+    are served — including bundled flows shipped with the package and
+    user-configured ``flows_paths`` from config.json.
+
+    Opens ``http://localhost:<port>``.  Runs until Ctrl+C.
     Requires ``beddel init`` to have been run first.
     """
     from beddel.adapters.index_store import _DEFAULT_DB_PATH
@@ -2043,12 +2073,22 @@ def setup(port: int, *, no_browser: bool) -> None:
         click.echo("Missing dependencies. Install missing kits: beddel init", err=True)
         raise SystemExit(1) from None
 
-    from beddel.flows import get_onboarding_workflow_path
+    from beddel.cli.config import is_onboarding_complete
 
-    app, _loaded, _wf_ids = _build_runtime_app((get_onboarding_workflow_path(),))
+    if is_onboarding_complete():
+        # Post-onboarding: serve all flows (bundled + config paths)
+        flow_paths = tuple(_resolve_all_flow_paths((), include_bundled=True))
+        app, loaded, wf_ids = _build_runtime_app(flow_paths)
+        url = f"http://localhost:{port}"
+        click.echo(f"Beddel Launch — {loaded} flow(s) at {url}")
+    else:
+        # First run: only the onboarding wizard
+        from beddel.flows import get_onboarding_workflow_path
 
-    url = f"http://localhost:{port}"
-    click.echo(f"Beddel Setup — open {url}")
+        app, _loaded, wf_ids = _build_runtime_app((get_onboarding_workflow_path(),))
+        url = f"http://localhost:{port}"
+        click.echo(f"Beddel Onboarding — open {url}")
+
     if not no_browser:
         import threading
         import webbrowser
@@ -2164,7 +2204,7 @@ def _resolve_kit_source(source: str) -> Path:
             text=True,
         )
         subprocess.run(
-            [git, "sparse-checkout", "set", kit_path],
+            [git, "sparse-checkout", "set", "--no-cone", kit_path],
             check=True,
             capture_output=True,
             text=True,
@@ -2215,8 +2255,19 @@ def kit_install(source: str, *, global_install: bool) -> None:
         click.echo(f"Invalid kit manifest: {exc.message}", err=True)
         raise SystemExit(1) from None
 
-    # 3. Install pip dependencies
-    deps = manifest.kit.dependencies
+    # 3. Install pip dependencies (prefer targets.python.dependencies)
+    from beddel.domain.kit import KitLanguageTarget
+
+    deps = manifest.kit.dependencies  # fallback (top-level)
+    raw_py = manifest.kit.targets.get("python")
+    if raw_py:
+        try:
+            lt = KitLanguageTarget(**raw_py)
+            if lt.dependencies:
+                deps = lt.dependencies
+        except Exception:
+            pass
+
     if deps:
         click.echo(f"Installing dependencies: {', '.join(deps)}")
         try:
