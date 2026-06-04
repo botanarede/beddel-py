@@ -1,0 +1,277 @@
+# =============================================================================
+# Create Workflow — A2UI Scaffold Wizard
+# =============================================================================
+#
+# Interactive wizard that generates a valid Beddel YAML workflow from natural
+# language input.  The developer describes what they want to automate, selects
+# complexity and output format, and the LLM generates the YAML.  The result
+# can be saved to disk.
+#
+# Usage (CLI):
+#   beddel run src/beddel-flows/public/beddel/create-workflow.yaml \
+#     -i description="research AI agents and save summary" \
+#     -i complexity="simple" -i needs_input="no" \
+#     -i output_format="text" -i filename="test-output.yaml"
+#
+# Usage (browser):
+#   beddel serve -w src/beddel-flows/public/beddel/create-workflow.yaml --port 8080
+#
+# =============================================================================
+
+id: create_workflow
+name: Create a Workflow
+description: >
+  Scaffold wizard that generates a valid Beddel YAML workflow from a natural
+  language description.  Uses Gemini to generate the YAML, displays a preview,
+  and optionally saves the file to disk.
+version: "1.0"
+
+tools:
+  - name: write_file
+    target: "beddel.tools.file:file_write"
+
+input_schema:
+  type: object
+  properties:
+    description:
+      type: string
+      description: What do you want to automate?
+      default: ""
+    complexity:
+      type: string
+      description: "Complexity level: simple, tools, or multi-agent."
+      default: "simple"
+    needs_input:
+      type: string
+      description: "Whether the workflow needs user input before running (yes/no)."
+      default: "no"
+    output_format:
+      type: string
+      description: "Output format: text, json, or a2ui."
+      default: "text"
+    filename:
+      type: string
+      description: Filename to save the generated workflow as.
+      default: ""
+    generate:
+      type: boolean
+      description: When true, run the LLM to generate the workflow YAML.
+      default: false
+    save:
+      type: boolean
+      description: When true, save the generated YAML to disk.
+      default: false
+    generated_yaml:
+      type: string
+      description: The generated YAML content passed back on Save.
+      default: ""
+  required: []
+
+steps:
+  # ------------------------------------------------------------------
+  # Step 1: Show the scaffold form
+  # ------------------------------------------------------------------
+  - id: show_form
+    primitive: output-generator
+    config:
+      format: a2ui
+      template:
+        surfaceUpdate:
+          id: create-workflow-form
+          components:
+            - type: Text
+              id: title
+              props:
+                content: "Create a Workflow"
+                variant: h2
+            - type: Text
+              id: subtitle
+              props:
+                content: "Describe what you want to automate and Beddel will generate the YAML."
+                variant: body1
+            - type: TextInput
+              id: description
+              props:
+                label: "What do you want to automate?"
+                placeholder: "e.g. Research a topic, summarize findings, save to markdown"
+            - type: Select
+              id: complexity
+              props:
+                label: Complexity
+                options:
+                  - label: "Simple (1-2 steps)"
+                    value: simple
+                  - label: "With tools (shell, http, file)"
+                    value: tools
+                  - label: "Multi-agent (delegates to another agent)"
+                    value: multi-agent
+            - type: Select
+              id: needs_input
+              props:
+                label: "Needs user input before running?"
+                options:
+                  - label: "Yes (show a form first)"
+                    value: "yes"
+                  - label: "No (runs with defaults)"
+                    value: "no"
+            - type: Select
+              id: output_format
+              props:
+                label: Output format
+                options:
+                  - label: "Text (markdown)"
+                    value: text
+                  - label: "JSON (structured)"
+                    value: json
+                  - label: "A2UI (visual card)"
+                    value: a2ui
+            - type: Button
+              id: generate-btn
+              props:
+                label: "Generate Workflow"
+                variant: primary
+
+  # ------------------------------------------------------------------
+  # Step 2: Generate the YAML via Gemini
+  # ------------------------------------------------------------------
+  - id: generate_yaml
+    primitive: llm
+    if: "$input.generate == true"
+    config:
+      model: gemini-2.5-flash
+      temperature: 0.4
+      max_tokens: 2000
+      prompt: |
+        You are a Beddel workflow generator. Generate a COMPLETE, valid, runnable
+        Beddel YAML workflow based on the user requirements below.
+
+        USER REQUIREMENTS:
+        - Description: $input.description
+        - Complexity: $input.complexity
+        - Needs user input form: $input.needs_input
+        - Output format: $input.output_format
+
+        BEDDEL WORKFLOW YAML SCHEMA:
+        A valid workflow has this top-level structure:
+
+          id: snake_case_identifier
+          name: Human Readable Name
+          description: What this workflow does
+          version: "1.0"
+          input_schema:
+            type: object
+            properties:
+              field_name:
+                type: string
+                description: Field description
+                default: optional default value
+            required: []
+          steps:
+            - id: step_id
+              primitive: llm | chat | output-generator | tool | call-agent | guardrail
+              config:
+                (primitive-specific config)
+              timeout: 30.0
+
+        PRIMITIVE CONFIGS:
+        - llm: model, prompt (use $input.* refs), temperature, max_tokens
+        - output-generator: format (text|json|a2ui), template (string or dict)
+          For a2ui format, template is a dict with surfaceUpdate.id and surfaceUpdate.components[]
+          Components: Text (props: content, variant: h2|h3|body1|code), TextInput (props: label, placeholder),
+          Select (props: label, options[{label,value}]), Button (props: label, variant: primary|secondary)
+        - tool: tool (registered tool name), arguments (dict with $input.* or $stepResult.* refs)
+        - call-agent: adapter (openclaw|claude|codex|kiro-cli), prompt, model, sandbox
+        - guardrail: schema (JSON Schema dict), strategy (raise|return_errors|correct)
+
+        VARIABLE REFERENCES:
+        - $input.field — references workflow input fields
+        - $stepResult.step_id.content — references a previous step's output
+
+        RULES:
+        1. Generate ONLY the raw YAML content. No markdown fences. No explanation.
+        2. Use gemini-2.5-flash as the model for any llm steps.
+        3. If needs_input is "yes", add a FIRST step with primitive output-generator
+           format a2ui showing an input form with relevant fields and a Submit button.
+        4. The workflow MUST be fully self-contained and runnable with: beddel run <file>
+        5. For "simple" complexity: 1-2 steps (an llm step, maybe an output-generator).
+        6. For "tools" complexity: include a tool step (use file_write, file_read, or shell).
+        7. For "multi-agent" complexity: include a call-agent step.
+        8. For output_format "text": last step is output-generator format text.
+           For "json": last step is output-generator format json.
+           For "a2ui": last step is output-generator format a2ui with a result card.
+        9. Always include a descriptive name and description.
+        10. Always set version: "1.0".
+    timeout: 60.0
+
+  # ------------------------------------------------------------------
+  # Step 3: Show the generated result
+  # ------------------------------------------------------------------
+  - id: show_result
+    primitive: output-generator
+    if: "$input.generate == true"
+    config:
+      format: a2ui
+      template:
+        surfaceUpdate:
+          id: result-card
+          components:
+            - type: Text
+              id: result-title
+              props:
+                content: "Generated Workflow"
+                variant: h3
+            - type: Text
+              id: result-yaml
+              props:
+                content: "$stepResult.generate_yaml.content"
+                variant: code
+            - type: TextInput
+              id: filename
+              props:
+                label: "Save as"
+                placeholder: "my-workflow.yaml"
+            - type: Button
+              id: save-btn
+              props:
+                label: "Save to Disk"
+                variant: primary
+            - type: Button
+              id: regenerate-btn
+              props:
+                label: "Regenerate"
+                variant: secondary
+
+  # ------------------------------------------------------------------
+  # Step 4: Save the file to disk
+  # ------------------------------------------------------------------
+  - id: save_file
+    primitive: tool
+    if: "$input.save == true"
+    config:
+      tool: write_file
+      arguments:
+        path: "workflows/$input.filename"
+        content: "$input.generated_yaml"
+
+  # ------------------------------------------------------------------
+  # Step 5: Confirm save
+  # ------------------------------------------------------------------
+  - id: show_saved
+    primitive: output-generator
+    if: "$input.save == true"
+    config:
+      format: a2ui
+      template:
+        surfaceUpdate:
+          id: saved-card
+          components:
+            - type: Text
+              id: saved-title
+              props:
+                content: "Workflow Saved"
+                variant: h3
+            - type: Text
+              id: saved-body
+              props:
+                content: "Your workflow was saved. Run it with: beddel run workflows/$input.filename"
+                variant: body1
