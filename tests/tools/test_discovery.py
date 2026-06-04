@@ -51,7 +51,10 @@ class TestDiscoverBuiltinTools:
         result = discover_builtin_tools()
         assert isinstance(result, dict)
 
-    def test_returns_empty_after_kit_extraction(self) -> None:
-        """After kit extraction, no builtin tool submodules remain."""
+    def test_discovers_file_tools(self) -> None:
+        """Discovers file_read and file_write from beddel.tools.file."""
         result = discover_builtin_tools()
-        assert result == {}
+        assert "file_read" in result
+        assert "file_write" in result
+        assert callable(result["file_read"])
+        assert callable(result["file_write"])
