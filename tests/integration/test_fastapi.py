@@ -392,7 +392,7 @@ class TestErrorHandling:
     async def test_execution_error_returns_500(self) -> None:
         """ExecutionError raised before streaming returns HTTP 500 with structured JSON.
 
-        We monkeypatch the executor's execute_stream to raise ExecutionError
+        We monkeypatch the executor's execute to raise ExecutionError
         synchronously, which the handler's except BeddelError block catches.
         """
         from unittest.mock import patch
@@ -410,7 +410,7 @@ class TestErrorHandling:
             base_url="http://test",
         ) as client:
             with patch(
-                "beddel_serve_fastapi.handler.WorkflowExecutor.execute_stream",
+                "beddel_serve_fastapi.handler.WorkflowExecutor.execute",
                 side_effect=ExecutionError(
                     code="BEDDEL-EXEC-002",
                     message="Step failed",
@@ -445,7 +445,7 @@ class TestErrorHandling:
             base_url="http://test",
         ) as client:
             with patch(
-                "beddel_serve_fastapi.handler.WorkflowExecutor.execute_stream",
+                "beddel_serve_fastapi.handler.WorkflowExecutor.execute",
                 side_effect=ParseError(
                     code="BEDDEL-PARSE-001",
                     message="Bad workflow YAML",
