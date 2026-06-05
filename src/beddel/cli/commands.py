@@ -1926,11 +1926,6 @@ def _build_runtime_app(
                     "name": wf.name,
                     "description": wf.description or "",
                     "input_schema": wf.input_schema or {},
-                    "has_a2ui_steps": any(
-                        s.config.get("format") == "a2ui"
-                        for s in wf.steps
-                        if hasattr(s, "config") and isinstance(s.config, dict)
-                    ),
                 }
                 for wf, _ in all_workflows.values()
             ]
@@ -2083,9 +2078,9 @@ def launch(port: int, *, no_browser: bool) -> None:
         click.echo(f"Beddel Launch — {loaded} flow(s) at {url}")
     else:
         # First run: only the onboarding wizard
-        from beddel.flows import get_onboarding_workflow_path
+        from beddel.flows import get_bundled_workflow_path
 
-        app, _loaded, wf_ids = _build_runtime_app((get_onboarding_workflow_path(),))
+        app, _loaded, wf_ids = _build_runtime_app((get_bundled_workflow_path("setup"),))
         url = f"http://localhost:{port}"
         click.echo(f"Beddel Onboarding — open {url}")
 
