@@ -82,9 +82,14 @@ class IndexStore:
                 "CREATE TABLE IF NOT EXISTS user_prefs ("
                 "key TEXT PRIMARY KEY, "
                 "value TEXT NOT NULL, "
-                "updated_at TEXT NOT NULL"
+                "updated_at TEXT NOT NULL DEFAULT ''"
                 ")"
             )
+            # Migration: add updated_at to legacy user_prefs tables (pre-v0.1.8)
+            try:
+                conn.execute("ALTER TABLE user_prefs ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
             conn.execute("CREATE INDEX IF NOT EXISTS idx_kit_enabled ON kit_index (enabled)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_flow_enabled ON flow_index (enabled)")
         conn.close()
