@@ -1,64 +1,65 @@
 # =============================================================================
-# Beddel Setup — A2UI Interactive Configuration Wizard
+# Beddel Setup — Interactive Configuration Wizard
 # =============================================================================
 #
-# Interactive setup workflow using A2UI surfaces (output-generator primitive).
-# 5-step pipeline: show form → generate config → show config card →
-# save config (on Apply) → show saved confirmation.
+# Two-section form split by responsibility:
+#   Fieldset 1 (Personal Preferences → SQLite user_prefs):
+#     - llm_provider, default_model, project_name
+#   Fieldset 2 (Project Infrastructure → config.json):
+#     - dashboard_url, agent_engine
 #
-# The generate/show steps run only when generate=true (form submit); the
-# save/confirmation steps run only when apply=true. An initial request with
-# neither flag runs just show_form, so the renderer can display the form
-# without invoking the LLM.
+# No LLM required. Direct form → save → confirmation.
 #
 # Usage (CLI):
-#   beddel run --bundled setup -i name="Alice" -i provider="gemini"
+#   beddel run --bundled setup -i llm_provider="gemini" -i default_model="gemini-2.5-flash"
 #
 # Usage (browser):
-#   beddel setup   → opens http://localhost:8080 with the A2UI renderer
+#   beddel launch → opens http://localhost:8080 with the A2UI renderer
 #
 # =============================================================================
 
 id: beddel_setup
 name: Beddel Setup
 description: >
-  Interactive setup workflow with A2UI form surfaces.
-  Shows a configuration form, generates a recommended config via Gemini,
-  displays it as an A2UI card, and persists it on Apply.
-version: "1.0"
+  Configure your Beddel environment. Personal preferences are stored locally
+  in SQLite; project infrastructure settings go to config.json.
+version: "2.0"
 interaction: interactive
 
 tools:
-  - name: save_config
-    target: "beddel.cli.config:save_wizard_config"
+  - name: save_setup
+    target: "beddel.cli.config:save_setup"
 
 input_schema:
   type: object
   properties:
-    name:
+    # --- Personal Preferences (→ SQLite) ---
+    llm_provider:
       type: string
-      description: Your name for personalization.
-      default: "Developer"
-    provider:
-      type: string
-      description: Preferred LLM provider (gemini, litellm, openai).
+      description: Preferred LLM provider.
       default: "gemini"
-    project_type:
+    default_model:
       type: string
-      description: Project type (general, research, automation).
-      default: "general"
-    apply:
-      type: boolean
-      description: When true, persist the generated config instead of generating.
-      default: false
-    generate:
-      type: boolean
-      description: When true, run the LLM to generate the recommended config.
-      default: false
-    config_json:
+      description: Default model for the chosen provider.
+      default: "gemini-2.5-flash"
+    project_name:
       type: string
-      description: The generated config JSON passed back on Apply.
+      description: Project slug for identification.
       default: ""
+    # --- Project Infrastructure (→ config.json) ---
+    dashboard_url:
+      type: string
+      description: Remote dashboard URL (leave empty for local-only).
+      default: ""
+    agent_engine:
+      type: string
+      description: Google Cloud project for Vertex AI Agent Engine (optional).
+      default: ""
+    # --- Control flags ---
+    submit:
+      type: boolean
+      description: Set to true when the form is submitted.
+      default: false
   required: []
 
 steps:
@@ -73,121 +74,98 @@ steps:
             - type: Text
               id: title
               props:
-                content: "Welcome to Beddel"
+                content: "Beddel Setup"
                 variant: h2
+
+            # ── Fieldset 1: Personal Preferences (→ SQLite) ──
             - type: Text
-              id: subtitle
+              id: prefs-header
               props:
-                content: "Configure your environment to get started."
+                content: "Personal Preferences"
+                variant: h3
+            - type: Text
+              id: prefs-desc
+              props:
+                content: "Stored locally in your machine. Not shared with the team."
                 variant: body1
-            - type: TextInput
-              id: name-input
-              props:
-                label: Your Name
-                placeholder: Enter your name
             - type: Select
-              id: provider-select
+              id: llm_provider
               props:
                 label: LLM Provider
                 options:
-                  - label: Google Gemini
+                  - label: Google Gemini (recommended)
                     value: gemini
                   - label: LiteLLM (multi-provider)
                     value: litellm
                   - label: OpenAI
                     value: openai
-            - type: Select
-              id: project-type-select
+            - type: TextInput
+              id: default_model
               props:
-                label: Project Type
-                options:
-                  - label: General
-                    value: general
-                  - label: Research Pipeline
-                    value: research
-                  - label: Automation
-                    value: automation
+                label: Default Model
+                placeholder: "gemini-2.5-flash"
+            - type: TextInput
+              id: project_name
+              props:
+                label: Project Name
+                placeholder: "my-project"
 
-  - id: generate_config
-    primitive: llm
-    if: "$input.generate == true"
-    config:
-      model: gemini-2.5-flash
-      prompt: >
-        Generate a minimal Beddel config.json for a user with these preferences:
-        - Name: $input.name
-        - LLM Provider: $input.provider
-        - Project Type: $input.project_type
-
-        Return ONLY a valid JSON object with these keys:
-        - "llm_provider": the provider name
-        - "default_model": a recommended model for the provider
-        - "project_name": a slug based on the project type
-        - "features": an array of recommended features for the project type
-
-        Example:
-        {"llm_provider": "gemini", "default_model": "gemini-2.5-flash", "project_name": "my-research", "features": ["memory", "reflection"]}
-      temperature: 0.3
-      max_tokens: 200
-    timeout: 30.0
-
-  - id: show_config
-    primitive: output-generator
-    if: "$input.generate == true"
-    config:
-      format: a2ui
-      template:
-        surfaceUpdate:
-          id: config-card
-          components:
+            # ── Fieldset 2: Project Infrastructure (→ config.json) ──
             - type: Text
-              id: config-title
+              id: infra-header
               props:
-                content: "Your Recommended Config"
+                content: "Project Infrastructure"
                 variant: h3
             - type: Text
-              id: config-body
+              id: infra-desc
               props:
-                content: "Based on your preferences, here is your recommended configuration."
+                content: "Shared settings for this project. Saved to ~/.config/beddel/config.json."
                 variant: body1
-            - type: Text
-              id: config-json
+            - type: TextInput
+              id: dashboard_url
               props:
-                content: "$stepResult.generate_config.content"
-                variant: code
+                label: Dashboard URL
+                placeholder: "https://connect.beddel.com.br (optional)"
+            - type: TextInput
+              id: agent_engine
+              props:
+                label: Agent Engine Project
+                placeholder: "my-gcp-project (optional)"
+
             - type: Button
-              id: apply-btn
+              id: submit-btn
               props:
-                label: Apply Config
+                label: Save Configuration
                 variant: primary
 
-  - id: save_config
+  - id: save
     primitive: tool
-    if: "$input.apply == true"
+    if: "$input.submit == true"
     config:
-      tool: save_config
+      tool: save_setup
       arguments:
-        config_json: "$input.config_json"
-        name: "$input.name"
-        provider: "$input.provider"
-        project_type: "$input.project_type"
+        llm_provider: "$input.llm_provider"
+        default_model: "$input.default_model"
+        project_name: "$input.project_name"
+        dashboard_url: "$input.dashboard_url"
+        agent_engine: "$input.agent_engine"
 
-  - id: show_saved
+  - id: show_done
     primitive: output-generator
-    if: "$input.apply == true"
+    if: "$input.submit == true"
     config:
       format: a2ui
       template:
         surfaceUpdate:
-          id: saved-card
+          id: done-card
           components:
             - type: Text
-              id: saved-title
+              id: done-title
               props:
-                content: "Config Saved"
+                content: "Setup Complete"
                 variant: h3
             - type: Text
-              id: saved-body
+              id: done-body
               props:
-                content: "Your configuration was saved to ~/.config/beddel/config.json. Run: beddel run <workflow>"
+                content: "Your preferences were saved. Run: beddel launch"
                 variant: body1

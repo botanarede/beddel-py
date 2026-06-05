@@ -251,13 +251,87 @@ def save_wizard_config(
     return {"saved": True, "path": str(GLOBAL_CONFIG_PATH), "config": cfg}
 
 
+def save_setup(
+    llm_provider: str = "",
+    default_model: str = "",
+    project_name: str = "",
+    dashboard_url: str = "",
+    agent_engine: str = "",
+) -> dict[str, Any]:
+    """Persist setup form data to the appropriate stores.
+
+    Personal preferences (llm_provider, default_model, project_name) go to
+    SQLite ``user_prefs``.  Project infrastructure (dashboard_url,
+    agent_engine) goes to ``config.json``.
+
+    Also sets ``onboarding_done=true`` in SQLite to mark completion.
+
+    Args:
+        llm_provider: Preferred LLM provider (gemini, litellm, openai).
+        default_model: Default model identifier for the provider.
+        project_name: Project slug for identification.
+        dashboard_url: Remote dashboard URL (infra setting).
+        agent_engine: Google Cloud project for Agent Engine (infra setting).
+
+    Returns:
+        A dict with ``saved`` (bool) and summary of what was persisted.
+    """
+    import asyncio
+
+    from beddel.adapters.index_store import IndexStore
+
+    # ── SQLite: personal preferences ──
+    store = IndexStore()
+    prefs: dict[str, str] = {"onboarding_done": "true"}
+    if llm_provider:
+        prefs["llm_provider"] = llm_provider
+    if default_model:
+        prefs["default_model"] = default_model
+    if project_name:
+        prefs["project_name"] = project_name
+
+    for key, value in prefs.items():
+        asyncio.run(store.set_pref(key, value))
+
+    # ── config.json: project infrastructure ──
+    cfg = {k: v for k, v in load_global_config().items() if v is not _SENTINEL}
+    changed = False
+    if dashboard_url:
+        cfg["dashboard_url"] = dashboard_url
+        changed = True
+    if agent_engine:
+        cfg["agent_engine"] = agent_engine
+        changed = True
+    if changed:
+        save_global_config(cfg)
+
+    return {
+        "saved": True,
+        "sqlite_prefs": prefs,
+        "config_json_updated": changed,
+    }
+
+
 def is_onboarding_complete() -> bool:
     """Return True if the onboarding wizard has been completed.
 
-    Detection: ``project_name`` is set by ``save_wizard_config`` at the end
-    of the onboarding flow — its presence in the global config indicates a
-    completed onboarding.
+    Detection: checks ``onboarding_done`` in SQLite user_prefs.
+    Falls back to legacy detection (``project_name`` in config.json)
+    for backward compatibility with existing installations.
     """
+    import asyncio
+
+    try:
+        from beddel.adapters.index_store import IndexStore
+
+        store = IndexStore()
+        value = asyncio.run(store.get_pref("onboarding_done"))
+        if value == "true":
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Legacy fallback: config.json project_name
     cfg = load_global_config()
     return cfg.get("project_name", _SENTINEL) is not _SENTINEL
 
