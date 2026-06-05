@@ -56,7 +56,7 @@ input_schema:
       description: Google Cloud project for Vertex AI Agent Engine (optional).
       default: ""
     # --- Control flags ---
-    submit:
+    generate:
       type: boolean
       description: Set to true when the form is submitted.
       default: false
@@ -140,7 +140,7 @@ steps:
 
   - id: save
     primitive: tool
-    if: "$input.submit == true"
+    if: "$input.generate == true"
     config:
       tool: save_setup
       arguments:
@@ -152,7 +152,7 @@ steps:
 
   - id: show_done
     primitive: output-generator
-    if: "$input.submit == true"
+    if: "$input.generate == true"
     config:
       format: a2ui
       template:

@@ -251,7 +251,7 @@ def save_wizard_config(
     return {"saved": True, "path": str(GLOBAL_CONFIG_PATH), "config": cfg}
 
 
-def save_setup(
+async def save_setup(
     llm_provider: str = "",
     default_model: str = "",
     project_name: str = "",
@@ -276,12 +276,12 @@ def save_setup(
     Returns:
         A dict with ``saved`` (bool) and summary of what was persisted.
     """
-    import asyncio
-
     from beddel.adapters.index_store import IndexStore
 
     # ── SQLite: personal preferences ──
     store = IndexStore()
+    await store._ensure_initialized()
+
     prefs: dict[str, str] = {"onboarding_done": "true"}
     if llm_provider:
         prefs["llm_provider"] = llm_provider
@@ -291,7 +291,7 @@ def save_setup(
         prefs["project_name"] = project_name
 
     for key, value in prefs.items():
-        asyncio.run(store.set_pref(key, value))
+        await store.set_pref(key, value)
 
     # ── config.json: project infrastructure ──
     cfg = {k: v for k, v in load_global_config().items() if v is not _SENTINEL}
