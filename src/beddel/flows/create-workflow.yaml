@@ -184,8 +184,8 @@ steps:
         - guardrail: schema (JSON Schema dict), strategy (raise|return_errors|correct)
 
         VARIABLE REFERENCES:
-        - $input.field — references workflow input fields
-        - $stepResult.step_id.content — references a previous step's output
+        - $input.{field} — references workflow input fields
+        - $stepResult.{step_id}.content — references a previous step's output
 
         RULES:
         1. Generate ONLY the raw YAML content. No markdown fences. No explanation.
@@ -223,7 +223,7 @@ steps:
             - type: Text
               id: result-yaml
               props:
-                content: "$stepResult.generate_yaml.content"
+                content: "$stepResult.generate_yaml.content\n"
                 variant: code
             - type: TextInput
               id: filename
