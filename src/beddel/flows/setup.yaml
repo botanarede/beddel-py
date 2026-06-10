@@ -27,6 +27,8 @@ version: "2.0"
 interaction: interactive
 
 tools:
+  - name: load_setup
+    target: "beddel.cli.config:load_setup"
   - name: save_setup
     target: "beddel.cli.config:save_setup"
 
@@ -63,6 +65,12 @@ input_schema:
   required: []
 
 steps:
+  - id: load_state
+    primitive: tool
+    config:
+      tool: load_setup
+      arguments: {}
+
   - id: show_form
     primitive: output-generator
     config:
@@ -92,6 +100,7 @@ steps:
               id: llm_provider
               props:
                 label: LLM Provider
+                value: "$stepResult.load_state.result.llm_provider"
                 options:
                   - label: Google Gemini (recommended)
                     value: gemini
@@ -103,11 +112,13 @@ steps:
               id: default_model
               props:
                 label: Default Model
+                value: "$stepResult.load_state.result.default_model"
                 placeholder: "gemini-2.5-flash"
             - type: TextInput
               id: project_name
               props:
                 label: Project Name
+                value: "$stepResult.load_state.result.project_name"
                 placeholder: "my-project"
 
             # ── Fieldset 2: Project Infrastructure (→ config.json) ──
@@ -125,11 +136,13 @@ steps:
               id: dashboard_url
               props:
                 label: Dashboard URL
+                value: "$stepResult.load_state.result.dashboard_url"
                 placeholder: "https://connect.beddel.com.br (optional)"
             - type: TextInput
               id: agent_engine
               props:
                 label: Agent Engine Project
+                value: "$stepResult.load_state.result.agent_engine"
                 placeholder: "my-gcp-project (optional)"
 
             - type: Button

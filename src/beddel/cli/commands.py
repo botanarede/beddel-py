@@ -37,25 +37,19 @@ def _ensure_kit_paths() -> None:
 
     Resolution order:
 
-    1. kits_path from SQLite (set by ``beddel init``).
-    2. User-configured paths from ``.beddel.json`` (project) or
+    1. User-configured paths from ``.beddel.json`` (project) or
        ``~/.config/beddel/config.json`` (global).
-    3. Interactive prompt if no kits found and running in a TTY.
+    2. Interactive prompt if no kits found and running in a TTY.
     """
     from beddel.cli.config import prompt_kits_path, resolve_kits_paths
-    from beddel.setup import _resolve_kits_path
 
-    # 1. kits_path from SQLite (beddel init)
-    db_kits = _resolve_kits_path()
-    if db_kits and db_kits.is_dir():
-        _add_kit_dir_to_path(db_kits)
-
-    # 2. User-configured paths (config.json / .beddel.json)
-    for kits_dir in resolve_kits_paths():
+    # 1. User-configured paths (config.json / .beddel.json)
+    configured_paths = resolve_kits_paths()
+    for kits_dir in configured_paths:
         _add_kit_dir_to_path(kits_dir)
 
-    # 3. Interactive prompt if nothing found
-    if not db_kits and not resolve_kits_paths():
+    # 2. Interactive prompt if nothing found
+    if not configured_paths:
         prompted = prompt_kits_path()
         if prompted:
             _add_kit_dir_to_path(prompted)
@@ -1766,6 +1760,28 @@ def _build_runtime_app(
         app.include_router(router, prefix=f"/workflows/{workflow.id}")
         click.echo(f"  Mounted: /workflows/{workflow.id} ({wf_path.name})")
         loaded += 1
+
+    # ── Workflow listing endpoint (always mounted — consumed by index.html) ──
+    # When dashboard=True, the ag-ui listing router provides a richer GET /workflows.
+    # This minimal version serves the standalone launcher (beddel launch).
+    if not dashboard:
+
+        @app.get("/workflows")
+        async def _list_all_workflows() -> list[dict[str, Any]]:
+            """Return summary list of all mounted workflows for the launcher."""
+            results: list[dict[str, Any]] = []
+            for wf_id, (wf, _) in all_workflows.items():
+                results.append(
+                    {
+                        "id": wf_id,
+                        "name": wf.name,
+                        "description": wf.description or "",
+                        "version": wf.version or "1.0",
+                        "step_count": len(wf.steps),
+                        "input_schema": wf.input_schema if wf.input_schema else None,
+                    }
+                )
+            return results
 
     if dashboard:
         try:

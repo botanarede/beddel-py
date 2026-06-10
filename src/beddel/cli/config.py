@@ -251,6 +251,52 @@ def save_wizard_config(
     return {"saved": True, "path": str(GLOBAL_CONFIG_PATH), "config": cfg}
 
 
+async def load_setup() -> dict[str, Any]:
+    """Load current setup values from both stores for form pre-population.
+
+    Reads personal preferences from SQLite ``user_prefs`` and project
+    infrastructure settings from ``config.json``.  Returns a dict with
+    all form field keys — empty string for any missing value (ensures
+    the variable resolver never encounters a missing key).
+
+    Returns:
+        A dict with keys: llm_provider, default_model, project_name,
+        dashboard_url, agent_engine.  Values are strings (possibly empty).
+    """
+    from beddel.adapters.index_store import IndexStore
+
+    result: dict[str, str] = {
+        "llm_provider": "",
+        "default_model": "",
+        "project_name": "",
+        "dashboard_url": "",
+        "agent_engine": "",
+    }
+
+    # ── SQLite: personal preferences ──
+    try:
+        store = IndexStore()
+        await store._ensure_initialized()
+        for key in ("llm_provider", "default_model", "project_name"):
+            val = await store.get_pref(key)
+            if val:
+                result[key] = val
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ── config.json: project infrastructure ──
+    try:
+        cfg = load_global_config()
+        for key in ("dashboard_url", "agent_engine"):
+            val = cfg.get(key, _SENTINEL)
+            if val is not _SENTINEL:
+                result[key] = str(val)
+    except Exception:  # noqa: BLE001
+        pass
+
+    return result
+
+
 async def save_setup(
     llm_provider: str = "",
     default_model: str = "",

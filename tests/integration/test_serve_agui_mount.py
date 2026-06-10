@@ -16,7 +16,7 @@ AC #6: All 4 validation gates pass.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -93,6 +93,12 @@ def _build_combined_app() -> FastAPI:
         mock_executor = MagicMock()
         mock_executor.execute_stream = MagicMock(
             return_value=_mock_event_stream(*_standard_events()),
+        )
+        mock_executor.execute = AsyncMock(
+            return_value={
+                "step_results": {"generate": {"content": "hello"}},
+                "metadata": {},
+            }
         )
         mock_cls.return_value = mock_executor
         per_wf_router = create_beddel_handler(workflow)
@@ -202,6 +208,12 @@ class TestEndpointCoexistence:
             mock_executor.execute_stream = MagicMock(
                 return_value=_mock_event_stream(*_standard_events()),
             )
+            mock_executor.execute = AsyncMock(
+                return_value={
+                    "step_results": {"generate": {"content": "hello"}},
+                    "metadata": {},
+                }
+            )
             mock_cls.return_value = mock_executor
             per_wf_router = create_beddel_handler(workflow)
 
@@ -250,6 +262,12 @@ class TestEndpointCoexistence:
             mock_executor = MagicMock()
             mock_executor.execute_stream = MagicMock(
                 return_value=_mock_event_stream(*_standard_events()),
+            )
+            mock_executor.execute = AsyncMock(
+                return_value={
+                    "step_results": {"generate": {"content": "hello"}},
+                    "metadata": {},
+                }
             )
             mock_cls.return_value = mock_executor
             per_wf_router = create_beddel_handler(workflow)

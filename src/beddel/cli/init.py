@@ -416,14 +416,32 @@ def register_init_command(cli: Any) -> None:
         db_path = provision_sqlite()
 
         # Step 2: Install required kits
-        click.echo("\nStep 2/3: Installing kits (requires git)...")
-        if not install_required_kits(db_path, kits_dir, all_kits):
+        click.echo("\nStep 2/3: Installing kits...")
+        kit_names_needed = [k["name"] for k in all_kits]
+
+        # Check if config.json already has kits_paths with the required kits
+        from beddel.cli.config import resolve_kits_paths
+
+        existing_kits_paths = resolve_kits_paths()
+        skip_download = False
+        if existing_kits_paths:
+            first_path = existing_kits_paths[0]
+            if first_path.is_dir():
+                present = [name for name in kit_names_needed if (first_path / name).is_dir()]
+                if len(present) == len(kit_names_needed):
+                    skip_download = True
+                    click.echo(f"  ✓ All required kits already present in {first_path}")
+                    # Register existing kits in DB
+                    for kit_info in all_kits:
+                        kit_path = first_path / kit_info["name"]
+                        register_kit_in_db(db_path, kit_info["name"], kit_path)
+
+        if not skip_download and not install_required_kits(db_path, kits_dir, all_kits):
             click.echo("\n⚠ Some kits failed. Run 'beddel init' again.", err=True)
             raise SystemExit(1)
 
         # Step 3: Save preferences
         click.echo("\nStep 3/3: Saving preferences...")
-        save_pref(db_path, "kits_path", str(kits_dir))
         save_pref(db_path, "llm_provider", provider)
         save_pref(db_path, "initialized", "true")
 
@@ -432,4 +450,5 @@ def register_init_command(cli: Any) -> None:
         click.echo(f"✅ Beddel initialized! (provider: {provider})")
         click.echo()
         click.echo("Next: beddel launch")
+        click.echo("Install additional kits: beddel kit install <name>")
         click.echo()

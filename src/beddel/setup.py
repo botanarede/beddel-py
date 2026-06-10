@@ -24,8 +24,8 @@ def _resolve_kit_src_dir(kit_dir: Path) -> Path | None:
 def setup() -> None:
     """Activate kit paths so kit modules are importable.
 
-    Reads the kits_path from the SQLite database (set during `beddel init`)
-    and adds each kit's source directory to `sys.path`.
+    Reads the kits_paths from config.json / .beddel.json and adds each
+    kit's source directory to `sys.path`.
 
     Safe to call multiple times (idempotent).
 
@@ -35,15 +35,14 @@ def setup() -> None:
         beddel.setup()
         from beddel_provider_litellm.adapter import LiteLLMAdapter
     """
-    kits_path = _resolve_kits_path()
-    if kits_path is None:
-        return
+    from beddel.cli.config import resolve_kits_paths
 
-    if kits_path.is_dir():
-        for kit_dir in kits_path.iterdir():
-            kit_src = _resolve_kit_src_dir(kit_dir)
-            if kit_src and str(kit_src) not in sys.path:
-                sys.path.insert(0, str(kit_src))
+    for kits_path in resolve_kits_paths():
+        if kits_path.is_dir():
+            for kit_dir in kits_path.iterdir():
+                kit_src = _resolve_kit_src_dir(kit_dir)
+                if kit_src and str(kit_src) not in sys.path:
+                    sys.path.insert(0, str(kit_src))
 
     # Project-local kits (cwd/kits/) — convenience for development
     local_kits = Path.cwd() / "kits"
@@ -52,27 +51,3 @@ def setup() -> None:
             kit_src = _resolve_kit_src_dir(kit_dir)
             if kit_src and str(kit_src) not in sys.path:
                 sys.path.insert(0, str(kit_src))
-
-
-def _resolve_kits_path() -> Path | None:
-    """Read kits_path from SQLite (set by beddel init).
-
-    Returns None if the database doesn't exist or the pref isn't set.
-    """
-    db_path = Path.home() / ".config" / "beddel" / "index.db"
-    if not db_path.exists():
-        return None
-
-    try:
-        import sqlite3
-
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.execute("SELECT value FROM user_prefs WHERE key = 'kits_path'")
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            return Path(row[0])
-    except Exception:
-        pass
-
-    return None

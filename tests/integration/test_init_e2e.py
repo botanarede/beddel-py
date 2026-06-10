@@ -17,7 +17,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from beddel.domain.kit import KitDiscoveryResult
-from beddel.flows import get_onboarding_workflow_path
+from beddel.flows import get_bundled_workflow_path
 
 
 @pytest.mark.integration
@@ -52,7 +52,7 @@ def test_serve_app_renders_and_lists_onboarding(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("beddel.cli.commands._resolve_all_kit_paths", lambda _k: [])
     monkeypatch.setattr(
         "beddel.cli.commands._resolve_all_flow_paths",
-        lambda _w: (get_onboarding_workflow_path(),),
+        lambda _w: (get_bundled_workflow_path("setup"),),
     )
     monkeypatch.setattr(
         "beddel.tools.kits.discover_kits",
@@ -72,8 +72,8 @@ def test_serve_app_renders_and_lists_onboarding(monkeypatch: pytest.MonkeyPatch)
 
     from beddel.cli.commands import _build_runtime_app
 
-    app, _loaded, wf_ids = _build_runtime_app((get_onboarding_workflow_path(),), no_kits=True)
-    assert "beddel_onboarding" in wf_ids
+    app, _loaded, wf_ids = _build_runtime_app((get_bundled_workflow_path("setup"),), no_kits=True)
+    assert "beddel_setup" in wf_ids
 
     client = TestClient(app)
 
@@ -83,4 +83,4 @@ def test_serve_app_renders_and_lists_onboarding(monkeypatch: pytest.MonkeyPatch)
 
     listing = client.get("/workflows")
     assert listing.status_code == 200
-    assert "beddel_onboarding" in [wf["id"] for wf in listing.json()]
+    assert "beddel_setup" in [wf["id"] for wf in listing.json()]

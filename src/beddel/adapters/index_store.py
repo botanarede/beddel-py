@@ -12,6 +12,7 @@ non-blocking I/O, and lazy schema initialization.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -86,10 +87,10 @@ class IndexStore:
                 ")"
             )
             # Migration: add updated_at to legacy user_prefs tables (pre-v0.1.8)
-            try:
-                conn.execute("ALTER TABLE user_prefs ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute(
+                    "ALTER TABLE user_prefs ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
+                )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_kit_enabled ON kit_index (enabled)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_flow_enabled ON flow_index (enabled)")
         conn.close()

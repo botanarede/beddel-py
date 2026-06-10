@@ -1,98 +1,99 @@
-"""Tests for the onboarding workflow YAML (Story BC9.4)."""
+"""Tests for the setup workflow YAML structure (formerly onboarding)."""
 
 from __future__ import annotations
 
 import pytest
 
 from beddel.domain.parser import WorkflowParser
-from beddel.flows import get_onboarding_workflow_path
+from beddel.flows import get_bundled_workflow_path
 
-_WORKFLOW_PATH = get_onboarding_workflow_path()
+_WORKFLOW_PATH = get_bundled_workflow_path("setup")
 
 
-class TestOnboardingWorkflowParsing:
-    """Verify the onboarding workflow YAML is valid and parseable."""
+class TestSetupWorkflowParsing:
+    """Verify the setup workflow YAML is valid and parseable."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def workflow(self):
-        """Load and parse the onboarding workflow."""
+        """Load and parse the setup workflow."""
         yaml_content = _WORKFLOW_PATH.read_text()
         return WorkflowParser.parse(yaml_content)
 
     def test_workflow_id(self, workflow) -> None:
-        assert workflow.id == "beddel_onboarding"
+        assert workflow.id == "beddel_setup"
 
     def test_workflow_name(self, workflow) -> None:
-        assert workflow.name == "Beddel Onboarding"
+        assert workflow.name == "Beddel Setup"
 
     def test_step_count(self, workflow) -> None:
-        assert len(workflow.steps) == 5
+        assert len(workflow.steps) == 4
 
     def test_step_ids(self, workflow) -> None:
         step_ids = [s.id for s in workflow.steps]
         assert step_ids == [
+            "load_state",
             "show_form",
-            "generate_config",
-            "show_config",
-            "save_config",
-            "show_saved",
+            "save",
+            "show_done",
         ]
 
     def test_step_primitives(self, workflow) -> None:
         primitives = [s.primitive for s in workflow.steps]
         assert primitives == [
-            "output-generator",
-            "llm",
+            "tool",
             "output-generator",
             "tool",
             "output-generator",
         ]
 
-    def test_apply_steps_are_gated(self, workflow) -> None:
-        """generate/show run on generate==true; save/confirm on apply==true."""
+    def test_gated_steps(self, workflow) -> None:
+        """save and show_done are gated on generate==true."""
         by_id = {s.id: s for s in workflow.steps}
-        assert by_id["generate_config"].if_condition == "$input.generate == true"
-        assert by_id["show_config"].if_condition == "$input.generate == true"
-        assert by_id["save_config"].if_condition == "$input.apply == true"
-        assert by_id["show_saved"].if_condition == "$input.apply == true"
+        assert by_id["load_state"].if_condition is None
+        assert by_id["show_form"].if_condition is None
+        assert by_id["save"].if_condition == "$input.generate == true"
+        assert by_id["show_done"].if_condition == "$input.generate == true"
 
-    def test_save_config_uses_save_tool(self, workflow) -> None:
-        """The save step invokes the save_config tool resolved from the tools section."""
-        save_step = next(s for s in workflow.steps if s.id == "save_config")
-        assert save_step.config["tool"] == "save_config"
-        assert workflow.metadata["_inline_tools"]["save_config"] is not None
+    def test_load_state_uses_load_setup_tool(self, workflow) -> None:
+        """The load_state step invokes load_setup from the tools section."""
+        load_step = next(s for s in workflow.steps if s.id == "load_state")
+        assert load_step.config["tool"] == "load_setup"
+        assert workflow.metadata["_inline_tools"]["load_setup"] is not None
+
+    def test_save_uses_save_setup_tool(self, workflow) -> None:
+        """The save step invokes save_setup from the tools section."""
+        save_step = next(s for s in workflow.steps if s.id == "save")
+        assert save_step.config["tool"] == "save_setup"
+        assert workflow.metadata["_inline_tools"]["save_setup"] is not None
 
     def test_show_form_a2ui_format(self, workflow) -> None:
-        show_form = workflow.steps[0]
+        show_form = next(s for s in workflow.steps if s.id == "show_form")
         assert show_form.config["format"] == "a2ui"
 
-    def test_show_config_a2ui_format(self, workflow) -> None:
-        show_config = workflow.steps[2]
-        assert show_config.config["format"] == "a2ui"
 
-
-class TestOnboardingA2UITemplates:
+class TestSetupA2UITemplates:
     """Verify A2UI JSON templates are valid."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def workflow(self):
         yaml_content = _WORKFLOW_PATH.read_text()
         return WorkflowParser.parse(yaml_content)
 
     def test_show_form_template_is_valid_structure(self, workflow) -> None:
-        template = workflow.steps[0].config["template"]
-        # Template is parsed as a dict from YAML (not a JSON string)
+        show_form = next(s for s in workflow.steps if s.id == "show_form")
+        template = show_form.config["template"]
         assert isinstance(template, dict)
         assert "surfaceUpdate" in template
 
     def test_show_form_has_components(self, workflow) -> None:
-        template = workflow.steps[0].config["template"]
+        show_form = next(s for s in workflow.steps if s.id == "show_form")
+        template = show_form.config["template"]
         components = template["surfaceUpdate"]["components"]
-        assert len(components) >= 3  # At least: title, name input, provider select
+        assert len(components) >= 5  # title, headers, inputs, select, button
 
-    def test_show_config_template_contains_step_result_ref(self, workflow) -> None:
-        """The config card template references $stepResult for dynamic content."""
-        template = workflow.steps[2].config["template"]
-        # Search recursively through dict values for the reference
+    def test_show_form_components_reference_step_result(self, workflow) -> None:
+        """Form components reference $stepResult.load_state.result for pre-population."""
+        show_form = next(s for s in workflow.steps if s.id == "show_form")
+        template = show_form.config["template"]
         template_str = str(template)
-        assert "$stepResult.generate_config" in template_str
+        assert "$stepResult.load_state.result" in template_str

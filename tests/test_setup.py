@@ -73,15 +73,3 @@ class TestResolveKitSrcDir:
         (kit_dir / "python").mkdir()
         (kit_dir / "src").mkdir()
         assert _resolve_kit_src_dir(kit_dir) == kit_dir / "python"
-
-
-class TestResolveKitsPath:
-    """_resolve_kits_path reads from SQLite when available."""
-
-    def test_returns_none_when_no_db(self, tmp_path, monkeypatch) -> None:
-        """Returns None when index.db doesn't exist."""
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        from beddel.setup import _resolve_kits_path
-
-        result = _resolve_kits_path()
-        assert result is None

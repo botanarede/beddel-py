@@ -79,20 +79,17 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
             paths = [Path(p) for p in env_val.split(":") if p]
             use_custom = True
         else:
-            # Read kits_path from SQLite (set by beddel init)
-            from beddel.setup import _resolve_kits_path
+            # Read kits_paths from config.json / .beddel.json
+            from beddel.cli.config import resolve_kits_paths
 
-            kits_path = _resolve_kits_path()
-            paths = []
-            if kits_path and kits_path.is_dir():
-                paths.append(kits_path)
+            paths = resolve_kits_paths()
             # Also check local ./kits/ for development convenience
             local = Path("./kits")
             if local.is_dir():
                 paths.append(local)
 
     # Map each path to its source label (order matters for priority)
-    _SOURCE_LABELS = {0: "sqlite", 1: "local"}
+    _SOURCE_LABELS = {0: "config", 1: "local"}
 
     def _source_for(path_index: int) -> str:
         if use_custom:
