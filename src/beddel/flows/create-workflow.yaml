@@ -250,7 +250,7 @@ steps:
     config:
       tool: write_file
       arguments:
-        path: "workflows/$input.filename"
+        path: "$env.BEDDEL_FLOWS_DIR/$input.filename"
         content: "$input.generated_yaml"
 
   # ------------------------------------------------------------------
@@ -273,5 +273,5 @@ steps:
             - type: Text
               id: saved-body
               props:
-                content: "Your workflow was saved. Run it with: beddel run workflows/$input.filename"
+                content: "Your workflow was saved to your flows directory. It will be available on next beddel launch."
                 variant: body1

@@ -2055,6 +2055,13 @@ def serve(
     click.echo(f"Listening on http://{host}:{port}")
     click.echo(f"Health: http://{host}:{port}/health")
 
+    # Inject BEDDEL_FLOWS_DIR so file_write can save to flows directory
+    from beddel.cli.config import resolve_flows_paths as _resolve_fp
+
+    _flows = _resolve_fp()
+    if _flows:
+        os.environ["BEDDEL_FLOWS_DIR"] = str(_flows[0])
+
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 
@@ -2105,6 +2112,13 @@ def launch(port: int, *, no_browser: bool) -> None:
         import webbrowser
 
         threading.Timer(1.0, webbrowser.open, args=[url]).start()
+
+    # Inject BEDDEL_FLOWS_DIR so file_write can save to flows directory
+    from beddel.cli.config import resolve_flows_paths as _resolve_fp
+
+    _flows = _resolve_fp()
+    if _flows:
+        os.environ["BEDDEL_FLOWS_DIR"] = str(_flows[0])
 
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 

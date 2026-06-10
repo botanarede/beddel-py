@@ -6,24 +6,36 @@ that rejects absolute paths and directory traversal.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from beddel.tools import beddel_tool
 
 
 def _validate_path(path: str) -> None:
-    """Validate that a path is relative and contains no directory traversal.
+    """Validate that a path is safe for file operations.
+
+    Relative paths are always allowed (no ``..`` traversal).
+    Absolute paths are allowed only when ``BEDDEL_FLOWS_DIR`` is set and the
+    resolved path falls inside that directory.
 
     Args:
         path: File path to validate.
 
     Raises:
-        ValueError: If the path is absolute or contains ``..`` components.
+        ValueError: If the path contains ``..`` components, is absolute without
+            ``BEDDEL_FLOWS_DIR`` set, or resolves outside the flows directory.
     """
-    if path.startswith("/"):
-        raise ValueError(f"Absolute paths are not allowed: {path}")
     if ".." in Path(path).parts:
         raise ValueError(f"Directory traversal is not allowed: {path}")
+    if path.startswith("/"):
+        flows_dir = os.environ.get("BEDDEL_FLOWS_DIR")
+        if not flows_dir:
+            raise ValueError(f"Absolute paths are not allowed: {path}")
+        resolved = Path(path).resolve()
+        root = Path(flows_dir).resolve()
+        if not resolved.is_relative_to(root):
+            raise ValueError(f"Absolute path not inside BEDDEL_FLOWS_DIR: {path}")
 
 
 @beddel_tool(name="file_read", description="Read file content", category="file")
