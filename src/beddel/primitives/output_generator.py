@@ -143,6 +143,12 @@ class OutputGeneratorPrimitive(IPrimitive):
         ``$input``, ``$stepResult``, and ``$env`` references against the
         execution context.
 
+        When the executor has already resolved the template (standard
+        execution pipeline), this call is a no-op for fully-resolved
+        values.  If resolution fails (e.g. LLM-generated content
+        containing ``$input.*`` patterns), the template is returned
+        as-is — those patterns are literal text, not live references.
+
         Args:
             template: Template string with variable references.
             context: Execution context providing runtime data.
@@ -151,8 +157,17 @@ class OutputGeneratorPrimitive(IPrimitive):
             The resolved value. May be a string, dict, list, or scalar
             depending on the template content and resolved references.
         """
+        from beddel.domain.errors import ResolveError
+
         resolver = VariableResolver()
-        return resolver.resolve(template, context)
+        try:
+            return resolver.resolve(template, context)
+        except ResolveError:
+            # Template contains $-patterns that are not resolvable (e.g.
+            # LLM-generated YAML with $input.* refs intended as literal
+            # text).  The executor already resolved real references in a
+            # prior pass; remaining patterns are content, not variables.
+            return template
 
     @staticmethod
     def _format_output(resolved: Any, format_type: str, *, indent: int = 2) -> str:
