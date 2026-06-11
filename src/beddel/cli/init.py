@@ -148,14 +148,14 @@ def _download_kits_via_git(kit_names: list[str], kits_dir: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def provision_sqlite() -> Path:
+def provision_sqlite(*, force: bool = False) -> Path:
     """Create the SQLite database if it doesn't exist.
+
+    If the database already exists and force=False, returns the existing
+    path (idempotent). If force=True, deletes and recreates.
 
     Returns:
         Path to the database file.
-
-    Raises:
-        click.ClickException: If the database already exists.
     """
     import sqlite3
 
@@ -163,11 +163,12 @@ def provision_sqlite() -> Path:
     db_path = BEDDEL_DATA_DIR / "index.db"
 
     if db_path.exists():
-        raise click.ClickException(
-            f"Database already exists: {db_path}\n"
-            "  Beddel is already initialized. To re-initialize:\n"
-            f"  rm {db_path}"
-        )
+        if force:
+            db_path.unlink()
+            click.echo(f"  ⟳ Removed existing database: {db_path}")
+        else:
+            click.echo(f"  ✓ SQLite already provisioned: {db_path}")
+            return db_path
 
     conn = sqlite3.connect(str(db_path))
     conn.execute(
@@ -377,17 +378,19 @@ def register_init_command(cli: Any) -> None:
 
     @cli.command()
     @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
+    @click.option("--force", "-f", is_flag=True, help="Force re-initialization (recreates DB).")
     @click.option(
         "--provider",
         type=click.Choice(["gemini", "litellm", "adk"], case_sensitive=False),
         default="gemini",
         help="LLM provider to install (default: gemini).",
     )
-    def init(*, yes: bool, provider: str) -> None:
+    def init(*, yes: bool, force: bool, provider: str) -> None:
         """Initialize Beddel — provision database and install required kits.
 
         First command after `pip install beddel`. Provisions SQLite,
-        installs required kits, saves preferences.
+        installs required kits, saves preferences. Idempotent by default —
+        safe to run multiple times. Use --force to recreate the database.
         Then run `beddel launch` for the interactive onboarding wizard.
         """
         kits_dir = DEFAULT_KITS_DIR
@@ -413,7 +416,7 @@ def register_init_command(cli: Any) -> None:
 
         # Step 1: Provision SQLite
         click.echo("Step 1/3: Provisioning SQLite...")
-        db_path = provision_sqlite()
+        db_path = provision_sqlite(force=force)
 
         # Step 2: Install required kits
         click.echo("\nStep 2/3: Installing kits...")

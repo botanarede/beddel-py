@@ -85,7 +85,7 @@ from beddel.domain.strategies import (
 )
 from beddel.setup import setup as setup
 
-__version__ = "0.1.8"
+__version__ = "0.1.9"
 
 # Deprecated imports — these symbols have moved to submodules.
 # The lazy import mechanism is preserved for backward compatibility but now
