@@ -109,13 +109,45 @@ The YAML version gets you retry with backoff, tracing, lifecycle hooks, and stre
 ```bash
 pip install beddel        # slim core (3 deps: pydantic, pyyaml, click)
 beddel init               # provisions SQLite registry and downloads required kits
+beddel launch             # opens the browser with the interactive flow runner
 ```
 
 `beddel init` downloads `serve-fastapi-kit`, `ag-ui-kit`, and `provider-gemini-kit` from the GitHub `kits/` directory and pip-installs their dependencies. Use `--provider litellm` to install `provider-litellm-kit` instead. Add more kits later with `beddel kit install <kit-name>`.
 
 Requires Python 3.11+.
 
-> **Python API users:** Call `beddel.setup()` before importing kit modules. This activates kit paths. CLI commands (`beddel run`, `beddel serve`) handle this automatically.
+## Quickstart: `beddel launch`
+
+The fastest way to start using Beddel. Three commands, no YAML authoring required:
+
+```bash
+pip install beddel
+beddel init
+beddel launch
+```
+
+Your browser opens at `http://localhost:8080` with a visual interface:
+
+**First run (onboarding wizard):**
+- A browser-based form lets you pick your LLM provider, default model, and project name
+- Settings are stored locally in SQLite (personal prefs) and `config.json` (project infra)
+- No YAML editing, no code — just fill the form and click Save
+
+**After onboarding:**
+- `beddel launch` becomes a visual flow runner
+- Shows all discovered flows: bundled ones (`hello`, `create-workflow`) plus any YAML files in your configured `flows_paths`
+- Run flows interactively from the browser with A2UI forms
+- **Create Workflow** wizard: describe what you want to automate in plain English, pick complexity, and Beddel generates the YAML for you — saved to your flows directory and immediately runnable
+
+Options:
+
+```bash
+beddel launch                   # default: port 8080, opens browser
+beddel launch --port 3000       # custom port
+beddel launch --no-browser      # headless (for remote/SSH usage)
+```
+
+> **Python API users:** Call `beddel.setup()` before importing kit modules. This activates kit paths. CLI commands (`beddel run`, `beddel serve`, `beddel launch`) handle this automatically.
 
 ### Developer setup (contributors)
 
@@ -141,7 +173,9 @@ This installs the package in editable mode plus the test, lint, and publish tool
 - MCP client (stdio + SSE) for tool discovery and invocation
 - Hexagonal architecture — swap adapters without touching domain logic
 
-## Quickstart
+## Usage: YAML + CLI
+
+For developers who prefer writing YAML directly and running from the terminal:
 
 ### 1. Set your API key
 
@@ -333,14 +367,39 @@ Endpoints: `POST /workflows/{id}` (SSE response), `GET /health`.
 ## CLI
 
 ```bash
+# Getting started
+beddel init                                      # provision registry + download kits
+beddel launch                                    # open the browser flow runner (onboarding on first run)
+beddel launch --port 3000 --no-browser           # custom port, headless mode
+
+# Running workflows
 beddel validate workflow.yaml                    # validate YAML schema
 beddel run workflow.yaml -i topic=astronomy      # execute workflow
 beddel run workflow.yaml -i topic=ai --json-output  # machine-readable output
-beddel list-primitives                           # list registered primitives
 beddel serve -w workflow.yaml --port 8000        # start HTTP/SSE server
-beddel kit install provider-litellm-kit          # install a kit
+beddel serve -w workflow.yaml --mcp              # serve as MCP server (stdio)
+
+# Kit management
+beddel kit install provider-litellm-kit          # install from official repository
+beddel kit install ./my-custom-kit/              # install from local directory
+beddel kit install github:owner/repo/kits/name   # install from GitHub path
 beddel kit list                                  # list installed kits
+beddel kit enable <name>                         # enable a disabled kit
+beddel kit disable <name>                        # disable a kit without uninstalling
 beddel kit export workflow.yaml --format skill   # export as skill/kit/mcp/endpoint
+
+# Flow management
+beddel flow list                                 # list discovered flows
+beddel flow enable <flow-id>                     # enable a flow
+beddel flow disable <flow-id>                    # disable a flow
+
+# Configuration
+beddel config show                               # show current config values
+beddel config set llm-provider gemini            # set a config key
+beddel config reset                              # reset to defaults
+
+# Utilities
+beddel list-primitives                           # list registered primitives
 beddel connect                                   # authenticate with Beddel Cloud
 beddel status                                    # show connection status
 beddel version                                   # print version
@@ -409,8 +468,6 @@ mypy src/
 - [Documentation](https://beddel.com.br/docs)
 - [Repository](https://github.com/botanarede/beddel-py)
 - [Bug Tracker](https://github.com/botanarede/beddel-py/issues)
-
-[![Subscribe on Substack](https://img.shields.io/badge/Subscribe-Substack-orange?style=for-the-badge&logo=substack)](https://beddelprotocol.substack.com/subscribe)
 
 ## Contributing
 
