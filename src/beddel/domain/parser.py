@@ -183,13 +183,27 @@ class WorkflowParser:
     ) -> None:
         """Recursively check string values for valid variable references.
 
+        Only validates strings that appear to be **standalone** variable
+        references (the entire string is a single ``$namespace.path`` token).
+        Template strings with embedded variables mixed with literal text
+        (e.g. ``$env.DIR/$input.file``, LLM prompts containing ``$input.x``)
+        are NOT validated at parse time — the resolver handles them at runtime.
+
         Args:
             value: Any value from a config dict to inspect.
             step_id: Owning step id for error context.
             invalid_refs: Accumulator for invalid references found.
         """
         if isinstance(value, str):
-            if value.startswith("$") and not _VARIABLE_RE.match(value):
+            if not value.startswith("$"):
+                return
+            # Only reject pure-looking variable references that are malformed.
+            # A pure reference is a string that starts with $ and contains ONLY
+            # word/dot characters (no spaces, slashes, braces, newlines, etc.).
+            # If there's other content, it's a template string and we skip.
+            if "\n" in value or " " in value or "/" in value or "{" in value:
+                return
+            if not _VARIABLE_RE.match(value):
                 invalid_refs.append({"step": step_id, "reference": value})
         elif isinstance(value, dict):
             for v in value.values():
