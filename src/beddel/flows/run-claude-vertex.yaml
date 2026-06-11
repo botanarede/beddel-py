@@ -1,0 +1,65 @@
+# =============================================================================
+# Run Claude via Vertex AI — agent execution workflow
+# =============================================================================
+#
+# Executes a prompt through Claude on Vertex AI (Google Cloud).
+# Two-step pipeline: execute via Claude adapter, format output.
+#
+# Prerequisites:
+#   - Google Cloud ADC configured (gcloud auth application-default login)
+#   - ANTHROPIC_VERTEX_PROJECT_ID env var set (or pass project_id input)
+#   - CLOUD_ML_REGION env var set (or use default us-east5)
+#   - agent-claude-kit installed (provides the "claude" adapter)
+#
+# Usage (CLI):
+#   beddel run src/beddel-py/src/beddel/flows/run-claude-vertex.yaml \
+#     -i prompt="Refactor the auth module"
+#
+#   beddel run src/beddel-py/src/beddel/flows/run-claude-vertex.yaml \
+#     -i prompt="Fix the bug" -i model="claude-sonnet-4" -i sandbox="workspace-write"
+#
+# =============================================================================
+
+id: run_claude_vertex
+name: Run Claude (Vertex AI)
+description: Execute a prompt via Claude on Vertex AI with structured output.
+version: "1.0"
+interaction: headless
+
+input_schema:
+  type: object
+  properties:
+    prompt:
+      type: string
+      description: The prompt to send to Claude via Vertex AI.
+    model:
+      type: string
+      description: Claude model to use.
+      default: "claude-sonnet-4"
+    sandbox:
+      type: string
+      description: Permission mode (read-only, workspace-write, danger-full-access).
+      default: "read-only"
+  required:
+    - prompt
+
+steps:
+  - id: execute_claude
+    primitive: agent-exec
+    config:
+      adapter: claude
+      prompt: "$input.prompt"
+      model: "$input.model"
+      sandbox: "$input.sandbox"
+    timeout: 300.0
+
+  - id: format_output
+    primitive: output-generator
+    config:
+      format: json
+      template: |
+        {
+          "output": "$stepResult.execute_claude.output",
+          "files_changed": $stepResult.execute_claude.files_changed,
+          "usage": $stepResult.execute_claude.usage
+        }

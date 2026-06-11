@@ -1,0 +1,222 @@
+# =============================================================================
+# Code Review via Claude (Vertex AI) — read-only adversarial review
+# =============================================================================
+#
+# Three-layer adversarial code review using Claude on Vertex AI.
+# Claude operates in READ-ONLY mode (sandbox: read-only) — mapped to
+# permission_mode "plan" which prevents file edits.
+#
+# Layers:
+#   1. Blind Hunter — cynical adversarial review (diff in prompt only)
+#   2. Edge Case Hunter — exhaustive path/boundary analysis (diff in prompt)
+#   3. Acceptance Auditor — spec compliance check (diff + spec reference)
+#
+# Prerequisites:
+#   - Google Cloud ADC configured (gcloud auth application-default login)
+#   - ANTHROPIC_VERTEX_PROJECT_ID env var set (or pass project_id input)
+#   - agent-claude-kit installed and registered as "claude" adapter
+#   - tools-shell-kit installed (provides shell_exec tool)
+#
+# Usage (CLI):
+#   beddel run src/beddel-py/src/beddel/flows/code-review-claude.yaml \
+#     -i diff_cmd="git diff" \
+#     -i spec_file="docs/stories/epic-k1/story-k1.12.md" \
+#     -i model="claude-sonnet-4"
+#
+# =============================================================================
+
+id: code_review_claude
+name: Code Review (Claude Vertex AI)
+description: >
+  Adversarial code review via Claude on Vertex AI. Read-only mode —
+  Claude cannot modify files. Three review layers: Blind Hunter,
+  Edge Case Hunter, Acceptance Auditor.
+version: "1.0"
+interaction: headless
+
+tools:
+  - name: shell_exec
+    target: "beddel_tools_shell.tools:shell_exec"
+
+input_schema:
+  type: object
+  properties:
+    diff_cmd:
+      type: string
+      description: >
+        Shell command to produce the diff. Default: git diff (uncommitted).
+        Examples: "git diff --cached", "git diff main...HEAD"
+    spec_file:
+      type: string
+      description: >
+        Path to story/spec file for Acceptance Auditor layer.
+        If empty, Acceptance Auditor is skipped.
+    model:
+      type: string
+      description: Claude model to use for the review.
+  required:
+    - diff_cmd
+    - model
+
+steps:
+  # ── Step 1: Collect the diff ─────────────────────────────────────────
+  - id: collect_diff
+    primitive: tool
+    config:
+      tool: shell_exec
+      arguments:
+        cmd: "$input.diff_cmd"
+        fail_on_error: false
+    timeout: 30.0
+
+  # ── Step 2: Blind Hunter — adversarial review (diff only) ────────────
+  - id: blind_hunter
+    primitive: agent-exec
+    config:
+      adapter: claude
+      model: "$input.model"
+      sandbox: read-only
+      prompt: |
+        You are a cynical, jaded code reviewer with zero patience for sloppy work.
+        The code was submitted by someone who likely cut corners, and you expect problems.
+
+        RULES:
+        - Be skeptical of everything
+        - Look for what is MISSING, not just what is wrong
+        - Find at least 10 issues to fix or improve
+        - Use a precise, professional tone
+        - Output findings as a numbered Markdown list
+        - Focus on: logic errors, security issues, missing error handling,
+          incorrect assumptions, unclear naming, missing tests, race conditions,
+          bad abstractions, SOLID violations, and missing documentation
+        - You have NO project access. Review ONLY the diff below.
+        - Do NOT attempt to read files or run commands.
+
+        DIFF TO REVIEW:
+        ```diff
+        $stepResult.collect_diff.result.stdout
+        ```
+
+        Output your findings now. Minimum 10 issues.
+    timeout: 120.0
+
+  # ── Step 3: Edge Case Hunter — path/boundary analysis ────────────────
+  - id: edge_case_hunter
+    primitive: agent-exec
+    config:
+      adapter: claude
+      model: "$input.model"
+      sandbox: read-only
+      prompt: |
+        You are a pure path tracer. Your method is exhaustive path enumeration.
+        Mechanically walk every branch, not hunt by intuition.
+
+        RULES:
+        - Never comment on whether code is good or bad
+        - Only list MISSING handling (unguarded paths)
+        - Trace each branching path: conditionals, switches, early returns,
+          guard clauses, loops, error handlers
+        - Trace each boundary condition: null, empty, zero, negative, overflow,
+          max-length, type coercion, concurrency, timing
+        - Report ONLY paths that lack handling — discard handled ones silently
+        - Do NOT editorialize
+
+        OUTPUT FORMAT: Return ONLY a valid JSON array. Each object:
+        {
+          "location": "file:line_or_function",
+          "trigger_condition": "description (max 15 words)",
+          "guard_snippet": "minimal code sketch that closes the gap",
+          "potential_consequence": "what could go wrong (max 15 words)"
+        }
+
+        You MAY read project files to understand context around the diff.
+        You MUST NOT edit or create any files.
+
+        DIFF TO ANALYZE:
+        ```diff
+        $stepResult.collect_diff.result.stdout
+        ```
+
+        Return the JSON array now.
+    timeout: 180.0
+
+  # ── Step 4: Acceptance Auditor — spec compliance ─────────────────────
+  - id: acceptance_auditor
+    primitive: agent-exec
+    if: "$input.spec_file != ''"
+    config:
+      adapter: claude
+      model: "$input.model"
+      sandbox: read-only
+      prompt: |
+        You are an Acceptance Auditor. Verify that code changes comply with
+        the specification/story file.
+
+        SPEC FILE: $input.spec_file
+        Read this file first using your Read tool.
+
+        CHECK FOR:
+        - Violations of acceptance criteria
+        - Deviations from spec intent
+        - Missing implementation of specified behavior
+        - Contradictions between spec constraints and actual code
+        - Tasks marked [x] but not actually implemented in the diff
+
+        OUTPUT: Markdown list of findings. Each finding must include:
+        - One-line title
+        - Which AC/constraint it violates
+        - Evidence from the diff (quote relevant lines)
+
+        If all ACs are met, state:
+        "All acceptance criteria verified. No compliance gaps found."
+
+        You MAY read project files. You MUST NOT edit any files.
+
+        DIFF TO AUDIT:
+        ```diff
+        $stepResult.collect_diff.result.stdout
+        ```
+
+        Read the spec file and audit the diff now.
+    timeout: 180.0
+
+  # ── Step 5: Consolidate findings ────────────────────────────────────
+  - id: consolidate
+    primitive: llm
+    config:
+      model: gemini-2.5-flash
+      temperature: 0.1
+      max_tokens: 4000
+      prompt: |
+        You are a code review triage specialist. Consolidate findings from
+        multiple review layers into a single actionable report.
+
+        ## Blind Hunter Findings
+        $stepResult.blind_hunter.output
+
+        ## Edge Case Hunter Findings
+        $stepResult.edge_case_hunter.output
+
+        ## Acceptance Auditor Findings
+        $stepResult.acceptance_auditor.output
+
+        INSTRUCTIONS:
+        1. Deduplicate — if two layers found the same issue, merge into one
+        2. Classify each finding: CRITICAL, HIGH, MEDIUM, LOW
+        3. For each finding, note which layer(s) flagged it: [Blind], [Edge], [Auditor]
+        4. Drop noise/false positives (label as REJECTED with brief reason)
+        5. Present the final report:
+
+        ## Code Review Report
+
+        ### Summary
+        - Critical: N | High: N | Medium: N | Low: N | Rejected: N
+
+        ### Findings (ordered by severity)
+
+        | # | Severity | Source | Location | Finding | Suggested Fix |
+        |---|----------|--------|----------|---------|---------------|
+
+        ### Verdict
+        PASS (0 critical, 0 high) / CONCERNS (0 critical, >0 high) / FAIL (>0 critical)
+    timeout: 60.0
