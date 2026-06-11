@@ -25,8 +25,8 @@ class InMemoryDecisionStore:
     Satisfies the :class:`~beddel.domain.ports.IDecisionStore` protocol
     via structural subtyping.
 
-    Decisions are stored in insertion order and returned newest-first
-    (descending timestamp) from :meth:`query`.
+    Decisions are stored in insertion order and returned chronologically
+    (oldest first, ascending timestamp) from :meth:`query`.
     """
 
     def __init__(self) -> None:
@@ -67,7 +67,7 @@ class InMemoryDecisionStore:
             until: Filter decisions at or before this ISO 8601 timestamp.
 
         Returns:
-            Matching decisions sorted by timestamp descending.
+            Matching decisions sorted chronologically (oldest first).
         """
         try:
             async with self._lock:
@@ -85,7 +85,7 @@ class InMemoryDecisionStore:
             return sorted(
                 results,
                 key=lambda d: d.timestamp or "",
-                reverse=True,
+                reverse=False,
             )
         except DecisionError:
             raise

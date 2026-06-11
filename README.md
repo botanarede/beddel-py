@@ -111,7 +111,7 @@ pip install beddel        # slim core (3 deps: pydantic, pyyaml, click)
 beddel init               # provisions SQLite registry and downloads required kits
 ```
 
-`beddel init` downloads `serve-fastapi-kit`, `ag-ui-kit`, and `provider-litellm-kit` from the GitHub `kits/` directory and pip-installs their dependencies. Add more kits later with `beddel kit install <kit-name>`.
+`beddel init` downloads `serve-fastapi-kit`, `ag-ui-kit`, and `provider-gemini-kit` from the GitHub `kits/` directory and pip-installs their dependencies. Use `--provider litellm` to install `provider-litellm-kit` instead. Add more kits later with `beddel kit install <kit-name>`.
 
 Requires Python 3.11+.
 
@@ -340,7 +340,7 @@ beddel list-primitives                           # list registered primitives
 beddel serve -w workflow.yaml --port 8000        # start HTTP/SSE server
 beddel kit install provider-litellm-kit          # install a kit
 beddel kit list                                  # list installed kits
-beddel kit export workflow.yaml --format json    # export workflow
+beddel kit export workflow.yaml --format skill   # export as skill/kit/mcp/endpoint
 beddel connect                                   # authenticate with Beddel Cloud
 beddel status                                    # show connection status
 beddel version                                   # print version

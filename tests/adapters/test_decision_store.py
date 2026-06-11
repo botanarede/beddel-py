@@ -203,7 +203,7 @@ class TestInMemoryDecisionStoreQuery:
         assert len(results) == 2
 
     @pytest.mark.asyncio
-    async def test_query_sorted_by_timestamp_descending(self) -> None:
+    async def test_query_sorted_by_timestamp_ascending(self) -> None:
         store = InMemoryDecisionStore()
         d1 = _decision(id="d-1", timestamp="2026-01-15T08:00:00Z")
         d2 = _decision(id="d-2", timestamp="2026-01-15T12:00:00Z")
@@ -214,7 +214,7 @@ class TestInMemoryDecisionStoreQuery:
         await store.append("wf-1", d3)
 
         results = await store.query()
-        assert [r.id for r in results] == ["d-2", "d-3", "d-1"]
+        assert [r.id for r in results] == ["d-1", "d-3", "d-2"]
 
     @pytest.mark.asyncio
     async def test_query_excludes_none_timestamp_from_time_filter(self) -> None:
