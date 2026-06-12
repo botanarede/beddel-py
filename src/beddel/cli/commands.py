@@ -2066,6 +2066,69 @@ def serve(
 
 
 @cli.command()
+@click.argument("flow_path", type=click.Path(exists=True))
+@click.option(
+    "--project",
+    envvar="GOOGLE_CLOUD_PROJECT",
+    default="beddel-beta",
+    help="GCP project ID (env: GOOGLE_CLOUD_PROJECT).",
+)
+@click.option(
+    "--region",
+    envvar="CLOUD_ML_REGION",
+    default="us-central1",
+    help="Vertex AI region (env: CLOUD_ML_REGION).",
+)
+@click.option(
+    "--staging-bucket",
+    envvar="STAGING_BUCKET",
+    default="gs://beddel-workflows",
+    help="GCS staging bucket (env: STAGING_BUCKET).",
+)
+def deploy(flow_path: str, project: str, region: str, staging_bucket: str) -> None:
+    """Deploy a Beddel flow to Vertex AI Agent Engine.
+
+    Requires ADC: gcloud auth application-default login
+    """
+    try:
+        from beddel_deploy_agent_engine import (  # type: ignore[import-not-found]
+            check_adc,
+            deploy_flow_to_agent_engine,
+        )
+    except ImportError:
+        click.echo(
+            "Deploy kit not installed. Run: beddel init\n"
+            "Or install manually: pip install 'google-adk>=2.0.0' "
+            "'google-cloud-aiplatform[adk,agent_engines]'",
+            err=True,
+        )
+        raise SystemExit(1) from None
+
+    # Check ADC credentials
+    adc_status = check_adc()
+    if not adc_status["configured"]:
+        click.echo(f"Error: {adc_status['error']}", err=True)
+        raise SystemExit(1)
+
+    # Deploy
+    click.echo(f"Deploying {flow_path} to Agent Engine ({project}/{region})...")
+    try:
+        result = deploy_flow_to_agent_engine(
+            flow_path=Path(flow_path),
+            project=project,
+            region=region,
+            staging_bucket=staging_bucket,
+        )
+    except Exception as exc:
+        click.echo(f"Deploy failed: {exc}", err=True)
+        raise SystemExit(1) from None
+
+    click.echo("\n✅ Deployed successfully!")
+    click.echo(f"  Resource: {result.resource_name}")
+    click.echo(f"  Console:  {result.console_url}")
+
+
+@cli.command()
 @click.option("--port", default=8080, type=int, help="Bind port (default: 8080).")
 @click.option("--no-browser", is_flag=True, default=False, help="Do not open the browser.")
 def launch(port: int, *, no_browser: bool) -> None:
