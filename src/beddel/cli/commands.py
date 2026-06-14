@@ -1856,7 +1856,7 @@ def _build_runtime_app(
                 from a2a.server.request_handlers import DefaultRequestHandler
                 from a2a.server.tasks import InMemoryTaskStore
 
-                from beddel.adapters.a2a_server import (
+                from beddel_agent_a2a.server import (
                     BeddelA2AExecutor,
                     build_agent_card,
                 )
@@ -2142,39 +2142,57 @@ def launch(port: int, *, no_browser: bool) -> None:
     Opens ``http://localhost:<port>``.  Runs until Ctrl+C.
     Requires ``beddel init`` to have been run first.
     """
+    import warnings
+    import webbrowser
+
+    from beddel import __version__
+
+    # Immediate banner — gives instant feedback before any slow imports
+    click.echo(f"\n  Beddel Launch v{__version__}")
+    click.echo("  ─────────────────────────")
+
+    # Determine verbose mode from parent logging config
+    _verbose = logging.getLogger().level <= logging.DEBUG
+
     from beddel.adapters.index_store import _DEFAULT_DB_PATH
 
     if not Path(_DEFAULT_DB_PATH).expanduser().exists():
-        click.echo("Beddel is not initialized. Run `beddel init` first.", err=True)
+        click.echo("  ✗ Beddel is not initialized. Run `beddel init` first.", err=True)
         raise SystemExit(1)
 
     try:
         import uvicorn
     except ImportError:
-        click.echo("Missing dependencies. Install missing kits: beddel init", err=True)
+        click.echo("  ✗ Missing dependencies. Install missing kits: beddel init", err=True)
         raise SystemExit(1) from None
 
-    from beddel.cli.config import is_onboarding_complete
+    # Suppress warnings during startup (litellm, pydantic, authlib, etc.)
+    if not _verbose:
+        warnings.filterwarnings("ignore")
+        logging.disable(logging.WARNING)
 
-    if is_onboarding_complete():
-        # Post-onboarding: serve all flows (bundled + config paths)
-        flow_paths = tuple(_resolve_all_flow_paths((), include_bundled=True))
-        app, loaded, wf_ids = _build_runtime_app(flow_paths)
-        url = f"http://localhost:{port}"
-        click.echo(f"Beddel Launch — {loaded} flow(s) at {url}")
-    else:
-        # First run: only the onboarding wizard
-        from beddel.flows import get_bundled_workflow_path
+    try:
+        click.echo("  Loading kits...")
 
-        app, _loaded, wf_ids = _build_runtime_app((get_bundled_workflow_path("setup"),))
-        url = f"http://localhost:{port}"
-        click.echo(f"Beddel Onboarding — open {url}")
+        from beddel.cli.config import is_onboarding_complete
 
-    if not no_browser:
-        import threading
-        import webbrowser
+        if is_onboarding_complete():
+            # Post-onboarding: serve all flows (bundled + config paths)
+            flow_paths = tuple(_resolve_all_flow_paths((), include_bundled=True))
+            click.echo("  Discovering flows...")
+            app, loaded, wf_ids = _build_runtime_app(flow_paths)
+        else:
+            # First run: only the onboarding wizard
+            from beddel.flows import get_bundled_workflow_path
 
-        threading.Timer(1.0, webbrowser.open, args=[url]).start()
+            app, loaded, wf_ids = _build_runtime_app((get_bundled_workflow_path("setup"),))
+    finally:
+        # Restore warnings/logging regardless of success or failure
+        if not _verbose:
+            warnings.resetwarnings()
+            logging.disable(logging.NOTSET)
+
+    url = f"http://localhost:{port}"
 
     # Inject BEDDEL_FLOWS_DIR so file_write can save to flows directory
     from beddel.cli.config import resolve_flows_paths as _resolve_fp
@@ -2183,7 +2201,27 @@ def launch(port: int, *, no_browser: bool) -> None:
     if _flows:
         os.environ["BEDDEL_FLOWS_DIR"] = str(_flows[0])
 
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    # Smart browser open — wait for server to actually start
+    click.echo(f"  Starting server on port {port}...")
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+
+    async def _serve_and_open() -> None:
+        task = asyncio.ensure_future(server.serve())
+        # Wait until uvicorn signals it's ready
+        while not server.started:
+            await asyncio.sleep(0.05)
+        click.echo(f"\n  Ready at {url} — {loaded} flow(s)")
+        click.echo("  Press Ctrl+C to stop\n")
+        if not no_browser:
+            webbrowser.open(url)
+        await task
+
+    try:
+        asyncio.run(_serve_and_open())
+    except KeyboardInterrupt:
+        click.echo("\n  Stopped.")
 
 
 # ---------------------------------------------------------------------------
