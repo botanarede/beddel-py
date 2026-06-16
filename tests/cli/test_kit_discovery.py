@@ -15,7 +15,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from beddel.cli.commands import _discover_remote_kits, _interactive_kit_discovery, cli
+from beddel.cli.commands import (
+    _discover_remote_kits,
+    _fetch_registry_http,
+    _interactive_kit_discovery,
+    _KitManifestLike,
+    cli,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -255,8 +261,6 @@ class TestKitInstallEntryPoint:
 # HTTP path tests (Story K3A.7)
 # ---------------------------------------------------------------------------
 
-from beddel.cli.commands import _KitManifestLike, _fetch_registry_http  # noqa: E402
-
 _REGISTRY_JSON = json.dumps(
     [
         {"name": "agent-demo-kit", "version": "0.2.0", "description": "Demo", "category": "agent"},
@@ -327,12 +331,10 @@ class TestDiscoverRemoteKitsHTTP:
 
     def test_http_timeout_falls_back_to_git(self, tmp_path: Path) -> None:
         """On timeout, falls back to git sparse-checkout path."""
-        import socket
-
         fake_repo = _make_fake_repo(tmp_path, {"my-test-kit": _VALID_KIT_YAML})
 
         with (
-            patch("urllib.request.urlopen", side_effect=socket.timeout("timed out")),
+            patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")),
             patch("shutil.which", return_value="/usr/bin/git"),
             patch("tempfile.mkdtemp", return_value=str(fake_repo)),
             patch("subprocess.run") as mock_run,
