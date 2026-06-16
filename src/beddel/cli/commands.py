@@ -1855,7 +1855,6 @@ def _build_runtime_app(
                 from a2a.server.apps.rest import A2ARESTFastAPIApplication
                 from a2a.server.request_handlers import DefaultRequestHandler
                 from a2a.server.tasks import InMemoryTaskStore
-
                 from beddel_agent_a2a.server import (
                     BeddelA2AExecutor,
                     build_agent_card,
@@ -2351,12 +2350,89 @@ def _resolve_kit_source(source: str) -> Path:
     return result_dir
 
 
-def _discover_remote_kits() -> list:
+def _discover_remote_kits() -> list[Any]:
     """Fetch available kit manifests from the official repository.
 
-    Returns a list of parsed kit manifests. Will be implemented in Task 2.
+    Performs a git sparse-checkout of ``kits/*/kit.yaml`` from the official
+    repository to retrieve all available kit manifests. Each manifest is
+    parsed using :func:`parse_kit_manifest`; invalid manifests are skipped
+    with a warning (not fatal).
+
+    Returns a list of parsed kit manifests.
     """
-    return []
+    import shutil
+    import subprocess
+    import tempfile
+
+    from beddel.domain.errors import KitManifestError
+    from beddel.domain.kit import parse_kit_manifest
+
+    git = shutil.which("git")
+    if git is None:
+        click.echo("Error: git is required for kit discovery", err=True)
+        raise SystemExit(1)
+
+    url = f"https://github.com/{_OFFICIAL_REPO}.git"
+    tmp_dir = Path(tempfile.mkdtemp(prefix="beddel-discover-"))
+
+    try:
+        # 1. Sparse clone (metadata only, no blobs)
+        subprocess.run(
+            [
+                git,
+                "clone",
+                "--depth=1",
+                "--filter=blob:none",
+                "--sparse",
+                f"--branch={_OFFICIAL_BRANCH}",
+                url,
+                str(tmp_dir / "repo"),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        # 2. Set sparse-checkout to only fetch kit manifests
+        subprocess.run(
+            [
+                git,
+                "sparse-checkout",
+                "set",
+                "--no-cone",
+                f"{_KITS_PREFIX}/*/kit.yaml",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_dir / "repo"),
+        )
+
+        # 3. Walk cloned directory for kit.yaml files
+        repo_kits = tmp_dir / "repo" / _KITS_PREFIX
+        manifests: list[Any] = []
+
+        for manifest_path in sorted(repo_kits.glob("*/kit.yaml")):
+            try:
+                parsed = parse_kit_manifest(manifest_path)
+                manifests.append(parsed)
+            except (KitManifestError, Exception) as exc:  # noqa: BLE001
+                kit_name = manifest_path.parent.name
+                click.echo(
+                    f"Warning: skipping invalid manifest for '{kit_name}': {exc}",
+                    err=True,
+                )
+
+        return manifests
+
+    except subprocess.CalledProcessError as exc:
+        click.echo(
+            f"Failed to discover kits: {exc.stderr or exc.stdout}",
+            err=True,
+        )
+        raise SystemExit(1) from None
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 def _interactive_kit_discovery(*, as_json: bool = False) -> None:
