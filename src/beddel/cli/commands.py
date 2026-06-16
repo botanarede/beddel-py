@@ -2351,10 +2351,34 @@ def _resolve_kit_source(source: str) -> Path:
     return result_dir
 
 
+def _discover_remote_kits() -> list:
+    """Fetch available kit manifests from the official repository.
+
+    Returns a list of parsed kit manifests. Will be implemented in Task 2.
+    """
+    return []
+
+
+def _interactive_kit_discovery(*, as_json: bool = False) -> None:
+    """Enter interactive kit discovery mode.
+
+    Lists available kits from the official repository and allows the user
+    to select which ones to install. Will be fully implemented in Task 3.
+    """
+    click.echo("Kit discovery not yet implemented")
+
+
 @kit.command("install")
-@click.argument("source")
+@click.argument("source", required=False, default=None)
 @click.option("--global", "global_install", is_flag=True, help="Install to ~/.beddel/kits/")
-def kit_install(source: str, *, global_install: bool) -> None:
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Output available kits as JSON (discovery mode only).",
+)
+def kit_install(source: str | None, *, global_install: bool, as_json: bool) -> None:
     """Install a solution kit from a local directory or GitHub.
 
     SOURCE can be:
@@ -2363,7 +2387,12 @@ def kit_install(source: str, *, global_install: bool) -> None:
       Local path:    ./my-kit/
       Kit name:      provider-litellm-kit  (fetches from official repo)
       GitHub path:   github:owner/repo/kits/kit-name
+
+    When SOURCE is omitted, enters interactive discovery mode.
     """
+    if source is None:
+        return _interactive_kit_discovery(as_json=as_json)
+
     import shutil
     import subprocess
 
