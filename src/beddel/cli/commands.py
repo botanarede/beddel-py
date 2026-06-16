@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import importlib
 import json
 import logging
@@ -1945,6 +1946,31 @@ def _build_runtime_app(
                 for wf, _ in all_workflows.values()
             ]
 
+    # ── Agent Engine sidebar routes (guarded — absent when vertexai not installed) ──
+    try:
+        from beddel.serve.agent_engine.adapter import _AVAILABLE as _AE_AVAILABLE  # noqa: I001  # type: ignore[import-not-found]
+
+        if _AE_AVAILABLE:
+            _ae_project = "beddel-beta"
+            try:
+                from beddel_deploy_agent_engine.adc import check_adc as _check_adc_fn  # noqa: I001  # type: ignore[import-not-found]
+
+                _adc_info = _check_adc_fn()
+                if _adc_info.get("project_id"):
+                    _ae_project = _adc_info["project_id"]
+            except ImportError:
+                pass
+            from beddel.serve.agent_engine import (  # noqa: I001
+                VertexAgentEngineAdapter,
+                register_agent_engine_routes,
+            )
+
+            _ae_adapter = VertexAgentEngineAdapter(project=_ae_project)
+            register_agent_engine_routes(app, _ae_adapter)
+            click.echo("  Agent Engine sidebar: /api/agent-engine/")
+    except Exception:  # noqa: BLE001
+        click.echo("Warning: Agent Engine sidebar unavailable (vertexai not configured)", err=True)
+
     return app, loaded, list(all_workflows.keys())
 
 
@@ -2258,6 +2284,51 @@ def kit() -> None:
 _OFFICIAL_REPO = "botanarede/beddel"
 _OFFICIAL_BRANCH = "main"
 _KITS_PREFIX = "kits"
+_REGISTRY_URL = (
+    f"https://raw.githubusercontent.com/{_OFFICIAL_REPO}"
+    f"/{_OFFICIAL_BRANCH}/{_KITS_PREFIX}/registry.json"
+)
+_REGISTRY_TIMEOUT = 5  # seconds
+
+
+@dataclasses.dataclass
+class _KitEntry:
+    name: str
+    version: str
+    description: str
+
+
+@dataclasses.dataclass
+class _KitManifestLike:
+    """Lightweight stand-in for KitManifest when built from registry.json HTTP fetch."""
+
+    kit: _KitEntry
+
+
+def _fetch_registry_http() -> list[_KitManifestLike]:
+    """Fetch kits/registry.json via HTTP and return lightweight manifest objects.
+
+    Raises on any failure (network error, non-200, timeout, bad JSON) so the
+    caller can fall back to git.
+    """
+    import json as _json
+    import urllib.request
+
+    with urllib.request.urlopen(_REGISTRY_URL, timeout=_REGISTRY_TIMEOUT) as resp:
+        if resp.status != 200:
+            raise OSError(f"HTTP {resp.status} from registry URL")
+        data = _json.loads(resp.read().decode())
+
+    return [
+        _KitManifestLike(
+            kit=_KitEntry(
+                name=entry["name"],
+                version=entry.get("version", "0.1.0"),
+                description=entry.get("description", ""),
+            )
+        )
+        for entry in data
+    ]
 
 
 def _resolve_kit_source(source: str) -> Path:
@@ -2353,13 +2424,22 @@ def _resolve_kit_source(source: str) -> Path:
 def _discover_remote_kits() -> list[Any]:
     """Fetch available kit manifests from the official repository.
 
-    Performs a git sparse-checkout of ``kits/*/kit.yaml`` from the official
-    repository to retrieve all available kit manifests. Each manifest is
-    parsed using :func:`parse_kit_manifest`; invalid manifests are skipped
-    with a warning (not fatal).
+    Tries HTTP fetch of ``kits/registry.json`` first (fast, no git required).
+    Falls back to git sparse-checkout of ``kits/*/kit.yaml`` if HTTP fails.
 
-    Returns a list of parsed kit manifests.
+    Returns a list of objects with ``.kit.name``, ``.kit.version``,
+    ``.kit.description`` attributes.
     """
+    # --- HTTP path (fast, no git binary needed) ---
+    try:
+        return _fetch_registry_http()
+    except Exception:  # noqa: BLE001
+        click.echo(
+            "Warning: HTTP registry unavailable, falling back to git…",
+            err=True,
+        )
+
+    # --- Git fallback (original K3A.6 mechanism) ---
     import shutil
     import subprocess
     import tempfile
