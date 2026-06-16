@@ -1948,12 +1948,12 @@ def _build_runtime_app(
 
     # ── Agent Engine sidebar routes (guarded — absent when vertexai not installed) ──
     try:
-        from beddel.serve.agent_engine.adapter import _AVAILABLE as _AE_AVAILABLE  # noqa: I001  # type: ignore[import-not-found]
+        from beddel.serve.agent_engine.adapter import _AVAILABLE as _AE_AVAILABLE  # type: ignore[import-not-found]  # noqa: I001
 
         if _AE_AVAILABLE:
             _ae_project = "beddel-beta"
             try:
-                from beddel_deploy_agent_engine.adc import check_adc as _check_adc_fn  # noqa: I001  # type: ignore[import-not-found]
+                from beddel_deploy_agent_engine.adc import check_adc as _check_adc_fn  # type: ignore[import-not-found]  # noqa: I001
 
                 _adc_info = _check_adc_fn()
                 if _adc_info.get("project_id"):

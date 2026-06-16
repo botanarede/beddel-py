@@ -12,7 +12,6 @@ from beddel.serve.agent_engine import register_agent_engine_routes
 from beddel.serve.agent_engine.models import AgentInfo, ChatChunk
 from beddel.serve.agent_engine.ports import IAgentRuntimeAdapter
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
