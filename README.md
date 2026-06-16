@@ -112,7 +112,7 @@ beddel init               # provisions SQLite registry and downloads required ki
 beddel launch             # opens the browser with the interactive flow runner
 ```
 
-`beddel init` downloads `serve-fastapi-kit`, `ag-ui-kit`, and `provider-gemini-kit` from the GitHub `kits/` directory and pip-installs their dependencies. Use `--provider litellm` to install `provider-litellm-kit` instead. Add more kits later with `beddel kit install <kit-name>`.
+`beddel init` downloads `serve-fastapi-kit`, `ag-ui-kit`, and `provider-gemini-kit` from the GitHub `kits/` directory and pip-installs their dependencies. Use `--provider litellm` to install `provider-litellm-kit` instead. Add more kits later with `beddel kit install <kit-name>`, or run `beddel kit install` (no arguments) to browse all available kits interactively.
 
 Requires Python 3.11+.
 
@@ -292,8 +292,10 @@ Plus advanced patterns: reflection loops, parallel fan-out/fan-in, circuit break
 Adapters, tools, and integrations are distributed as isolated solution kits:
 
 ```bash
-beddel kit install provider-litellm-kit     # from official repository
-beddel kit install ./my-custom-kit/         # from local directory
+beddel kit install                          # browse available kits interactively
+beddel kit install provider-litellm-kit     # install by name (from official repository)
+beddel kit install ./my-custom-kit/         # install from local directory
+beddel kit install --json                   # list available kits as JSON (for CI/scripts)
 beddel kit list                             # list installed kits
 ```
 
@@ -380,9 +382,11 @@ beddel serve -w workflow.yaml --port 8000        # start HTTP/SSE server
 beddel serve -w workflow.yaml --mcp              # serve as MCP server (stdio)
 
 # Kit management
+beddel kit install                               # interactive discovery (browse + select)
 beddel kit install provider-litellm-kit          # install from official repository
 beddel kit install ./my-custom-kit/              # install from local directory
 beddel kit install github:owner/repo/kits/name   # install from GitHub path
+beddel kit install --json                        # list available kits as JSON (CI/scripts)
 beddel kit list                                  # list installed kits
 beddel kit enable <name>                         # enable a disabled kit
 beddel kit disable <name>                        # disable a kit without uninstalling
