@@ -110,10 +110,10 @@ class TestServeExports:
         assert hasattr(beddel.serve, "ChatChunk")
 
     def test_all_contains_expected_symbols(self) -> None:
-        """beddel.serve.__all__ contains the 3 expected public symbols."""
+        """beddel.serve.__all__ contains the expected public symbols."""
         import beddel.serve
 
-        expected = {"IAgentRuntimeAdapter", "AgentInfo", "ChatChunk"}
+        expected = {"IAgentRuntimeAdapter", "AgentInfo", "ChatChunk", "VertexAgentEngineAdapter"}
         assert set(beddel.serve.__all__) == expected
 
 
