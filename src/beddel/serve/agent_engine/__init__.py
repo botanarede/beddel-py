@@ -7,5 +7,12 @@ the Agent Engine sidebar integration.
 from .adapter import VertexAgentEngineAdapter
 from .models import AgentInfo, ChatChunk
 from .ports import IAgentRuntimeAdapter
+from .routes import register_agent_engine_routes
 
-__all__ = ["IAgentRuntimeAdapter", "AgentInfo", "ChatChunk", "VertexAgentEngineAdapter"]
+__all__ = [
+    "IAgentRuntimeAdapter",
+    "AgentInfo",
+    "ChatChunk",
+    "VertexAgentEngineAdapter",
+    "register_agent_engine_routes",
+]

@@ -113,7 +113,13 @@ class TestServeExports:
         """beddel.serve.__all__ contains the expected public symbols."""
         import beddel.serve
 
-        expected = {"IAgentRuntimeAdapter", "AgentInfo", "ChatChunk", "VertexAgentEngineAdapter"}
+        expected = {
+            "IAgentRuntimeAdapter",
+            "AgentInfo",
+            "ChatChunk",
+            "VertexAgentEngineAdapter",
+            "register_agent_engine_routes",
+        }
         assert set(beddel.serve.__all__) == expected
 
 

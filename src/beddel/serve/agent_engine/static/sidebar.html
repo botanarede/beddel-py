@@ -1,0 +1,152 @@
+<style>
+/* --- Agent Engine Sidebar --- */
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #2a2a44;border-top-color:#6366f1;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:.5rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+#ae-toggle{position:fixed;right:0;top:50%;transform:translateY(-50%);width:auto;margin-top:0;background:#6366f1;color:#fff;border:none;padding:.6rem .4rem;border-radius:6px 0 0 6px;cursor:pointer;font-size:.75rem;writing-mode:vertical-rl;z-index:1000}
+#ae-toggle:hover{background:#4f46e5}
+#ae-sidebar{position:fixed;right:0;top:0;width:360px;height:100vh;background:#13131c;border-left:1px solid #23233a;transform:translateX(100%);transition:transform .25s ease;z-index:999;display:flex;flex-direction:column}
+#ae-sidebar.open{transform:translateX(0)}
+#ae-sidebar .ae-header{padding:1rem;border-bottom:1px solid #23233a}
+#ae-sidebar .ae-header h3{font-size:1rem;margin-bottom:.5rem;color:#fff}
+#ae-sidebar select{width:100%;padding:.5rem;border:1px solid #2a2a44;border-radius:4px;background:#07070d;color:#e0e0e0;font-size:.85rem}
+#ae-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:.5rem}
+.ae-msg{padding:.6rem .8rem;border-radius:8px;font-size:.85rem;max-width:85%;word-wrap:break-word;line-height:1.4}
+.ae-msg.user{background:#2a2a44;color:#e0e0e0;align-self:flex-end}
+.ae-msg.agent{background:#1a1a2e;color:#8be9c0;align-self:flex-start;border:1px solid #23233a}
+.ae-msg.error{background:#2d1515;color:#ff7a7a;align-self:center;font-size:.8rem}
+.ae-msg.info{background:#1a1a2e;color:#9090b0;align-self:center;font-size:.8rem;text-align:center}
+#ae-input-area{padding:.75rem;border-top:1px solid #23233a;display:flex;gap:.5rem}
+#ae-input-area input{flex:1;padding:.5rem .7rem;border:1px solid #2a2a44;border-radius:4px;background:#07070d;color:#e0e0e0;font-size:.85rem;outline:none}
+#ae-input-area input:focus{border-color:#6366f1}
+#ae-input-area button{padding:.5rem .8rem;background:#6366f1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:.85rem;white-space:nowrap}
+#ae-input-area button:disabled{opacity:.5;cursor:not-allowed}
+</style>
+<button id="ae-toggle" onclick="toggleSidebar()">Agents</button>
+<div id="ae-sidebar">
+  <div class="ae-header">
+    <h3>Agent Engine</h3>
+    <select id="ae-agent-select" onchange="onAgentChange()">
+      <option value="">Select an agent...</option>
+    </select>
+  </div>
+  <div id="ae-messages"></div>
+  <div id="ae-input-area">
+    <input type="text" id="ae-msg-input" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendMsg()">
+    <button id="ae-send-btn" onclick="sendMsg()">Send</button>
+  </div>
+</div>
+<script>
+(function() {
+  var sidebar = document.getElementById("ae-sidebar");
+  var agentSelect = document.getElementById("ae-agent-select");
+  var messages = document.getElementById("ae-messages");
+  var msgInput = document.getElementById("ae-msg-input");
+  var sendBtn = document.getElementById("ae-send-btn");
+  var sessionId = null;
+  var isOpen = false;
+
+  window.toggleSidebar = function() {
+    isOpen = !isOpen;
+    sidebar.classList.toggle("open", isOpen);
+    if (isOpen && agentSelect.options.length <= 1) loadAgents();
+  };
+
+  window.onAgentChange = function() {
+    sessionId = null;
+    messages.innerHTML = "";
+    if (agentSelect.value) {
+      addMsg("info", "Connected to: " + agentSelect.selectedOptions[0].text);
+    }
+  };
+
+  window.sendMsg = function() {
+    var text = msgInput.value.trim();
+    if (!text || !agentSelect.value) return;
+    msgInput.value = "";
+    addMsg("user", text);
+    sendBtn.disabled = true;
+
+    var body = JSON.stringify({
+      resource_name: agentSelect.value,
+      message: text,
+      session_id: sessionId
+    });
+
+    fetch("/api/agent-engine/chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: body
+    }).then(function(resp) {
+      if (!resp.ok) return resp.json().then(function(e) { throw new Error(e.error || "Request failed"); });
+      var reader = resp.body.getReader();
+      var decoder = new TextDecoder();
+      var agentMsg = addMsg("agent", "");
+      var buffer = "";
+
+      function read() {
+        reader.read().then(function(result) {
+          if (result.done) { sendBtn.disabled = false; return; }
+          buffer += decoder.decode(result.value, {stream: true});
+          var lines = buffer.split("\n");
+          buffer = lines.pop();
+          for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (line.startsWith("data:")) {
+              try {
+                var d = JSON.parse(line.slice(5).trim());
+                if (d.text) { agentMsg.textContent += d.text; scrollBottom(); }
+                if (d.session_id) { sessionId = d.session_id; }
+              } catch(e) {}
+            }
+          }
+          read();
+        }).catch(function(err) {
+          addMsg("error", "Stream error: " + err.message);
+          sendBtn.disabled = false;
+        });
+      }
+      read();
+    }).catch(function(err) {
+      addMsg("error", err.message);
+      sendBtn.disabled = false;
+    });
+  };
+
+  function loadAgents() {
+    agentSelect.innerHTML = '<option value="">Loading...</option>';
+    fetch("/api/agent-engine/agents").then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || "Failed to load"); });
+      return r.json();
+    }).then(function(agents) {
+      agentSelect.innerHTML = '<option value="">Select an agent...</option>';
+      if (!agents.length) {
+        agentSelect.innerHTML = '<option value="">No agents deployed</option>';
+        addMsg("info", "No agents found. Deploy one first:\n  beddel deploy flow.yaml");
+        return;
+      }
+      agents.forEach(function(a) {
+        var opt = document.createElement("option");
+        opt.value = a.resource_name;
+        opt.textContent = a.display_name;
+        agentSelect.appendChild(opt);
+      });
+    }).catch(function(err) {
+      agentSelect.innerHTML = '<option value="">Error loading agents</option>';
+      addMsg("error", err.message);
+    });
+  }
+
+  function addMsg(type, text) {
+    var div = document.createElement("div");
+    div.className = "ae-msg " + type;
+    div.textContent = text;
+    messages.appendChild(div);
+    scrollBottom();
+    return div;
+  }
+
+  function scrollBottom() {
+    messages.scrollTop = messages.scrollHeight;
+  }
+})();
+</script>
