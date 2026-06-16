@@ -249,3 +249,107 @@ class TestKitInstallEntryPoint:
         assert result.exit_code == 0
         mock_discovery.assert_not_called()
         assert "Installed" in result.output
+
+
+# ---------------------------------------------------------------------------
+# HTTP path tests (Story K3A.7)
+# ---------------------------------------------------------------------------
+
+from beddel.cli.commands import _KitManifestLike, _fetch_registry_http  # noqa: E402
+
+_REGISTRY_JSON = json.dumps(
+    [
+        {"name": "agent-demo-kit", "version": "0.2.0", "description": "Demo", "category": "agent"},
+        {"name": "my-test-kit", "version": "0.1.0", "description": "A test kit", "category": "my"},
+    ]
+)
+
+
+def _make_http_response(body: str, status: int = 200) -> MagicMock:
+    resp = MagicMock()
+    resp.status = status
+    resp.read.return_value = body.encode()
+    resp.__enter__ = lambda s: s
+    resp.__exit__ = MagicMock(return_value=False)
+    return resp
+
+
+class TestDiscoverRemoteKitsHTTP:
+    """Tests for HTTP-first path in _discover_remote_kits() (Story K3A.7)."""
+
+    def test_http_success_returns_entries_no_git(self) -> None:
+        """HTTP success: returns _KitManifestLike entries, no subprocess called."""
+        mock_resp = _make_http_response(_REGISTRY_JSON)
+
+        with (
+            patch("urllib.request.urlopen", return_value=mock_resp),
+            patch("subprocess.run") as mock_run,
+        ):
+            manifests = _discover_remote_kits()
+
+        mock_run.assert_not_called()
+        assert len(manifests) == 2
+        names = {m.kit.name for m in manifests}
+        assert names == {"agent-demo-kit", "my-test-kit"}
+        assert all(isinstance(m, _KitManifestLike) for m in manifests)
+
+    def test_http_success_entry_fields(self) -> None:
+        """HTTP entries carry name, version, description."""
+        mock_resp = _make_http_response(_REGISTRY_JSON)
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            manifests = _discover_remote_kits()
+
+        entry = next(m for m in manifests if m.kit.name == "my-test-kit")
+        assert entry.kit.version == "0.1.0"
+        assert entry.kit.description == "A test kit"
+
+    def test_http_network_error_falls_back_to_git(self, tmp_path: Path) -> None:
+        """On urllib exception, falls back to git sparse-checkout path."""
+        import urllib.error
+
+        fake_repo = _make_fake_repo(tmp_path, {"my-test-kit": _VALID_KIT_YAML})
+
+        with (
+            patch("urllib.request.urlopen", side_effect=urllib.error.URLError("unreachable")),
+            patch("shutil.which", return_value="/usr/bin/git"),
+            patch("tempfile.mkdtemp", return_value=str(fake_repo)),
+            patch("subprocess.run") as mock_run,
+            patch("shutil.rmtree"),
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
+            manifests = _discover_remote_kits()
+
+        # Git path was invoked
+        assert mock_run.called
+        assert len(manifests) == 1
+        assert manifests[0].kit.name == "my-test-kit"
+
+    def test_http_timeout_falls_back_to_git(self, tmp_path: Path) -> None:
+        """On timeout, falls back to git sparse-checkout path."""
+        import socket
+
+        fake_repo = _make_fake_repo(tmp_path, {"my-test-kit": _VALID_KIT_YAML})
+
+        with (
+            patch("urllib.request.urlopen", side_effect=socket.timeout("timed out")),
+            patch("shutil.which", return_value="/usr/bin/git"),
+            patch("tempfile.mkdtemp", return_value=str(fake_repo)),
+            patch("subprocess.run") as mock_run,
+            patch("shutil.rmtree"),
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stderr="", stdout="")
+            manifests = _discover_remote_kits()
+
+        assert mock_run.called
+        assert len(manifests) == 1
+
+    def test_fetch_registry_http_non_200_raises(self) -> None:
+        """_fetch_registry_http() raises OSError on non-200 status."""
+        mock_resp = _make_http_response("Not Found", status=404)
+
+        with (
+            patch("urllib.request.urlopen", return_value=mock_resp),
+            pytest.raises(OSError, match="HTTP 404"),
+        ):
+            _fetch_registry_http()
