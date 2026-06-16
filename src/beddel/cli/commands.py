@@ -2439,9 +2439,159 @@ def _interactive_kit_discovery(*, as_json: bool = False) -> None:
     """Enter interactive kit discovery mode.
 
     Lists available kits from the official repository and allows the user
-    to select which ones to install. Will be fully implemented in Task 3.
+    to select which ones to install. Groups kits by category (derived from
+    name prefix), marks already-installed kits, and either:
+
+    - outputs JSON (``--json`` flag),
+    - prints the list and exits on non-TTY (CI/pipe),
+    - or presents an interactive numbered prompt on TTY.
     """
-    click.echo("Kit discovery not yet implemented")
+    import asyncio
+    import json
+
+    click.echo("Fetching available kits from official repository…")
+    manifests = _discover_remote_kits()
+
+    if not manifests:
+        click.echo("No kits found.", err=True)
+        return
+
+    # Determine installed kit names (graceful if index doesn't exist)
+    installed_names: set[str] = set()
+    try:
+        from beddel.adapters.index_store import _DEFAULT_DB_PATH, IndexStore
+
+        db_path = Path(_DEFAULT_DB_PATH).expanduser()
+        if db_path.exists():
+            store = IndexStore(db_path)
+            rows = asyncio.run(store.list_kits())
+            installed_names = {r["name"] for r in rows}
+    except Exception:  # noqa: BLE001
+        pass  # pre-init state — treat all as uninstalled
+
+    # Group by category (infer from name prefix: "provider-", "agent-", etc.)
+    def _category(name: str) -> str:
+        parts = name.split("-")
+        return parts[0] if len(parts) > 1 else "other"
+
+    groups: dict[str, list[Any]] = {}
+    for m in manifests:
+        cat = _category(m.kit.name)
+        groups.setdefault(cat, []).append(m)
+
+    # Build flat numbered list for selection
+    flat: list[Any] = []
+    for cat in sorted(groups):
+        for m in groups[cat]:
+            flat.append(m)
+
+    # JSON output mode
+    if as_json:
+        output = [
+            {
+                "name": m.kit.name,
+                "version": m.kit.version,
+                "description": m.kit.description,
+                "category": _category(m.kit.name),
+                "installed": m.kit.name in installed_names,
+            }
+            for m in flat
+        ]
+        click.echo(json.dumps(output, indent=2))
+        return
+
+    # Format display list
+    def _fmt_row(idx: int, m: Any) -> str:
+        installed_marker = " (installed ✓)" if m.kit.name in installed_names else ""
+        cat = _category(m.kit.name)
+        return f"  {idx:>3}. {m.kit.name:<40} v{m.kit.version:<8} [{cat}]{installed_marker}"
+
+    lines: list[str] = []
+    current_cat = None
+    for i, m in enumerate(flat, start=1):
+        cat = _category(m.kit.name)
+        if cat != current_cat:
+            lines.append(f"\n[{cat}]")
+            current_cat = cat
+        lines.append(_fmt_row(i, m))
+
+    click.echo("\n".join(lines))
+
+    # Non-TTY mode: print list and exit
+    if not sys.stdin.isatty():
+        return
+
+    # TTY interactive mode
+    click.echo("\nSelect kits to install (comma-separated numbers, 'a' for all, 'q' to quit):")
+    selection = click.prompt("", default="q", prompt_suffix="")
+
+    if not selection or selection.strip().lower() in ("q", "quit"):
+        return
+
+    # Parse selection into indices
+    selected_indices: list[int] = []
+    if selection.strip().lower() in ("a", "all"):
+        selected_indices = [
+            i for i, m in enumerate(flat, start=1) if m.kit.name not in installed_names
+        ]
+    else:
+        for part in selection.split(","):
+            part = part.strip()
+            if "-" in part:
+                try:
+                    lo, hi = part.split("-", 1)
+                    selected_indices.extend(range(int(lo), int(hi) + 1))
+                except ValueError:
+                    click.echo(f"Ignoring invalid range: {part!r}", err=True)
+            else:
+                try:
+                    selected_indices.append(int(part))
+                except ValueError:
+                    click.echo(f"Ignoring invalid selection: {part!r}", err=True)
+
+    # De-duplicate, validate, and install
+    seen: set[int] = set()
+    for idx in selected_indices:
+        if idx in seen:
+            continue
+        seen.add(idx)
+        if not (1 <= idx <= len(flat)):
+            click.echo(f"Skipping out-of-range selection: {idx}", err=True)
+            continue
+        m = flat[idx - 1]
+        if m.kit.name in installed_names:
+            click.echo(f"Skipping already-installed kit: {m.kit.name}")
+            continue
+        click.echo(f"\nInstalling {m.kit.name}…")
+        try:
+            kit_dir = _resolve_kit_source(m.kit.name)
+            from beddel.domain.errors import KitManifestError
+            from beddel.domain.kit import KitLanguageTarget, parse_kit_manifest
+
+            manifest = parse_kit_manifest(kit_dir / "kit.yaml")
+            deps = manifest.kit.dependencies
+            raw_py = manifest.kit.targets.get("python")
+            if raw_py:
+                try:
+                    lt = KitLanguageTarget(**raw_py)
+                    if lt.dependencies:
+                        deps = lt.dependencies
+                except Exception:  # noqa: BLE001
+                    pass
+
+            if deps:
+                import subprocess
+
+                click.echo(f"Installing dependencies: {', '.join(deps)}")
+                subprocess.run([sys.executable, "-m", "pip", "install", *deps], check=True)
+
+            import shutil
+
+            target = Path("./kits") / manifest.kit.name
+            shutil.copytree(str(kit_dir), str(target), dirs_exist_ok=True)
+            click.echo(f"Installed {manifest.kit.name} v{manifest.kit.version} to {target}")
+        except (KitManifestError, SystemExit, Exception) as exc:  # noqa: BLE001
+            click.echo(f"Failed to install {m.kit.name}: {exc}", err=True)
 
 
 @kit.command("install")
