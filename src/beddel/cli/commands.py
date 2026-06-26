@@ -1853,10 +1853,12 @@ def _build_runtime_app(
 
             # ── A2A server (Agent Card + task lifecycle) ───────────────────
             try:
-                from a2a.server.apps.rest import A2ARESTFastAPIApplication
-                from a2a.server.request_handlers import DefaultRequestHandler
-                from a2a.server.tasks import InMemoryTaskStore
-                from beddel_agent_a2a.server import (
+                from a2a.server.apps.rest import (  # type: ignore[import-not-found]  # noqa: I001
+                    A2ARESTFastAPIApplication,
+                )
+                from a2a.server.request_handlers import DefaultRequestHandler  # type: ignore[import-not-found]
+                from a2a.server.tasks import InMemoryTaskStore  # type: ignore[import-not-found]
+                from beddel_agent_a2a.server import (  # type: ignore[import-not-found]
                     BeddelA2AExecutor,
                     build_agent_card,
                 )
@@ -1866,7 +1868,7 @@ def _build_runtime_app(
                 agent_card = build_agent_card(a2a_registry)
                 a2a_executor = BeddelA2AExecutor(a2a_registry)
                 task_store = InMemoryTaskStore()
-                a2a_handler = DefaultRequestHandler(
+                a2a_handler = DefaultRequestHandler(  # type: ignore[call-arg]
                     agent_executor=a2a_executor,
                     task_store=task_store,
                 )

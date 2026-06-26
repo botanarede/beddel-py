@@ -54,6 +54,7 @@ class TestDiscoverRemoteKits:
         fake_repo = _make_fake_repo(tmp_path, {"my-test-kit": _VALID_KIT_YAML})
 
         with (
+            patch("urllib.request.urlopen", side_effect=OSError("mocked network failure")),
             patch("shutil.which", return_value="/usr/bin/git"),
             patch("tempfile.mkdtemp", return_value=str(fake_repo)),
             patch("subprocess.run") as mock_run,
@@ -71,6 +72,7 @@ class TestDiscoverRemoteKits:
         fake_repo = _make_fake_repo(tmp_path, {"bad-kit": "not: valid\nyaml: content\n"})
 
         with (
+            patch("urllib.request.urlopen", side_effect=OSError("mocked network failure")),
             patch("shutil.which", return_value="/usr/bin/git"),
             patch("tempfile.mkdtemp", return_value=str(fake_repo)),
             patch("subprocess.run") as mock_run,
@@ -83,7 +85,11 @@ class TestDiscoverRemoteKits:
 
     def test_exits_when_git_not_found(self) -> None:
         """SystemExit(1) when git is not available."""
-        with patch("shutil.which", return_value=None), pytest.raises(SystemExit) as exc_info:
+        with (
+            patch("urllib.request.urlopen", side_effect=OSError("mocked network failure")),
+            patch("shutil.which", return_value=None),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             _discover_remote_kits()
         assert exc_info.value.code == 1
 
@@ -92,6 +98,7 @@ class TestDiscoverRemoteKits:
         import subprocess
 
         with (
+            patch("urllib.request.urlopen", side_effect=OSError("mocked network failure")),
             patch("shutil.which", return_value="/usr/bin/git"),
             patch("tempfile.mkdtemp", return_value=str(tmp_path)),
             patch("shutil.rmtree"),

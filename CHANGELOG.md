@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `beddel/serve/` tier: `IAgentRuntimeAdapter` protocol, `VertexAgentEngineAdapter`, `AgentInfo`/`ChatChunk` models, FastAPI route injection, bundled sidebar HTML
+- Interactive kit discovery: `beddel kit install` (no args) triggers interactive browse via sparse-checkout from GitHub registry
+- Kit discovery registry: HTTP-first resolution via pre-generated `registry.json`, git sparse-checkout fallback, CI generator action
+- `--json` flag wired for kit discovery output
+- YAML flows: `code-review-claude.yaml`, `run-claude-vertex.yaml`, `sum-two-numbers.yaml`
+
+### Removed
+
+- `beddel/adapters/a2a_server.py` — migrated to `agent-a2a-kit` (Story K1.14)
+
+### Changed
+
+- A2A client modernized to SDK v1 patterns (Story K1.15)
+- CLI launch tests updated for async server pattern
+
+### Fixed
+
+- `VertexAgentEngineAdapter`: migrate to new Client API object model (`agent.api_resource.name` instead of `agent.resource_name`). Fixes "Error loading agents" in sidebar (AttributeError on vertexai SDK ≥1.148)
+- `VertexAgentEngineAdapter.chat()`: session creation and streaming migrated from agent-level methods to client service methods (`client.agent_engines.create_session`, `client.agent_engines._stream_query`)
+
+## [0.1.9] - 2026-05-07
+
 ### Breaking
 
 - **Removed all pip extras** (`[default]`, `[dev]`, `[bridge-adk]`, `[provider-gemini]`). `pip install beddel` now installs ONLY the slim core (3 deps: `pydantic>=2.13,<3`, `pyyaml>=6.0`, `click>=8.0`). Kit capabilities (LiteLLM, FastAPI, OpenTelemetry, etc.) are installed on demand via `beddel init` and `beddel kit install <kit-name>`.

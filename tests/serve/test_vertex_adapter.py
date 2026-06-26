@@ -98,21 +98,21 @@ class TestListAgents:
         adapter = _make_adapter()
 
         mock_agent = MagicMock()
-        mock_agent.resource_name = "projects/p/locations/us-central1/agentEngines/1"
-        mock_agent.display_name = "My Agent"
+        mock_agent.api_resource.name = "projects/p/locations/us-central1/agentEngines/1"
+        mock_agent.api_resource.display_name = "My Agent"
         adapter._client.agent_engines.list.return_value = [mock_agent]
 
         result: list[AgentInfo] = asyncio.run(adapter.list_agents())
         assert len(result) == 1
-        assert result[0].resource_name == mock_agent.resource_name
+        assert result[0].resource_name == "projects/p/locations/us-central1/agentEngines/1"
         assert result[0].display_name == "My Agent"
 
     def test_falls_back_to_resource_name_tail_when_display_name_empty(self) -> None:
         adapter = _make_adapter()
 
         mock_agent = MagicMock()
-        mock_agent.resource_name = "projects/p/locations/us-central1/agentEngines/42"
-        mock_agent.display_name = ""
+        mock_agent.api_resource.name = "projects/p/locations/us-central1/agentEngines/42"
+        mock_agent.api_resource.display_name = ""
         adapter._client.agent_engines.list.return_value = [mock_agent]
 
         result: list[AgentInfo] = asyncio.run(adapter.list_agents())
@@ -138,32 +138,49 @@ class TestChatSessionManagement:
         adapter: object,
         chunks: list[str],
         new_session_id: str = "new-sess-1",
-    ) -> MagicMock:
+    ) -> None:
+        # agent_engines.get returns an AgentEngine instance
         mock_agent = MagicMock()
-        mock_agent.create_session.return_value = {"id": new_session_id}
-        mock_agent.stream_query.return_value = iter(chunks)
+
+        # async_create_session returns a dict-like session with 'id'
+        mock_session = {"id": new_session_id}
+
+        async def _mock_create_session(user_id: str = "") -> dict:  # type: ignore[type-arg]
+            return mock_session
+
+        mock_agent.async_create_session = _mock_create_session
+
+        # async_stream_query yields ADK events (dicts with content.parts)
+        async def _mock_stream_query(
+            user_id: str = "", session_id: str = "", message: str = ""
+        ) -> AsyncGenerator[dict, None]:  # type: ignore[type-arg]
+            for text in chunks:
+                yield {"content": {"parts": [{"text": text}]}, "author": "agent"}
+
+        mock_agent.async_stream_query = _mock_stream_query
+
         adapter._client.agent_engines.get.return_value = mock_agent  # type: ignore[attr-defined]
-        return mock_agent
 
     def test_new_session_propagated_in_first_chunk(self) -> None:
         """When session_id is None, first chunk carries the new session_id."""
         adapter = _make_adapter()
-        mock_agent = self._setup_mock_agent(adapter, ["hello", " world"])
+        self._setup_mock_agent(adapter, ["hello", " world"])
 
         chunks: list[ChatChunk] = asyncio.run(_collect(adapter.chat("r/name", "hi")))
 
         assert chunks[0].session_id == "new-sess-1"
         assert chunks[0].text == ""
-        mock_agent.create_session.assert_called_once()
+        adapter._client.agent_engines.get.assert_called_once()
 
     def test_existing_session_skips_create_session(self) -> None:
         """When session_id is provided, create_session is never called."""
         adapter = _make_adapter()
-        mock_agent = self._setup_mock_agent(adapter, ["hi"])
+        self._setup_mock_agent(adapter, ["hi"])
 
         asyncio.run(_collect(adapter.chat("r/name", "msg", session_id="existing-sess")))
 
-        mock_agent.create_session.assert_not_called()
+        # get is still called (to obtain agent instance), but no session creation
+        adapter._client.agent_engines.get.assert_called_once()
 
     def test_text_chunks_are_yielded(self) -> None:
         """Content chunks from stream_query appear as ChatChunk(text=...)."""

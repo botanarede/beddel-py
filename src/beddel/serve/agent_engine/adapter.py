@@ -91,10 +91,13 @@ class VertexAgentEngineAdapter:
 
         return [
             AgentInfo(
-                resource_name=agent.resource_name,
-                display_name=agent.display_name or agent.resource_name.split("/")[-1],
+                resource_name=agent.api_resource.name,
+                display_name=(
+                    agent.api_resource.display_name or agent.api_resource.name.split("/")[-1]
+                ),
             )
             for agent in agents
+            if agent.api_resource is not None
         ]
 
     # ------------------------------------------------------------------
@@ -110,12 +113,9 @@ class VertexAgentEngineAdapter:
     ) -> AsyncGenerator[ChatChunk, None]:
         """Stream a conversation with a Vertex AI Agent Engine agent.
 
-        Uses an :class:`asyncio.Queue` bridge to convert the synchronous
-        ``stream_query()`` iterator into an async generator.
-
-        When ``session_id`` is ``None``, a new session is created and the
-        assigned ID is propagated in the **first** yielded chunk so the
-        caller can persist it for subsequent messages.
+        Uses the ADK agent instance pattern where the agent is fetched via
+        ``client.agent_engines.get()`` and queried via its
+        ``async_stream_query()`` method.
 
         Args:
             resource_name: Fully-qualified agent resource name.
@@ -123,38 +123,62 @@ class VertexAgentEngineAdapter:
             session_id: Existing session ID, or ``None`` to start a new session.
 
         Yields:
-            :class:`~.models.ChatChunk` instances.  The first chunk of a new
-            session carries ``session_id``.  The final chunk has ``done=True``.
+            :class:`~.models.ChatChunk` instances.
         """
         loop = asyncio.get_event_loop()
 
-        # Resolve the remote agent object (sync call in executor)
+        # Get the agent instance (AgentEngine object with operation methods)
         agent: Any = await loop.run_in_executor(
-            None, lambda: self._client.agent_engines.get(resource_name)
+            None,
+            lambda: self._client.agent_engines.get(name=resource_name),
         )
 
         # Session management — create new session if needed
         if session_id is None:
-            session: Any = await loop.run_in_executor(
-                None, lambda: agent.create_session(user_id=_USER_ID)
+            session_result: Any = await loop.run_in_executor(
+                None,
+                lambda: asyncio.run(agent.async_create_session(user_id=_USER_ID)),
             )
-            session_id = session["id"]
-            # Propagate new session_id in the first chunk
+            # async_create_session returns a dict-like ADK session object
+            if isinstance(session_result, dict):
+                session_id = session_result.get("id", str(session_result))
+            elif hasattr(session_result, "id"):
+                session_id = session_result.id
+            elif hasattr(session_result, "name"):
+                session_id = session_result.name
+            else:
+                session_id = str(session_result)
+            logger.info("Created session: %s", session_id)
             yield ChatChunk(text="", session_id=session_id)
 
-        # Queue bridge: run sync stream_query in executor, drain async
+        # Queue bridge: run async_stream_query in executor, drain async
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
         def _run_sync() -> None:
             try:
-                for chunk in agent.stream_query(
-                    user_id=_USER_ID,
-                    session_id=session_id,
-                    message=message,
-                ):
-                    queue.put_nowait(chunk)
-            except Exception:
-                logger.exception("Error during stream_query")
+                logger.info("Querying agent %s (session=%s)", resource_name, session_id)
+
+                async def _stream() -> None:
+                    chunks_received = 0
+                    try:
+                        async for event in agent.async_stream_query(
+                            user_id=_USER_ID,
+                            session_id=session_id,
+                            message=message,
+                        ):
+                            chunks_received += 1
+                            text = self._extract_text_from_event(event)
+                            if text:
+                                queue.put_nowait(text)
+                    except Exception as stream_err:
+                        logger.warning("async_stream_query failed: %s", stream_err)
+                        if chunks_received == 0:
+                            queue.put_nowait(f"[Agent error: {stream_err}]")
+
+                asyncio.run(_stream())
+            except Exception as exc:
+                logger.exception("Error during agent query")
+                queue.put_nowait(f"[Error: {exc}]")
             finally:
                 queue.put_nowait(None)  # sentinel
 
@@ -169,3 +193,24 @@ class VertexAgentEngineAdapter:
 
         # Terminal chunk
         yield ChatChunk(text="", session_id=session_id, done=True)
+
+    @staticmethod
+    def _extract_text_from_event(event: Any) -> str:
+        """Extract displayable text from an ADK stream event.
+
+        ADK stream events are typically dicts with 'content.parts' structure.
+        We extract text parts and skip function_call/function_response events.
+        """
+        if isinstance(event, str):
+            return event
+        if isinstance(event, dict):
+            content = event.get("content", {})
+            parts = content.get("parts", []) if isinstance(content, dict) else []
+            texts = []
+            for part in parts:
+                if isinstance(part, dict) and "text" in part:
+                    texts.append(part["text"])
+            return "".join(texts)
+        if hasattr(event, "text"):
+            return event.text
+        return ""
