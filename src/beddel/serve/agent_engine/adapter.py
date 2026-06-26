@@ -35,6 +35,24 @@ try:
     import vertexai as _vertexai
 
     _AVAILABLE = True
+
+    # Monkey-patch aiohttp.StreamReader.readline to accept max_line_length kwarg.
+    # Required because google-genai 2.8.0 passes max_line_length= but aiohttp 3.13+
+    # removed it. This is a temporary workaround until google-genai is fixed upstream.
+    try:
+        import aiohttp
+
+        _orig_readline = aiohttp.StreamReader.readline
+
+        async def _patched_readline(self: Any, **kwargs: Any) -> bytes:  # type: ignore[no-untyped-def]
+            kwargs.pop("max_line_length", None)
+            return await _orig_readline(self)
+
+        aiohttp.StreamReader.readline = _patched_readline  # type: ignore[assignment]
+        logger.debug("Patched aiohttp.StreamReader.readline for google-genai compat")
+    except (ImportError, AttributeError):
+        pass
+
 except ImportError:
     pass
 
@@ -113,8 +131,9 @@ class VertexAgentEngineAdapter:
     ) -> AsyncGenerator[ChatChunk, None]:
         """Query a Vertex AI Agent Engine agent.
 
-        Uses the synchronous ``_query`` path (httpx-based) to avoid the
-        aiohttp ``max_line_length`` bug in google-genai 2.8.0 + aiohttp 3.13.
+        Uses the agent's ``async_stream_query`` method (ADK pattern) running
+        inside ``asyncio.run()`` in a thread-pool executor. The aiohttp
+        ``max_line_length`` bug is patched at module level.
 
         Args:
             resource_name: Fully-qualified agent resource name.
@@ -126,54 +145,61 @@ class VertexAgentEngineAdapter:
         """
         loop = asyncio.get_event_loop()
 
+        # Get the agent instance (has async_stream_query, async_create_session)
+        agent: Any = await loop.run_in_executor(
+            None,
+            lambda: self._client.agent_engines.get(name=resource_name),
+        )
+
         # Session management — create new session if needed
         if session_id is None:
+
+            async def _create_session() -> Any:
+                return await agent.async_create_session(user_id=_USER_ID)
+
             session_result: Any = await loop.run_in_executor(
-                None,
-                lambda: self._client.agent_engines.sessions.create(
-                    name=resource_name, user_id=_USER_ID
-                ),
+                None, lambda: asyncio.run(_create_session())
             )
-            # sessions.create returns AgentEngineSessionOperation
-            if (
-                hasattr(session_result, "response")
-                and session_result.response
-                and getattr(session_result.response, "name", None)
-            ):
-                session_id = session_result.response.name
-            elif hasattr(session_result, "name") and session_result.name:
+            # ADK session result may be dict with "id" or object with .name/.id
+            if isinstance(session_result, dict):
+                session_id = session_result.get("id", str(session_result))
+            elif hasattr(session_result, "id"):
+                session_id = session_result.id
+            elif hasattr(session_result, "name"):
                 session_id = session_result.name
             else:
                 session_id = str(session_result)
             logger.info("Created session: %s", session_id)
             yield ChatChunk(text="", session_id=session_id)
 
-        # Query agent via sync _query (httpx, bypasses aiohttp max_line_length bug)
+        # Query via async_stream_query in a separate event loop (executor thread)
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
         def _run_sync() -> None:
             try:
                 logger.info("Querying agent %s (session=%s)", resource_name, session_id)
-                response = self._client.agent_engines._query(
-                    name=resource_name,
-                    config={
-                        "class_method": "query",
-                        "input": {
-                            "message": message,
-                            "user_id": _USER_ID,
-                            "session_id": session_id,
-                        },
-                    },
-                )
-                # Extract text from QueryReasoningEngineResponse
-                text = self._extract_query_response(response)
-                if text:
-                    queue.put_nowait(text)
-                else:
-                    queue.put_nowait("[No response from agent]")
+
+                async def _stream() -> None:
+                    chunks_received = 0
+                    try:
+                        async for event in agent.async_stream_query(
+                            user_id=_USER_ID,
+                            session_id=session_id,
+                            message=message,
+                        ):
+                            chunks_received += 1
+                            text = self._extract_text_from_event(event)
+                            if text:
+                                queue.put_nowait(text)
+                    except Exception as stream_err:
+                        logger.warning("async_stream_query failed: %s", stream_err)
+                        if chunks_received == 0:
+                            queue.put_nowait(f"[Agent error: {stream_err}]")
+
+                asyncio.run(_stream())
             except Exception as exc:
-                logger.exception("Agent query failed: %s", exc)
-                queue.put_nowait(f"[Agent error: {exc}]")
+                logger.exception("Error during agent query")
+                queue.put_nowait(f"[Error: {exc}]")
             finally:
                 queue.put_nowait(None)  # sentinel
 
@@ -190,26 +216,21 @@ class VertexAgentEngineAdapter:
         yield ChatChunk(text="", session_id=session_id, done=True)
 
     @staticmethod
-    def _extract_query_response(response: Any) -> str:
-        """Extract displayable text from a _query response.
+    def _extract_text_from_event(event: Any) -> str:
+        """Extract displayable text from an ADK stream event.
 
-        The response may be a QueryReasoningEngineResponse, dict, or string.
+        ADK events are typically dicts with 'content.parts' structure.
         """
-        if isinstance(response, str):
-            return response
-        if hasattr(response, "output"):
-            return str(response.output)
-        if hasattr(response, "body"):
-            # SdkHttpResponse — parse the JSON body
-            import json
-
-            try:
-                body = (
-                    json.loads(response.body) if isinstance(response.body, str) else response.body
-                )
-                return str(body.get("output", body.get("text", body)))
-            except (json.JSONDecodeError, AttributeError, TypeError):
-                return str(response.body)
-        if isinstance(response, dict):
-            return str(response.get("output", response.get("text", str(response))))
-        return str(response)
+        if isinstance(event, str):
+            return event
+        if isinstance(event, dict):
+            content = event.get("content", {})
+            parts = content.get("parts", []) if isinstance(content, dict) else []
+            texts = []
+            for part in parts:
+                if isinstance(part, dict) and "text" in part:
+                    texts.append(part["text"])
+            return "".join(texts)
+        if hasattr(event, "text"):
+            return str(event.text)
+        return ""
