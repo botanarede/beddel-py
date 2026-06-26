@@ -111,11 +111,10 @@ class VertexAgentEngineAdapter:
         *,
         session_id: str | None = None,
     ) -> AsyncGenerator[ChatChunk, None]:
-        """Stream a conversation with a Vertex AI Agent Engine agent.
+        """Query a Vertex AI Agent Engine agent.
 
-        Uses the ADK agent instance pattern where the agent is fetched via
-        ``client.agent_engines.get()`` and queried via its
-        ``async_stream_query()`` method.
+        Uses the synchronous ``_query`` path (httpx-based) to avoid the
+        aiohttp ``max_line_length`` bug in google-genai 2.8.0 + aiohttp 3.13.
 
         Args:
             resource_name: Fully-qualified agent resource name.
@@ -127,58 +126,54 @@ class VertexAgentEngineAdapter:
         """
         loop = asyncio.get_event_loop()
 
-        # Get the agent instance (AgentEngine object with operation methods)
-        agent: Any = await loop.run_in_executor(
-            None,
-            lambda: self._client.agent_engines.get(name=resource_name),
-        )
-
         # Session management — create new session if needed
         if session_id is None:
             session_result: Any = await loop.run_in_executor(
                 None,
-                lambda: asyncio.run(agent.async_create_session(user_id=_USER_ID)),
+                lambda: self._client.agent_engines.sessions.create(
+                    name=resource_name, user_id=_USER_ID
+                ),
             )
-            # async_create_session returns a dict-like ADK session object
-            if isinstance(session_result, dict):
-                session_id = session_result.get("id", str(session_result))
-            elif hasattr(session_result, "id"):
-                session_id = session_result.id
-            elif hasattr(session_result, "name"):
+            # sessions.create returns AgentEngineSessionOperation
+            if (
+                hasattr(session_result, "response")
+                and session_result.response
+                and getattr(session_result.response, "name", None)
+            ):
+                session_id = session_result.response.name
+            elif hasattr(session_result, "name") and session_result.name:
                 session_id = session_result.name
             else:
                 session_id = str(session_result)
             logger.info("Created session: %s", session_id)
             yield ChatChunk(text="", session_id=session_id)
 
-        # Queue bridge: run async_stream_query in executor, drain async
+        # Query agent via sync _query (httpx, bypasses aiohttp max_line_length bug)
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
         def _run_sync() -> None:
             try:
                 logger.info("Querying agent %s (session=%s)", resource_name, session_id)
-
-                async def _stream() -> None:
-                    chunks_received = 0
-                    try:
-                        async for event in agent.async_stream_query(
-                            user_id=_USER_ID,
-                            session_id=session_id,
-                            message=message,
-                        ):
-                            chunks_received += 1
-                            text = self._extract_text_from_event(event)
-                            if text:
-                                queue.put_nowait(text)
-                    except Exception as stream_err:
-                        logger.warning("async_stream_query failed: %s", stream_err)
-                        if chunks_received == 0:
-                            queue.put_nowait(f"[Agent error: {stream_err}]")
-
-                asyncio.run(_stream())
+                response = self._client.agent_engines._query(
+                    name=resource_name,
+                    config={
+                        "class_method": "query",
+                        "input": {
+                            "message": message,
+                            "user_id": _USER_ID,
+                            "session_id": session_id,
+                        },
+                    },
+                )
+                # Extract text from QueryReasoningEngineResponse
+                text = self._extract_query_response(response)
+                if text:
+                    queue.put_nowait(text)
+                else:
+                    queue.put_nowait("[No response from agent]")
             except Exception as exc:
-                logger.exception("Error during agent query")
-                queue.put_nowait(f"[Error: {exc}]")
+                logger.exception("Agent query failed: %s", exc)
+                queue.put_nowait(f"[Agent error: {exc}]")
             finally:
                 queue.put_nowait(None)  # sentinel
 
@@ -195,22 +190,26 @@ class VertexAgentEngineAdapter:
         yield ChatChunk(text="", session_id=session_id, done=True)
 
     @staticmethod
-    def _extract_text_from_event(event: Any) -> str:
-        """Extract displayable text from an ADK stream event.
+    def _extract_query_response(response: Any) -> str:
+        """Extract displayable text from a _query response.
 
-        ADK stream events are typically dicts with 'content.parts' structure.
-        We extract text parts and skip function_call/function_response events.
+        The response may be a QueryReasoningEngineResponse, dict, or string.
         """
-        if isinstance(event, str):
-            return event
-        if isinstance(event, dict):
-            content = event.get("content", {})
-            parts = content.get("parts", []) if isinstance(content, dict) else []
-            texts = []
-            for part in parts:
-                if isinstance(part, dict) and "text" in part:
-                    texts.append(part["text"])
-            return "".join(texts)
-        if hasattr(event, "text"):
-            return event.text
-        return ""
+        if isinstance(response, str):
+            return response
+        if hasattr(response, "output"):
+            return str(response.output)
+        if hasattr(response, "body"):
+            # SdkHttpResponse — parse the JSON body
+            import json
+
+            try:
+                body = (
+                    json.loads(response.body) if isinstance(response.body, str) else response.body
+                )
+                return str(body.get("output", body.get("text", body)))
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                return str(response.body)
+        if isinstance(response, dict):
+            return str(response.get("output", response.get("text", str(response))))
+        return str(response)
