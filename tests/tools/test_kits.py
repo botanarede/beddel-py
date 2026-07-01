@@ -237,7 +237,7 @@ class TestGracefulDegradation:
     def test_missing_deps_logs_warning_and_continues(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Kit with missing deps is skipped with BEDDEL-KIT-658 warning."""
+        """Kit with missing deps is skipped with BEDDEL-KIT-658 debug log."""
         from beddel.cli.commands import _build_tool_registry
 
         workflow = MagicMock()
@@ -265,7 +265,7 @@ class TestGracefulDegradation:
         with (
             patch("beddel.tools.kits.discover_kits", return_value=discovery),
             patch("beddel.tools.kits.load_kit", side_effect=_selective_load),
-            caplog.at_level(logging.WARNING),
+            caplog.at_level(logging.DEBUG),
         ):
             result = _build_tool_registry(workflow, {})
 
@@ -273,7 +273,7 @@ class TestGracefulDegradation:
         assert "good-tool" in result
         # Bad kit's tool is NOT present
         assert "bad-tool" not in result
-        # Warning logged with BEDDEL-KIT-658
+        # Debug logged with BEDDEL-KIT-658
         assert any("BEDDEL-KIT-658" in msg for msg in caplog.messages)
 
 

@@ -25,6 +25,8 @@ name: Run Claude (Vertex AI)
 description: Execute a prompt via Claude on Vertex AI with structured output.
 version: "1.0"
 interaction: headless
+requires_kits:
+  - agent-claude-kit
 
 input_schema:
   type: object

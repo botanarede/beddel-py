@@ -180,14 +180,14 @@ def _build_tool_registry(
             try:
                 kit_tools = load_kit(manifest)
             except KitDependencyError as exc:
-                logger.warning(
+                logger.debug(
                     "BEDDEL-KIT-658: Kit '%s' skipped — missing dependencies: %s",
                     kit_name,
                     exc.missing_packages,
                 )
                 continue
             except KitManifestError as exc:
-                logger.warning("Skipping kit '%s': %s", kit_name, exc.message)
+                logger.debug("Skipping kit '%s': %s", kit_name, exc.message)
                 continue
             for tool_name, tool_fn in kit_tools.items():
                 # Always register namespaced form
@@ -301,17 +301,17 @@ def _build_adapter_registries(
         try:
             adapter_map = load_kit_adapters(manifest)
         except KitDependencyError as exc:
-            logger.warning(
+            logger.debug(
                 "BEDDEL-KIT-658: Kit '%s' skipped — missing dependencies: %s",
                 kit_name,
                 exc.missing_packages,
             )
             continue
         except KitManifestError as exc:
-            logger.warning("Skipping kit '%s' adapters: %s", kit_name, exc.message)
+            logger.debug("Skipping kit '%s' adapters: %s", kit_name, exc.message)
             continue
         except Exception as exc:
-            logger.warning("Skipping kit '%s' adapters — instantiation error: %s", kit_name, exc)
+            logger.debug("Skipping kit '%s' adapters — instantiation error: %s", kit_name, exc)
             continue
 
         for (port, name), instance in adapter_map.items():
@@ -348,7 +348,7 @@ def _build_adapter_registries(
         llm_provider = llm_providers[llm_provider_names[0]]
 
     if llm_provider is None:
-        logger.warning(
+        logger.debug(
             "No ILLMProvider kit discovered. LLM primitives (llm, chat, guardrail) "
             "will fail at execution time."
         )
@@ -566,11 +566,30 @@ def run(
         click.echo(f"Error: {exc.message}", err=True)
         raise SystemExit(1) from None
 
+    # Pre-flight kit dependency check
+    if workflow.requires_kits:
+        discovery_result = discover_kits(_resolve_all_kit_paths(kit))
+        available_kit_names = {m.kit.name for m in discovery_result.manifests}
+        missing_kits = [k for k in workflow.requires_kits if k not in available_kit_names]
+        if missing_kits:
+            click.echo(
+                "Error: This flow requires kits that are not available:\n",
+                err=True,
+            )
+            for mk in missing_kits:
+                click.echo(f"  • {mk}", err=True)
+            click.echo(
+                f"\nInstall with: beddel kit install {' '.join(missing_kits)}",
+                err=True,
+            )
+            raise SystemExit(1)
+
     # Build executor
     registry = PrimitiveRegistry()
     register_builtins(registry)
 
-    discovery_result = discover_kits(_resolve_all_kit_paths(kit))
+    if not workflow.requires_kits:
+        discovery_result = discover_kits(_resolve_all_kit_paths(kit))
     agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
 
     def _safe_workflow_loader(name: str) -> Workflow:
@@ -2826,6 +2845,85 @@ def kit_disable(name: str) -> None:
     else:
         click.echo(f"Kit not found: {name}", err=True)
         raise SystemExit(1)
+
+
+@kit.command("doctor")
+def kit_doctor() -> None:
+    """Check all registered kits and disable those with missing dependencies.
+
+    Scans the kit_index in SQLite, validates pip dependencies for each
+    enabled kit, and marks kits with unresolvable deps as enabled=0.
+    Reports a summary of healthy vs disabled kits.
+    """
+    index_store = _check_index_exists()
+    kits = asyncio.run(index_store.list_kits())
+    if not kits:
+        click.echo("No kits registered. Run: beddel init")
+        return
+
+    _ensure_kit_paths()
+
+    from beddel.tools.kits import _validate_dependencies
+
+    healthy: list[str] = []
+    disabled: list[str] = []
+    already_disabled: list[str] = []
+
+    for kit_entry in kits:
+        name = kit_entry["name"]
+        if not kit_entry["enabled"]:
+            already_disabled.append(name)
+            continue
+
+        kit_path = Path(kit_entry["path"])
+        kit_yaml = kit_path / "kit.yaml"
+        if not kit_yaml.is_file():
+            # Kit path no longer exists — disable
+            asyncio.run(index_store.set_kit_enabled(name, False))
+            disabled.append(name)
+            continue
+
+        import yaml as _yaml
+
+        try:
+            manifest_data = _yaml.safe_load(kit_yaml.read_text())
+        except Exception:
+            asyncio.run(index_store.set_kit_enabled(name, False))
+            disabled.append(name)
+            continue
+
+        # Extract deps from targets.python.dependencies
+        targets = manifest_data.get("targets", {}) if isinstance(manifest_data, dict) else {}
+        py_target = targets.get("python", {}) if isinstance(targets, dict) else {}
+        deps = py_target.get("dependencies", []) if isinstance(py_target, dict) else []
+
+        if deps:
+            missing = _validate_dependencies(deps)
+            if missing:
+                asyncio.run(index_store.set_kit_enabled(name, False))
+                disabled.append(name)
+                continue
+
+        healthy.append(name)
+
+    # Report
+    click.echo("\n🩺 Kit Doctor Report")
+    click.echo(f"{'=' * 40}")
+    click.echo(f"  Healthy:          {len(healthy)}")
+    click.echo(f"  Disabled (now):   {len(disabled)}")
+    click.echo(f"  Already disabled: {len(already_disabled)}")
+    click.echo()
+
+    if disabled:
+        click.echo("  Kits disabled due to missing deps:")
+        for name in disabled:
+            click.echo(f"    ✗ {name}")
+        click.echo()
+        click.echo("  Re-enable after installing deps: beddel kit enable <name>")
+
+    if healthy:
+        click.echo(f"  ✓ {len(healthy)} kits operational")
+    click.echo()
 
 
 @kit.command("export")

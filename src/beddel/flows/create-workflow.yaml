@@ -25,6 +25,8 @@ description: >
   language description.  Uses Gemini to generate the YAML, displays a preview,
   and optionally saves the file to disk.
 version: "1.0"
+requires_kits:
+  - provider-gemini-kit
 
 tools:
   - name: write_file

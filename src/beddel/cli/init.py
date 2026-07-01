@@ -8,6 +8,7 @@ and saves preferences. Designed to work with minimal dependencies
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -422,26 +423,51 @@ def register_init_command(cli: Any) -> None:
         click.echo("\nStep 2/3: Installing kits...")
         kit_names_needed = [k["name"] for k in all_kits]
 
-        # Check if config.json already has kits_paths with the required kits
-        from beddel.cli.config import resolve_kits_paths
-
-        existing_kits_paths = resolve_kits_paths()
+        # Check BEDDEL_KIT_PATHS env var first (dev environment override)
+        env_kit_paths = os.environ.get("BEDDEL_KIT_PATHS", "")
         skip_download = False
-        if existing_kits_paths:
-            first_path = existing_kits_paths[0]
-            if first_path.is_dir():
-                present = [name for name in kit_names_needed if (first_path / name).is_dir()]
-                if len(present) == len(kit_names_needed):
-                    skip_download = True
-                    click.echo(f"  ✓ All required kits already present in {first_path}")
-                    # Register existing kits in DB
-                    for kit_info in all_kits:
-                        kit_path = first_path / kit_info["name"]
-                        register_kit_in_db(db_path, kit_info["name"], kit_path)
+
+        if env_kit_paths:
+            for env_path_str in env_kit_paths.split(":"):
+                env_path = Path(env_path_str.strip())
+                if env_path.is_dir():
+                    present = [name for name in kit_names_needed if (env_path / name).is_dir()]
+                    if len(present) == len(kit_names_needed):
+                        skip_download = True
+                        click.echo(f"  ✓ All required kits found via BEDDEL_KIT_PATHS: {env_path}")
+                        # Register existing kits in DB
+                        for kit_info in all_kits:
+                            kit_path = env_path / kit_info["name"]
+                            register_kit_in_db(db_path, kit_info["name"], kit_path)
+                        break
+
+        # Check config.json kits_paths as fallback
+        if not skip_download:
+            from beddel.cli.config import resolve_kits_paths
+
+            existing_kits_paths = resolve_kits_paths()
+            if existing_kits_paths:
+                first_path = existing_kits_paths[0]
+                if first_path.is_dir():
+                    present = [name for name in kit_names_needed if (first_path / name).is_dir()]
+                    if len(present) == len(kit_names_needed):
+                        skip_download = True
+                        click.echo(f"  ✓ All required kits already present in {first_path}")
+                        # Register existing kits in DB
+                        for kit_info in all_kits:
+                            kit_path = first_path / kit_info["name"]
+                            register_kit_in_db(db_path, kit_info["name"], kit_path)
 
         if not skip_download and not install_required_kits(db_path, kits_dir, all_kits):
             click.echo("\n⚠ Some kits failed. Run 'beddel init' again.", err=True)
             raise SystemExit(1)
+
+        # Clean up stale ~/.config/beddel/kits/ if --force and kits came from elsewhere
+        if force and skip_download and kits_dir.is_dir():
+            import shutil as _shutil
+
+            _shutil.rmtree(kits_dir, ignore_errors=True)
+            click.echo(f"  ⟳ Removed stale local kits: {kits_dir}")
 
         # Step 3: Save preferences
         click.echo("\nStep 3/3: Saving preferences...")

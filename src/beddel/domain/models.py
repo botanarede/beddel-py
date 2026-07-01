@@ -1187,6 +1187,7 @@ class Workflow(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     allowed_tools: list[str] | None = None
     tools: list[ToolDeclaration] | None = None
+    requires_kits: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------

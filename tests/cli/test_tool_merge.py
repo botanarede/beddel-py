@@ -383,7 +383,7 @@ class TestBuildAdapterRegistries:
         assert llm is None
 
     def test_no_llm_provider_returns_none(self) -> None:
-        """AC #11: no ILLMProvider kit → llm_provider is None, warning logged."""
+        """AC #11: no ILLMProvider kit → llm_provider is None, debug logged."""
         from beddel.cli.commands import _build_adapter_registries
         from beddel.domain.kit import KitDiscoveryResult
 
@@ -402,8 +402,6 @@ class TestBuildAdapterRegistries:
 
         assert llm is None
         assert registry["my-agent"] is agent
-        # Verify warning about no ILLMProvider was logged
-        warning_calls = [
-            c for c in mock_logger.warning.call_args_list if "No ILLMProvider" in str(c)
-        ]
-        assert len(warning_calls) == 1
+        # Verify debug message about no ILLMProvider was logged
+        debug_calls = [c for c in mock_logger.debug.call_args_list if "No ILLMProvider" in str(c)]
+        assert len(debug_calls) == 1

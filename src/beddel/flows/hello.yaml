@@ -18,6 +18,8 @@ name: Hello Agent
 description: Ask a question, get a concise answer from the LLM.
 version: "1.0"
 interaction: interactive
+requires_kits:
+  - provider-gemini-kit
 
 input_schema:
   type: object

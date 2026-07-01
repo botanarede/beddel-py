@@ -33,6 +33,10 @@ description: >
   Edge Case Hunter, Acceptance Auditor.
 version: "1.0"
 interaction: headless
+requires_kits:
+  - agent-claude-kit
+  - tools-shell-kit
+  - provider-gemini-kit
 
 tools:
   - name: shell_exec
