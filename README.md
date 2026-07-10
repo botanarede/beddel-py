@@ -136,8 +136,10 @@ Your browser opens at `http://localhost:8080` with a visual interface:
 **After onboarding:**
 - `beddel launch` becomes a visual flow runner
 - Shows all discovered flows: bundled ones (`hello`, `create-workflow`) plus any YAML files in your configured `flows_paths`
+- Flows with missing kit dependencies are flagged with install instructions
 - Run flows interactively from the browser with A2UI forms
 - **Create Workflow** wizard: describe what you want to automate in plain English, pick complexity, and Beddel generates the YAML for you — saved to your flows directory and immediately runnable
+- **Agent Engine Sidebar** (collapsible panel on the right): chat with deployed Vertex AI Agent Engine agents directly from the browser. Requires `gcloud auth application-default login` and a deployed agent on Vertex AI
 
 Options:
 
@@ -454,6 +456,28 @@ Hexagonal Architecture (Ports & Adapters) with a Solution Kit ecosystem. The dom
 │  Models · Ports · Kit Discovery              │
 └─────────────────────────────────────────────┘
 ```
+
+## What's New in 0.1.10
+
+**Agent Engine Sidebar** — Chat with deployed Vertex AI agents directly from `beddel launch`. Collapsible sidebar panel with ADC authentication and streaming responses. Requires a deployed agent on Vertex AI Agent Engine.
+
+**ADC-First Authentication** — The Gemini provider now defaults to Application Default Credentials (Vertex AI) when no API key is set. Zero-config for GCP users with `gcloud auth application-default login`.
+
+**Kit Discovery CLI** — Interactive `beddel kit install` (no arguments) browses all available kits with descriptions. Enable/disable kits via `beddel kit enable/disable`.
+
+**MCP Server Kit** — Expose any YAML workflow as an MCP server with `beddel serve-mcp`. Any MCP-compatible agent (Claude, Cursor, Kiro) can connect and execute your workflows.
+
+**A2A Protocol** — Agent-to-Agent server and client. Register Beddel workflows as A2A agents discoverable by other agents on the network.
+
+**Pre-flight Kit Check** — `beddel launch` now warns when a flow requires kits that aren't installed. The `/workflows` API returns `deps_satisfied` and `missing_kits` for each flow.
+
+**Flow Organization** — Bundled flows (shipped with pip) are limited to those working out-of-box after `beddel init`. Advanced flows (requiring `agent-claude-kit`) moved to `examples/`.
+
+**Claude Vertex ADC** — Run Claude models on Vertex AI without API keys (ADC only). New example flow at `examples/claude/code-review.yaml`.
+
+**Deploy Agent Engine Kit** — Deploy workflows to Vertex AI Agent Engine with `beddel deploy`.
+
+**Bridge ADK v2** — Updated ADK bridge kit to google-adk 2.x API.
 
 ## Development
 
