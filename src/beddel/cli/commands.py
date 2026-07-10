@@ -1737,7 +1737,18 @@ def _build_runtime_app(
                 err=True,
             )
 
-    # Phase 3: Mount enabled workflows
+    # Phase 3: Pre-flight kit dependency check (warn, don't block)
+    _available_kit_names_pf = {m.kit.name for m in discovery_result.manifests}
+    for _wf_id, (wf, _wf_p) in all_workflows.items():
+        if wf.requires_kits:
+            _missing = [k for k in wf.requires_kits if k not in _available_kit_names_pf]
+            if _missing:
+                click.echo(
+                    f"  ⚠ {wf.name}: missing kits {_missing} — flow will appear disabled",
+                    err=True,
+                )
+
+    # Phase 4: Mount enabled workflows
     for _wf_id, (workflow, wf_path) in all_workflows.items():
         wf_parent = wf_path.parent.resolve()
 
@@ -1954,18 +1965,27 @@ def _build_runtime_app(
     # Lightweight workflow listing for the standalone A2UI renderer.
     # In dashboard mode the richer listing router is mounted at /workflows.
     if not dashboard:
+        # Pre-compute available kit names for pre-flight deps check
+        _available_kit_names = {m.kit.name for m in discovery_result.manifests}
 
         @app.get("/workflows")
         async def list_workflows() -> list[dict[str, Any]]:
-            return [
-                {
-                    "id": wf.id,
-                    "name": wf.name,
-                    "description": wf.description or "",
-                    "input_schema": wf.input_schema or {},
-                }
-                for wf, _ in all_workflows.values()
-            ]
+            results: list[dict[str, Any]] = []
+            for wf, _ in all_workflows.values():
+                required = wf.requires_kits or []
+                missing = [k for k in required if k not in _available_kit_names]
+                results.append(
+                    {
+                        "id": wf.id,
+                        "name": wf.name,
+                        "description": wf.description or "",
+                        "input_schema": wf.input_schema or {},
+                        "requires_kits": required,
+                        "deps_satisfied": len(missing) == 0,
+                        "missing_kits": missing,
+                    }
+                )
+            return results
 
     # ── Agent Engine sidebar routes (guarded — absent when vertexai not installed) ──
     try:

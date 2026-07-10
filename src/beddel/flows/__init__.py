@@ -20,8 +20,12 @@ __all__ = [
     "BUNDLED_WORKFLOWS",
 ]
 
-BUNDLED_WORKFLOWS = ["setup", "hello"]
-"""Names of workflows bundled with the beddel package."""
+BUNDLED_WORKFLOWS = ["setup", "hello", "sum-two-numbers", "create-workflow"]
+"""Names of workflows bundled with the beddel package.
+
+All bundled workflows MUST work with ``beddel init`` defaults (provider-gemini-kit
+only). Flows requiring additional kits belong in repo/examples/ instead.
+"""
 
 
 def get_bundled_workflow_path(name: str) -> Path:
