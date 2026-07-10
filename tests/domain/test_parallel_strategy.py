@@ -21,12 +21,18 @@ from beddel.domain.models import (
 )
 from beddel.domain.ports import IPrimitive
 from beddel.domain.registry import PrimitiveRegistry
+from beddel.domain.state import VersionedState
 from beddel.domain.strategies.parallel import ParallelExecutionStrategy
 
 
-def _step(id: str, primitive: str = "llm", parallel: bool = False) -> Step:
+def _step(
+    id: str,
+    primitive: str = "llm",
+    parallel: bool = False,
+    output_key: str | None = None,
+) -> Step:
     """Create a minimal Step for testing."""
-    return Step(id=id, primitive=primitive, parallel=parallel)
+    return Step(id=id, primitive=primitive, parallel=parallel, output_key=output_key)
 
 
 def _workflow(*steps: Step) -> Workflow:
@@ -811,3 +817,153 @@ class TestBackwardCompatibility:
         assert strategy._parallel_config.concurrency_limit == 5
         assert strategy._parallel_config.error_semantics.value == "fail-fast"
         assert strategy._parallel_config.isolate_context is False
+
+
+class _OutputKeyStepRunner:
+    """Step runner that mirrors the real executor's output_key dual-store.
+
+    Writes ``context.step_results[step.id]`` and, when
+    ``step.output_key`` is set, also writes
+    ``context.step_results[step.output_key]`` — matching
+    ``WorkflowExecutor._run_primitive()`` (Story K6.2).  Introduces a small
+    artificial delay before the write so concurrent branches interleave
+    and genuinely race on a shared key.
+    """
+
+    def __init__(self, results: dict[str, Any] | None = None, delay: float = 0.0) -> None:
+        self._results = results or {}
+        self._delay = delay
+        self.calls: list[str] = []
+
+    async def __call__(self, step: Step, context: ExecutionContext) -> Any:
+        self.calls.append(step.id)
+        if self._delay:
+            await asyncio.sleep(self._delay)
+        value = self._results.get(step.id, f"result-{step.id}")
+        context.step_results[step.id] = value
+        if step.output_key and step.output_key != step.id:
+            context.step_results[step.output_key] = value
+        return value
+
+
+class TestParallelSharedStateCAS:
+    @pytest.mark.asyncio
+    async def test_parallel_writes_with_contention_resolve_correctly(self) -> None:
+        """Two parallel steps sharing output_key resolve without corruption or loss."""
+        p1 = _step("p1", parallel=True, output_key="shared")
+        p2 = _step("p2", parallel=True, output_key="shared")
+        wf = _workflow(p1, p2)
+        ctx = _context()
+        runner = _OutputKeyStepRunner({"p1": "alpha", "p2": "beta"}, delay=0.01)
+        strategy = ParallelExecutionStrategy()
+
+        await strategy.execute(wf, ctx, runner)
+
+        # Both steps executed — no step was skipped or lost.
+        assert set(runner.calls) == {"p1", "p2"}
+        # Each step's own step_results entry (keyed by step.id) survives —
+        # only the shared output_key is contended.
+        assert ctx.step_results["p1"] == "alpha"
+        assert ctx.step_results["p2"] == "beta"
+        # The shared key holds exactly one of the two valid results — not
+        # None, not a corrupted/partial value, not both concatenated.
+        assert ctx.step_results["shared"] in {"alpha", "beta"}
+
+    @pytest.mark.asyncio
+    async def test_parallel_writes_with_contention_same_step_id_pattern(self) -> None:
+        """Contention via duplicate output_key across many steps stays consistent."""
+        steps = [_step(f"p{i}", parallel=True, output_key="shared") for i in range(4)]
+        wf = _workflow(*steps)
+        ctx = _context()
+        runner = _OutputKeyStepRunner(
+            {f"p{i}": f"value-{i}" for i in range(4)},
+            delay=0.005,
+        )
+        strategy = ParallelExecutionStrategy()
+
+        await strategy.execute(wf, ctx, runner)
+
+        assert set(runner.calls) == {"p0", "p1", "p2", "p3"}
+        for i in range(4):
+            assert ctx.step_results[f"p{i}"] == f"value-{i}"
+        assert ctx.step_results["shared"] in {f"value-{i}" for i in range(4)}
+
+    @pytest.mark.asyncio
+    async def test_no_contention_skips_versioned_state(self, monkeypatch: Any) -> None:
+        """No shared write keys → VersionedState is never constructed (zero overhead)."""
+        constructed: list[bool] = []
+        original_init = VersionedState.__init__
+
+        def spy_init(self: VersionedState) -> None:
+            constructed.append(True)
+            original_init(self)
+
+        monkeypatch.setattr(VersionedState, "__init__", spy_init)
+
+        p1 = _step("p1", parallel=True)
+        p2 = _step("p2", parallel=True)
+        wf = _workflow(p1, p2)
+        ctx = _context()
+        runner = _MockStepRunner()
+        strategy = ParallelExecutionStrategy()
+
+        await strategy.execute(wf, ctx, runner)
+
+        assert constructed == []
+        assert ctx.step_results["p1"] == "result-p1"
+        assert ctx.step_results["p2"] == "result-p2"
+
+    @pytest.mark.asyncio
+    async def test_contention_constructs_versioned_state_once_per_group(
+        self, monkeypatch: Any
+    ) -> None:
+        """Contended group constructs exactly one VersionedState instance."""
+        constructed: list[bool] = []
+        original_init = VersionedState.__init__
+
+        def spy_init(self: VersionedState) -> None:
+            constructed.append(True)
+            original_init(self)
+
+        monkeypatch.setattr(VersionedState, "__init__", spy_init)
+
+        p1 = _step("p1", parallel=True, output_key="shared")
+        p2 = _step("p2", parallel=True, output_key="shared")
+        wf = _workflow(p1, p2)
+        ctx = _context()
+        runner = _OutputKeyStepRunner()
+        strategy = ParallelExecutionStrategy()
+
+        await strategy.execute(wf, ctx, runner)
+
+        assert len(constructed) == 1
+
+
+class TestParallelNonParallelUnchanged:
+    @pytest.mark.asyncio
+    async def test_non_parallel_execution_unaffected_by_cas_wiring(self, monkeypatch: Any) -> None:
+        """All-sequential workflow: identical results/order, VersionedState untouched."""
+        constructed: list[bool] = []
+        original_init = VersionedState.__init__
+
+        def spy_init(self: VersionedState) -> None:
+            constructed.append(True)
+            original_init(self)
+
+        monkeypatch.setattr(VersionedState, "__init__", spy_init)
+
+        s1 = _step("s1")
+        s2 = _step("s2")
+        s3 = _step("s3")
+        wf = _workflow(s1, s2, s3)
+        ctx = _context()
+        runner = _MockStepRunner()
+        strategy = ParallelExecutionStrategy()
+
+        await strategy.execute(wf, ctx, runner)
+
+        assert runner.calls == ["s1", "s2", "s3"]
+        assert ctx.step_results["s1"] == "result-s1"
+        assert ctx.step_results["s2"] == "result-s2"
+        assert ctx.step_results["s3"] == "result-s3"
+        assert constructed == []
