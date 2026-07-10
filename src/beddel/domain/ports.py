@@ -68,6 +68,7 @@ __all__ = [
     "IKnowledgeProvider",
     "IMemoryProvider",
     "IStateStore",
+    "IToolPreprocessor",
     "IHookManager",
     "ILifecycleHook",
     "ILLMProvider",
@@ -204,6 +205,11 @@ class ExecutionDependencies(Protocol):
     @property
     def decision_store(self) -> IDecisionStore | None:
         """The decision store for decision capture, or ``None`` if not configured."""
+        ...
+
+    @property
+    def tool_preprocessors(self) -> list[IToolPreprocessor] | None:
+        """Ordered tool preprocessors run before each tool-use LLM call, or ``None``."""
         ...
 
     @property
@@ -874,6 +880,47 @@ class IContextReducer(Protocol):
 
         Returns:
             A reduced message list that fits within ``token_budget``.
+        """
+        ...
+
+
+class IToolPreprocessor(Protocol):
+    """Pre-processes LLM requests before each completion call in the tool-use loop.
+
+    Allows tools/adapters to inject context (RAG, memory), filter tools,
+    or modify messages before the LLM sees them. Executes in registration
+    order when multiple preprocessors are configured via
+    ``ExecutionDependencies.tool_preprocessors``.
+
+    Fail-open contract: the tool-use loop (not this protocol) is
+    responsible for catching exceptions raised by ``process_request`` and
+    logging them without interrupting the loop — implementations should
+    not rely on exceptions propagating.
+
+    Inspired by Google ADK's ``process_llm_request`` pattern where tools
+    can modify the request before the LLM is called.
+
+    [Source: docs/architecture/36-tool-preprocessor-engine-enhancements.md §36.2]
+    """
+
+    async def process_request(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        context: ExecutionContext,
+    ) -> list[dict[str, Any]]:
+        """Modify the messages list before LLM completion.
+
+        Args:
+            messages: Current message history (mutable — append/modify
+                in-place or return a new list).
+            tools: Tool schemas available for this call (read-only
+                reference — implementations should not mutate this).
+            context: Current execution context with state, metadata, deps.
+
+        Returns:
+            The (potentially modified) messages list. Return the input
+            unchanged for a no-op.
         """
         ...
 

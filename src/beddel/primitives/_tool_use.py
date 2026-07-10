@@ -9,18 +9,21 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Callable
 from typing import Any
 
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import ExecutionContext
-from beddel.domain.ports import ILLMProvider
+from beddel.domain.ports import ILLMProvider, IToolPreprocessor
 from beddel.error_codes import (
     PRIM_TOOL_NOT_ALLOWED,
     PRIM_TOOL_USE_EXEC_FAILED,
     PRIM_TOOL_USE_MAX_ITERATIONS,
     PRIM_TOOL_USE_NOT_FOUND,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__: list[str] = []  # Internal module — no public exports
 
@@ -63,6 +66,19 @@ async def run_tool_use_loop(
     kwargs["tools"] = tool_schemas
 
     for iteration in range(1, max_iterations + 1):
+        preprocessors: list[IToolPreprocessor] = (
+            getattr(context.deps, "tool_preprocessors", None) or []
+        )
+        for preprocessor in preprocessors:
+            try:
+                messages = await preprocessor.process_request(messages, tool_schemas, context)
+            except Exception as exc:
+                logger.warning(
+                    "IToolPreprocessor %s failed (fail-open): %s",
+                    type(preprocessor).__name__,
+                    exc,
+                )
+
         response = await provider.complete(model, messages, **kwargs)
 
         tool_calls = response.get("tool_calls")

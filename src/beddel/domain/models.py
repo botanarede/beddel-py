@@ -39,6 +39,7 @@ if TYPE_CHECKING:
         IPIITokenizer,
         IStateStore,
         ITierRouter,
+        IToolPreprocessor,
         ITracer,
     )
     from beddel.domain.registry import PrimitiveRegistry
@@ -744,6 +745,9 @@ class DefaultDependencies:
             or ``None`` if not configured.  Defaults to ``None``.
         decision_store: The decision store for decision capture,
             or ``None`` if not configured.  Defaults to ``None``.
+        tool_preprocessors: Ordered tool preprocessors run before each
+            tool-use LLM call, or ``None`` if not configured.
+            Defaults to ``None``.
     """
 
     __slots__ = (
@@ -769,6 +773,7 @@ class DefaultDependencies:
         "_memory_provider",
         "_knowledge_provider",
         "_decision_store",
+        "_tool_preprocessors",
         "_kit_manifests",
     )
 
@@ -796,6 +801,7 @@ class DefaultDependencies:
         memory_provider: IMemoryProvider | None = None,
         knowledge_provider: IKnowledgeProvider | None = None,
         decision_store: IDecisionStore | None = None,
+        tool_preprocessors: list[IToolPreprocessor] | None = None,
         kit_manifests: list[Any] | None = None,
     ) -> None:
         self._llm_provider = llm_provider
@@ -820,6 +826,7 @@ class DefaultDependencies:
         self._memory_provider = memory_provider
         self._knowledge_provider = knowledge_provider
         self._decision_store = decision_store
+        self._tool_preprocessors = tool_preprocessors
         self._kit_manifests = kit_manifests
 
     @property
@@ -931,6 +938,11 @@ class DefaultDependencies:
     def decision_store(self) -> IDecisionStore | None:
         """The decision store for decision capture, or ``None`` if not configured."""
         return self._decision_store
+
+    @property
+    def tool_preprocessors(self) -> list[IToolPreprocessor] | None:
+        """Ordered tool preprocessors run before each LLM call, or ``None``."""
+        return self._tool_preprocessors
 
     @property
     def kit_manifests(self) -> list[Any] | None:

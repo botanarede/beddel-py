@@ -75,6 +75,7 @@ from beddel.domain.ports import (
     IPrimitive,
     IStateStore,
     ITierRouter,
+    IToolPreprocessor,
     ITracer,
     NoOpTracer,
 )
@@ -259,6 +260,7 @@ __all__ = [
     "IPrimitive",
     "IStateStore",
     "ITierRouter",
+    "IToolPreprocessor",
     "ITracer",
     "InterruptibleContext",
     "KitDependencyError",
