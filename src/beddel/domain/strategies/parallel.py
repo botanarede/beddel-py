@@ -6,15 +6,25 @@ parallel groups launch all steps concurrently via ``asyncio.gather``.
 
 The strategy satisfies :class:`~beddel.domain.ports.IExecutionStrategy`
 via structural subtyping (Protocol conformance).
+
+When two or more steps in the same parallel group write to the same
+``context.step_results`` key (same ``step.id``, or the same
+``step.output_key``), writes to that key are additionally protected by a
+per-group :class:`~beddel.domain.state.VersionedState` with a
+compare-and-swap (CAS) retry loop, preventing a last-writer-wins race that
+would otherwise silently drop one branch's result.  Groups with no shared
+write keys — the common case — take the original, unprotected code path
+with zero overhead beyond the cheap contention-detection scan.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from typing import Any
 
-from beddel.domain.errors import ExecutionError
+from beddel.domain.errors import ExecutionError, StateConflictError
 from beddel.domain.models import (
     ErrorSemantics,
     ExecutionContext,
@@ -23,9 +33,13 @@ from beddel.domain.models import (
     Workflow,
 )
 from beddel.domain.ports import StepRunner
+from beddel.domain.state import VersionedState
 from beddel.error_codes import EXEC_PARALLEL_COLLECT_FAILED, EXEC_PARALLEL_GROUP_FAILED
 
 _log = logging.getLogger(__name__)
+
+_CAS_MAX_ATTEMPTS = 3
+_CAS_JITTER_RANGE = (0.01, 0.05)
 
 
 class ParallelExecutionStrategy:
@@ -116,6 +130,15 @@ class ParallelExecutionStrategy:
     ) -> None:
         """Execute a parallel group with concurrency limits and error semantics.
 
+        When two or more steps in this group share the same effective
+        write key (``step.output_key or step.id``), writes to that key are
+        additionally serialised through a per-group
+        :class:`~beddel.domain.state.VersionedState` with CAS retry (see
+        :meth:`_write_contended_result`), preventing a last-writer-wins
+        race on the shared ``context.step_results`` dict.  This only
+        engages for the contended key(s); non-contended steps in the same
+        group are unaffected.
+
         Args:
             steps: The parallel steps to execute concurrently.
             context: Mutable runtime context.
@@ -130,11 +153,22 @@ class ParallelExecutionStrategy:
         if isolate:
             branch_contexts = [self._clone_context(context) for _ in steps]
 
+        contended_keys = self._detect_contention(steps)
+        versioned_state = VersionedState() if contended_keys else None
+
         async def limited_runner(step: Step, ctx: ExecutionContext) -> Any:
             if semaphore is not None:
                 async with semaphore:
-                    return await step_runner(step, ctx)
-            return await step_runner(step, ctx)
+                    result = await step_runner(step, ctx)
+            else:
+                result = await step_runner(step, ctx)
+
+            if versioned_state is not None:
+                write_key = step.output_key or step.id
+                if write_key in contended_keys:
+                    await self._write_contended_result(versioned_state, ctx, write_key, result)
+
+            return result
 
         # Emit PARALLEL_START event
         hooks = context.deps.lifecycle_hooks
@@ -156,6 +190,7 @@ class ParallelExecutionStrategy:
                     steps,
                     branch_contexts if isolate else [context] * len(steps),
                     limited_runner,
+                    contended_keys,
                 )
         finally:
             # Merge step_results from branch contexts back to parent
@@ -178,6 +213,68 @@ class ParallelExecutionStrategy:
                     )
                 except Exception:
                     _log.warning("parallel end hook failed", exc_info=True)
+
+    @staticmethod
+    def _detect_contention(steps: list[Step]) -> set[str]:
+        """Return the set of write keys shared by 2+ steps in this group.
+
+        The effective write key for a step is ``step.output_key`` when set
+        (see Story K6.2), otherwise ``step.id``.  A key is "contended"
+        when two or more steps in the same parallel group resolve to it.
+
+        Args:
+            steps: The parallel steps in a single group.
+
+        Returns:
+            The set of contended write keys.  Empty when every step in the
+            group writes to a distinct key (the common case).
+        """
+        counts: dict[str, int] = {}
+        for step in steps:
+            key = step.output_key or step.id
+            counts[key] = counts.get(key, 0) + 1
+        return {key for key, count in counts.items() if count > 1}
+
+    @staticmethod
+    async def _write_contended_result(
+        state: VersionedState,
+        context: ExecutionContext,
+        key: str,
+        value: Any,
+    ) -> None:
+        """Write a contended key's result through CAS with retry-and-jitter.
+
+        Attempts up to :data:`_CAS_MAX_ATTEMPTS` compare-and-swap writes.
+        On a version conflict, sleeps for a random jitter interval within
+        :data:`_CAS_JITTER_RANGE` seconds before re-reading the current
+        version and retrying.  After a successful write, the winning value
+        is copied into ``context.step_results[key]`` so downstream
+        ``$stepResult.<key>`` resolution sees it exactly as it would for an
+        uncontended write.
+
+        Args:
+            state: The per-group :class:`VersionedState` instance.
+            context: The execution context whose ``step_results`` receives
+                the winning value.
+            key: The contended write key.
+            value: This step's result value to write.
+
+        Raises:
+            StateConflictError: If all attempts are exhausted without a
+                successful CAS write.
+        """
+        for attempt in range(_CAS_MAX_ATTEMPTS):
+            try:
+                _, version = await state.get(key)
+                await state.set(key, value, expected_version=version)
+                break
+            except StateConflictError:
+                if attempt == _CAS_MAX_ATTEMPTS - 1:
+                    raise
+                await asyncio.sleep(random.uniform(*_CAS_JITTER_RANGE))
+
+        winning_value, _ = await state.get(key)
+        context.step_results[key] = winning_value
 
     async def _run_fail_fast(
         self,
@@ -211,8 +308,21 @@ class ParallelExecutionStrategy:
         steps: list[Step],
         contexts: list[ExecutionContext],
         runner: Any,
+        contended_keys: set[str] | None = None,
     ) -> None:
-        """Collect-all: run all steps, aggregate errors."""
+        """Collect-all: run all steps, aggregate errors.
+
+        Args:
+            steps: The parallel steps to execute.
+            contexts: Per-step execution contexts (shared parent context
+                repeated, or per-branch clones when isolated).
+            runner: Callback that executes a single step.
+            contended_keys: Write keys already resolved via CAS by
+                ``runner`` (see :meth:`_write_contended_result`).  Skipped
+                here to avoid clobbering the CAS-resolved winning value
+                with this step's own (possibly losing) result.
+        """
+        contended_keys = contended_keys or set()
         results = await asyncio.gather(
             *[runner(s, ctx) for s, ctx in zip(steps, contexts, strict=True)],
             return_exceptions=True,
@@ -227,7 +337,7 @@ class ParallelExecutionStrategy:
                         "error_type": type(result).__name__,
                     }
                 )
-            else:
+            elif (step.output_key or step.id) not in contended_keys:
                 ctx.step_results[step.id] = result
         if errors:
             raise ExecutionError(
