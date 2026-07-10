@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -293,3 +294,139 @@ class TestToolUseLoop:
         assert tool_msg["role"] == "tool"
         assert tool_msg["tool_call_id"] == "call_xyz"
         assert tool_msg["content"] == "Weather: NYC"
+
+
+# ---------------------------------------------------------------------------
+# Tool Preprocessor Tests
+# ---------------------------------------------------------------------------
+
+
+class TestToolPreprocessor:
+    """Tests for IToolPreprocessor integration in the tool-use loop."""
+
+    async def test_single_preprocessor_modifies_messages(self) -> None:
+        """A single preprocessor can inject messages before the LLM call."""
+
+        class _InjectingPreprocessor:
+            async def process_request(
+                self,
+                messages: list[dict[str, Any]],
+                tools: list[dict[str, Any]],
+                context: ExecutionContext,
+            ) -> list[dict[str, Any]]:
+                messages.append({"role": "system", "content": "INJECTED_CONTEXT"})
+                return messages
+
+        preprocessor = _InjectingPreprocessor()
+        deps = DefaultDependencies(tool_preprocessors=[preprocessor])
+        ctx = ExecutionContext(
+            workflow_id="test-wf",
+            current_step_id="step-1",
+            deps=deps,
+        )
+
+        provider = AsyncMock()
+        provider.complete.return_value = _text_response("Hello")
+        registry: dict[str, Any] = {"get_weather": lambda city: f"Sunny in {city}"}
+
+        messages: list[dict[str, Any]] = [{"role": "user", "content": "Hi"}]
+        result = await run_tool_use_loop(provider, "gpt-4o", messages, TOOL_SCHEMAS, registry, ctx)
+
+        assert result["content"] == "Hello"
+        # The injected message should be in the messages list passed to provider
+        call_messages = provider.complete.call_args[0][1]
+        assert {"role": "system", "content": "INJECTED_CONTEXT"} in call_messages
+
+    async def test_multiple_preprocessors_chain_in_order(self) -> None:
+        """Multiple preprocessors execute in registration order."""
+
+        class _MarkerPreprocessor:
+            def __init__(self, marker: str) -> None:
+                self._marker = marker
+
+            async def process_request(
+                self,
+                messages: list[dict[str, Any]],
+                tools: list[dict[str, Any]],
+                context: ExecutionContext,
+            ) -> list[dict[str, Any]]:
+                messages.append({"role": "system", "content": self._marker})
+                return messages
+
+        pp1 = _MarkerPreprocessor("MARKER_1")
+        pp2 = _MarkerPreprocessor("MARKER_2")
+        deps = DefaultDependencies(tool_preprocessors=[pp1, pp2])
+        ctx = ExecutionContext(
+            workflow_id="test-wf",
+            current_step_id="step-1",
+            deps=deps,
+        )
+
+        provider = AsyncMock()
+        provider.complete.return_value = _text_response("Done")
+        registry: dict[str, Any] = {"get_weather": lambda city: "Sunny"}
+
+        messages: list[dict[str, Any]] = [{"role": "user", "content": "Hi"}]
+        await run_tool_use_loop(provider, "gpt-4o", messages, TOOL_SCHEMAS, registry, ctx)
+
+        call_messages = provider.complete.call_args[0][1]
+        # Extract system content messages to verify order
+        system_contents = [m["content"] for m in call_messages if m.get("role") == "system"]
+        assert "MARKER_1" in system_contents
+        assert "MARKER_2" in system_contents
+        assert system_contents.index("MARKER_1") < system_contents.index("MARKER_2")
+
+    async def test_preprocessor_fail_open_logs_and_continues(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A failing preprocessor logs a warning and doesn't crash the loop."""
+
+        class _FailingPreprocessor:
+            async def process_request(
+                self,
+                messages: list[dict[str, Any]],
+                tools: list[dict[str, Any]],
+                context: ExecutionContext,
+            ) -> list[dict[str, Any]]:
+                raise RuntimeError("boom")
+
+        deps = DefaultDependencies(tool_preprocessors=[_FailingPreprocessor()])
+        ctx = ExecutionContext(
+            workflow_id="test-wf",
+            current_step_id="step-1",
+            deps=deps,
+        )
+
+        provider = AsyncMock()
+        provider.complete.return_value = _text_response("Hello")
+        registry: dict[str, Any] = {"get_weather": lambda city: "Sunny"}
+
+        messages: list[dict[str, Any]] = [{"role": "user", "content": "Hi"}]
+
+        with caplog.at_level(logging.WARNING, logger="beddel.primitives._tool_use"):
+            result = await run_tool_use_loop(
+                provider, "gpt-4o", messages, TOOL_SCHEMAS, registry, ctx
+            )
+
+        assert result["content"] == "Hello"
+        assert "_FailingPreprocessor" in caplog.text
+        assert "boom" in caplog.text
+
+    async def test_no_preprocessors_is_noop(self) -> None:
+        """DefaultDependencies() with no preprocessors behaves normally."""
+        provider = AsyncMock()
+        provider.complete.return_value = _text_response("Hello")
+        ctx = _make_context()
+        registry: dict[str, Any] = {"get_weather": lambda city: f"Sunny in {city}"}
+
+        result = await run_tool_use_loop(
+            provider,
+            "gpt-4o",
+            [{"role": "user", "content": "Hi"}],
+            TOOL_SCHEMAS,
+            registry,
+            ctx,
+        )
+
+        assert result["content"] == "Hello"
+        provider.complete.assert_awaited_once()

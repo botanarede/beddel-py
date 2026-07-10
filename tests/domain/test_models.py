@@ -1242,3 +1242,37 @@ class TestDefaultDependenciesMCPRegistry:
         assert deps.delegate_model == "gpt-4o"
         assert deps.tracer is not None
         assert deps.mcp_registry is None
+
+
+# ---------------------------------------------------------------------------
+# DefaultDependencies — tool_preprocessors (Story K6.1, Task 5)
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultDependenciesToolPreprocessors:
+    """Tests for DefaultDependencies.tool_preprocessors field."""
+
+    def test_tool_preprocessors_defaults_to_none(self) -> None:
+        """DefaultDependencies().tool_preprocessors is None by default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies()
+        assert deps.tool_preprocessors is None
+
+    def test_tool_preprocessors_stores_and_returns_list(self) -> None:
+        """DefaultDependencies(tool_preprocessors=[...]) stores and returns the list."""
+        from unittest.mock import AsyncMock
+
+        from beddel.domain.models import DefaultDependencies
+
+        mock_pp = AsyncMock()
+        preprocessors = [mock_pp]
+        deps = DefaultDependencies(tool_preprocessors=preprocessors)  # type: ignore[arg-type]
+        assert deps.tool_preprocessors is preprocessors
+
+    def test_tool_preprocessors_explicit_none(self) -> None:
+        """Passing tool_preprocessors=None explicitly is same as default."""
+        from beddel.domain.models import DefaultDependencies
+
+        deps = DefaultDependencies(tool_preprocessors=None)
+        assert deps.tool_preprocessors is None
