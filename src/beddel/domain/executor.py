@@ -818,6 +818,10 @@ class WorkflowExecutor:
         ``beddel.provider`` attributes (model/provider extracted from
         ``step.config`` when present).
 
+        When ``step.output_key`` is set, the result is additionally stored
+        under that key in ``context.step_results``, making it accessible
+        to later steps via ``$stepResult.{output_key}`` variable resolution.
+
         Args:
             step: The step definition whose primitive to execute.
             context: Mutable execution context for the current workflow run.
@@ -847,6 +851,8 @@ class WorkflowExecutor:
             primitive: IPrimitive = self._registry.get(step.primitive)
             result = await primitive.execute(resolved_config, context)
             context.step_results[step.id] = result
+            if step.output_key and step.output_key != step.id:
+                context.step_results[step.output_key] = result
             return result
         finally:
             if tracer is not None and prim_span is not None:

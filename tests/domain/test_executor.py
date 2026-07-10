@@ -45,6 +45,7 @@ def _make_step(
     fallback_step: Step | None = None,
     timeout: float | None = None,
     stream: bool = False,
+    output_key: str | None = None,
 ) -> Step:
     """Build a Step with sensible defaults for testing."""
     return Step(
@@ -61,6 +62,7 @@ def _make_step(
         ),
         timeout=timeout,
         stream=stream,
+        output_key=output_key,
     )
 
 
@@ -186,6 +188,94 @@ class TestSequentialExecution:
         result = await executor.execute(wf, inputs={"key": "val"})
 
         assert "metadata" in result
+
+
+# ---------------------------------------------------------------------------
+# Story K6.2 — output_key step config (auto-store result in state)
+# ---------------------------------------------------------------------------
+
+
+class TestOutputKey:
+    """Step.output_key additionally stores the result under a custom key."""
+
+    async def test_output_key_stores_result_under_both_keys(self) -> None:
+        registry, _ = _registry_with_stub(return_value={"foo": "bar"})
+        wf = _make_workflow([_make_step("s1", output_key="my_result")])
+        executor = WorkflowExecutor(registry)
+
+        result = await executor.execute(wf)
+
+        assert result["step_results"]["s1"] == {"foo": "bar"}
+        assert result["step_results"]["my_result"] == {"foo": "bar"}
+
+    async def test_output_key_none_does_not_add_extra_key(self) -> None:
+        registry, _ = _registry_with_stub(return_value={"foo": "bar"})
+        wf = _make_workflow([_make_step("s1")])
+        executor = WorkflowExecutor(registry)
+
+        result = await executor.execute(wf)
+
+        assert set(result["step_results"].keys()) == {"s1"}
+
+    async def test_output_key_accessible_in_next_step_via_stepresult(self) -> None:
+        captured_configs: list[dict[str, Any]] = []
+
+        async def _first(config: dict[str, Any], ctx: ExecutionContext) -> dict[str, Any]:
+            return {"foo": "bar"}
+
+        async def _second(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            captured_configs.append(config)
+            return "done"
+
+        from beddel.domain.ports import IPrimitive
+
+        first_mock = AsyncMock(side_effect=_first)
+        second_mock = AsyncMock(side_effect=_second)
+
+        class _FirstStub(IPrimitive):
+            async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
+                return await first_mock(config, context)
+
+        class _SecondStub(IPrimitive):
+            async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
+                return await second_mock(config, context)
+
+        registry = PrimitiveRegistry()
+        registry.register("first-prim", _FirstStub())
+        registry.register("second-prim", _SecondStub())
+
+        steps = [
+            _make_step("s1", primitive="first-prim", output_key="shared_val"),
+            _make_step(
+                "s2",
+                primitive="second-prim",
+                config={"val": "$stepResult.shared_val.foo"},
+            ),
+        ]
+        wf = _make_workflow(steps)
+        executor = WorkflowExecutor(registry)
+
+        await executor.execute(wf)
+
+        assert captured_configs[0]["val"] == "bar"
+
+    async def test_output_key_works_with_llm_primitive(self) -> None:
+        registry, _ = _registry_with_stub(prim_name="llm-stub", return_value="llm-answer")
+        wf = _make_workflow([_make_step("s1", primitive="llm-stub", output_key="llm_out")])
+        executor = WorkflowExecutor(registry)
+
+        result = await executor.execute(wf)
+
+        assert result["step_results"]["llm_out"] == "llm-answer"
+
+    async def test_output_key_works_with_tool_primitive(self) -> None:
+        registry, _ = _registry_with_stub(prim_name="tool-stub", return_value={"tool_output": 123})
+        wf = _make_workflow([_make_step("s1", primitive="tool-stub", output_key="tool_out")])
+        executor = WorkflowExecutor(registry)
+
+        result = await executor.execute(wf)
+
+        assert result["step_results"]["tool_out"] == {"tool_output": 123}
 
 
 # ---------------------------------------------------------------------------

@@ -673,6 +673,9 @@ class Step(BaseModel):
         parallel: Flag for parallel execution grouping by ParallelExecutionStrategy.
         metadata: Arbitrary metadata attached to the step.
         tags: Optional tags for step-level filtering by execution strategies.
+        output_key: Optional key under which this step's result is
+            additionally stored in ``context.step_results``, making it
+            accessible via ``$stepResult.{output_key}`` variable resolution.
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -691,6 +694,7 @@ class Step(BaseModel):
     parallel: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
+    output_key: str | None = None
 
 
 class DefaultDependencies:

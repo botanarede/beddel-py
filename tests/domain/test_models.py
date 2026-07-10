@@ -226,6 +226,31 @@ class TestStepTags:
 
 
 # ---------------------------------------------------------------------------
+# Step — output_key field
+# ---------------------------------------------------------------------------
+
+
+class TestStepOutputKey:
+    """Tests for the Step.output_key field (auto-store result in state)."""
+
+    def test_output_key_default_none(self) -> None:
+        """Step created without output_key defaults to None."""
+        # Arrange / Act
+        step = Step(**_minimal_step())
+
+        # Assert
+        assert step.output_key is None
+
+    def test_output_key_stores_value(self) -> None:
+        """Step created with explicit output_key stores and returns it."""
+        # Arrange / Act
+        step = Step(**_minimal_step(output_key="my_result"))
+
+        # Assert
+        assert step.output_key == "my_result"
+
+
+# ---------------------------------------------------------------------------
 # ExecutionStrategy
 # ---------------------------------------------------------------------------
 
