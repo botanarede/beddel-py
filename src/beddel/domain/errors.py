@@ -34,6 +34,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from beddel.error_codes import STATE_CONFLICT
+
 __all__ = [
     "BeddelError",
     "ParseError",
@@ -51,6 +53,7 @@ __all__ = [
     "BudgetError",
     "PIIError",
     "StateError",
+    "StateConflictError",
     "MemoryError",
     "KnowledgeError",
     "DecisionError",
@@ -241,6 +244,33 @@ class PIIError(AdapterError):
 
 class StateError(BeddelError):
     """State persistence errors. Error code prefix: BEDDEL-STATE-"""
+
+
+class StateConflictError(StateError):
+    """Optimistic lock conflict on a versioned state write.
+
+    Error code prefix: ``BEDDEL-STATE-`` (944)
+
+    Raised by :class:`~beddel.domain.state.VersionedState` when a
+    compare-and-swap write's ``expected_version`` does not match the
+    key's current version — i.e. another writer updated the key
+    concurrently.
+
+    Attributes:
+        key: The state key that had a version conflict.
+        expected_version: The version the caller expected.
+        actual_version: The version actually stored.
+    """
+
+    def __init__(self, key: str, expected: int, actual: int) -> None:
+        super().__init__(
+            STATE_CONFLICT,
+            f"Version conflict for key '{key}': expected {expected}, got {actual}",
+            details={"key": key, "expected_version": expected, "actual_version": actual},
+        )
+        self.key = key
+        self.expected_version = expected
+        self.actual_version = actual
 
 
 class MemoryError(BeddelError):  # noqa: A001

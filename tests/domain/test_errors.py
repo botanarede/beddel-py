@@ -136,6 +136,7 @@ class TestAllExports:
             "BudgetError",
             "PIIError",
             "StateError",
+            "StateConflictError",
             "MemoryError",
             "KnowledgeError",
             "DecisionError",

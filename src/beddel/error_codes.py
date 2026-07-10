@@ -460,6 +460,9 @@ STATE_DELETE_FAILED: str = "BEDDEL-STATE-942"
 STATE_CORRUPTED: str = "BEDDEL-STATE-943"
 """State data corrupted."""
 
+STATE_CONFLICT: str = "BEDDEL-STATE-944"
+"""Optimistic lock (CAS) conflict on a versioned shared-state write."""
+
 # ---------------------------------------------------------------------------
 # Memory codes  (MEMORY prefix, 960 sub-range)
 # ---------------------------------------------------------------------------
@@ -772,6 +775,7 @@ ALL_CODES: dict[str, str] = {
     "STATE_LOAD_FAILED": STATE_LOAD_FAILED,
     "STATE_DELETE_FAILED": STATE_DELETE_FAILED,
     "STATE_CORRUPTED": STATE_CORRUPTED,
+    "STATE_CONFLICT": STATE_CONFLICT,
     # Memory
     "MEMORY_GET_FAILED": MEMORY_GET_FAILED,
     "MEMORY_SET_FAILED": MEMORY_SET_FAILED,
