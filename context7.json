@@ -1,0 +1,19 @@
+{
+  "include": [
+    "src/",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "examples/"
+  ],
+  "exclude": [
+    "tests/",
+    "assets/",
+    ".github/",
+    "dist/",
+    ".venv/",
+    ".mypy_cache/",
+    ".pytest_cache/",
+    ".ruff_cache/"
+  ]
+}
