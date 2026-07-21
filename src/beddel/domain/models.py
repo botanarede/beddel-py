@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         IBudgetEnforcer,
         ICircuitBreaker,
         IContextReducer,
+        ICoordinationStrategy,
         IDecisionStore,
         IEventStore,
         IExecutionStrategy,
@@ -752,6 +753,9 @@ class DefaultDependencies:
         tool_preprocessors: Ordered tool preprocessors run before each
             tool-use LLM call, or ``None`` if not configured.
             Defaults to ``None``.
+        coordination_strategy_registry: Registry of named coordination
+            strategies from kits, or ``None`` if not provided.
+            Defaults to ``None``.
     """
 
     __slots__ = (
@@ -779,6 +783,7 @@ class DefaultDependencies:
         "_decision_store",
         "_tool_preprocessors",
         "_kit_manifests",
+        "_coordination_strategy_registry",
     )
 
     def __init__(
@@ -807,6 +812,7 @@ class DefaultDependencies:
         decision_store: IDecisionStore | None = None,
         tool_preprocessors: list[IToolPreprocessor] | None = None,
         kit_manifests: list[Any] | None = None,
+        coordination_strategy_registry: dict[str, ICoordinationStrategy] | None = None,
     ) -> None:
         self._llm_provider = llm_provider
         self._lifecycle_hooks = lifecycle_hooks
@@ -832,6 +838,7 @@ class DefaultDependencies:
         self._decision_store = decision_store
         self._tool_preprocessors = tool_preprocessors
         self._kit_manifests = kit_manifests
+        self._coordination_strategy_registry = coordination_strategy_registry
 
     @property
     def llm_provider(self) -> ILLMProvider | None:
@@ -952,6 +959,11 @@ class DefaultDependencies:
     def kit_manifests(self) -> list[Any] | None:
         """Available kit manifests for skill resolution, or ``None``."""
         return self._kit_manifests
+
+    @property
+    def coordination_strategy_registry(self) -> dict[str, ICoordinationStrategy] | None:
+        """Registry of named coordination strategies from kits, or ``None``."""
+        return self._coordination_strategy_registry
 
 
 _log = logging.getLogger(__name__)

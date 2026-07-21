@@ -226,13 +226,35 @@ class CallAgentPrimitive(IPrimitive):
                 },
             )
 
-        strategy_cls = _COORDINATION_STRATEGIES.get(strategy_name)
-        if strategy_cls is None:
+        # Registry-first resolution: check kit-provided strategies, then builtins
+        strategy_cls: type | None = None
+        kit_registry = context.deps.coordination_strategy_registry
+        kit_strategy_instance = None
+
+        if kit_registry and strategy_name in kit_registry:
+            kit_strategy_instance = kit_registry[strategy_name]
+            logger.debug(
+                "Resolved coordination strategy '%s' from kit registry",
+                strategy_name,
+            )
+        else:
+            strategy_cls = _COORDINATION_STRATEGIES.get(strategy_name)
+            if strategy_cls is not None:
+                logger.debug(
+                    "Resolved coordination strategy '%s' from builtin map",
+                    strategy_name,
+                )
+
+        if strategy_cls is None and kit_strategy_instance is None:
+            # Combine available strategies from both sources for error message
+            available = sorted(_COORDINATION_STRATEGIES.keys())
+            if kit_registry:
+                available = sorted(set(available) | set(kit_registry.keys()))
             raise PrimitiveError(
                 code=PRIM_NOT_FOUND,
                 message=(
                     f"Unknown coordination strategy {strategy_name!r}. "
-                    f"Available: {', '.join(sorted(_COORDINATION_STRATEGIES))}"
+                    f"Available: {', '.join(available)}"
                 ),
                 details={
                     "primitive": "call-agent",
@@ -242,7 +264,11 @@ class CallAgentPrimitive(IPrimitive):
             )
 
         strategy_config = coordination.get("config", {})
-        strategy = strategy_cls(config=strategy_config or None)
+        if kit_strategy_instance is not None:
+            strategy = kit_strategy_instance
+        else:
+            assert strategy_cls is not None
+            strategy = strategy_cls(config=strategy_config or None)
 
         # --- Resolve agents ---
         agent_registry = context.deps.agent_registry

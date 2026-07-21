@@ -59,7 +59,7 @@ def test_serve_app_renders_and_lists_onboarding(monkeypatch: pytest.MonkeyPatch)
         lambda _p: KitDiscoveryResult(manifests=[], collisions=[]),
     )
     monkeypatch.setattr(
-        "beddel.cli.commands._build_adapter_registries", lambda _dr, **_k: ({}, None)
+        "beddel.cli.commands._build_adapter_registries", lambda _dr, **_k: ({}, None, {})
     )
     monkeypatch.setattr("beddel.cli.commands._parse_tool_flags", lambda _t: {})
     monkeypatch.setattr("beddel.cli.commands._build_tool_registry", lambda *_a, **_k: {})

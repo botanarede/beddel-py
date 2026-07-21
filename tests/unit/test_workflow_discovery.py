@@ -146,10 +146,10 @@ def _stub_heavy_deps(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *_a, **_kw: mock_kit_result,
     )
 
-    # -- _build_adapter_registries → (mock, mock) ---------------------------
+    # -- _build_adapter_registries → (mock, mock, {}) -------------------------
     monkeypatch.setattr(
         "beddel.cli.commands._build_adapter_registries",
-        lambda *_a, **_kw: (MagicMock(), MagicMock()),
+        lambda *_a, **_kw: (MagicMock(), MagicMock(), {}),
     )
 
     # -- _build_tool_registry → mock ----------------------------------------

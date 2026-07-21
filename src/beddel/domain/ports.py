@@ -217,6 +217,11 @@ class ExecutionDependencies(Protocol):
         """Available kit manifests for skill resolution, or ``None``."""
         ...
 
+    @property
+    def coordination_strategy_registry(self) -> dict[str, ICoordinationStrategy] | None:
+        """Registry of named coordination strategies from kits, or ``None``."""
+        ...
+
 
 class IPIITokenizer(Protocol):
     """Port interface for PII tokenization.

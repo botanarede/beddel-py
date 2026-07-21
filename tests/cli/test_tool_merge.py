@@ -289,7 +289,7 @@ class TestBuildAdapterRegistries:
             "beddel.tools.kits.load_kit_adapters",
             return_value={("IAgentAdapter", "my-agent"): sentinel},
         ):
-            registry, llm = _build_adapter_registries(discovery)
+            registry, llm, _coord = _build_adapter_registries(discovery)
 
         assert registry["my-agent"] is sentinel
         assert llm is None
@@ -307,7 +307,7 @@ class TestBuildAdapterRegistries:
             "beddel.tools.kits.load_kit_adapters",
             return_value={("ILLMProvider", "litellm"): sentinel},
         ):
-            registry, llm = _build_adapter_registries(discovery)
+            registry, llm, _coord = _build_adapter_registries(discovery)
 
         assert llm is sentinel
         assert registry == {}
@@ -333,7 +333,7 @@ class TestBuildAdapterRegistries:
             patch("beddel.tools.kits.load_kit_adapters", side_effect=_side_effect),
             patch("beddel.cli.commands.logger") as mock_logger,
         ):
-            registry, llm = _build_adapter_registries(discovery)
+            registry, llm, _coord = _build_adapter_registries(discovery)
 
         assert llm is second_llm
         assert registry == {}
@@ -364,7 +364,7 @@ class TestBuildAdapterRegistries:
             return {("IAgentAdapter", "good-agent"): good_adapter}
 
         with patch("beddel.tools.kits.load_kit_adapters", side_effect=_side_effect):
-            registry, llm = _build_adapter_registries(discovery)
+            registry, llm, _coord = _build_adapter_registries(discovery)
 
         assert "good-agent" in registry
         assert registry["good-agent"] is good_adapter
@@ -377,7 +377,7 @@ class TestBuildAdapterRegistries:
 
         discovery = KitDiscoveryResult(manifests=[self._make_manifest()], collisions=[])
 
-        registry, llm = _build_adapter_registries(discovery, no_kits=True)
+        registry, llm, _coord = _build_adapter_registries(discovery, no_kits=True)
 
         assert registry == {}
         assert llm is None
@@ -398,7 +398,7 @@ class TestBuildAdapterRegistries:
             ),
             patch("beddel.cli.commands.logger") as mock_logger,
         ):
-            registry, llm = _build_adapter_registries(discovery)
+            registry, llm, _coord = _build_adapter_registries(discovery)
 
         assert llm is None
         assert registry["my-agent"] is agent

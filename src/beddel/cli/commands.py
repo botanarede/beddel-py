@@ -267,31 +267,34 @@ def _build_adapter_registries(
     discovery_result: Any,
     *,
     no_kits: bool = False,
-) -> tuple[dict[str, Any], Any]:
-    """Build agent and LLM provider registries from discovered kit adapters.
+) -> tuple[dict[str, Any], Any, dict[str, Any]]:
+    """Build agent, LLM provider, and coordination strategy registries from kit adapters.
 
     Iterates kit manifests, calls :func:`load_kit_adapters` for each, and
-    collects ``IAgentAdapter`` entries into ``agent_registry`` and
+    collects ``IAgentAdapter`` entries into ``agent_registry``,
     ``ILLMProvider`` entries into ``llm_provider`` (config-driven selection
-    via ``resolve_llm_provider()``, default: ``litellm``).
+    via ``resolve_llm_provider()``, default: ``litellm``), and
+    ``ICoordinationStrategy`` entries into ``coordination_strategy_registry``.
 
     Args:
         discovery_result: A :class:`KitDiscoveryResult` from ``discover_kits()``.
         no_kits: When *True*, skip adapter loading entirely.
 
     Returns:
-        Tuple of ``(agent_registry, llm_provider)`` where
-        ``agent_registry`` is a dict mapping adapter names to instances
-        and ``llm_provider`` is the last-discovered ``ILLMProvider``
-        instance (or ``None``).
+        Tuple of ``(agent_registry, llm_provider, coordination_strategy_registry)``
+        where ``agent_registry`` is a dict mapping adapter names to instances,
+        ``llm_provider`` is the last-discovered ``ILLMProvider`` instance
+        (or ``None``), and ``coordination_strategy_registry`` is a dict
+        mapping strategy names to ``ICoordinationStrategy`` instances.
     """
     if no_kits:
-        return {}, None
+        return {}, None, {}
 
     from beddel.domain.errors import KitDependencyError, KitManifestError
     from beddel.tools.kits import load_kit_adapters
 
     agent_registry: dict[str, Any] = {}
+    coordination_strategy_registry: dict[str, Any] = {}
     llm_provider: Any = None
     llm_provider_names: list[str] = []
     llm_providers: dict[str, Any] = {}
@@ -320,6 +323,13 @@ def _build_adapter_registries(
             elif port == "ILLMProvider":
                 llm_provider_names.append(name)
                 llm_providers[name] = instance
+            elif port == "ICoordinationStrategy":
+                coordination_strategy_registry[name] = instance
+                logger.debug(
+                    "Kit '%s': registered ICoordinationStrategy '%s'",
+                    kit_name,
+                    name,
+                )
 
     if len(llm_provider_names) > 1:
         from beddel.cli.config import resolve_llm_provider
@@ -353,7 +363,7 @@ def _build_adapter_registries(
             "will fail at execution time."
         )
 
-    return agent_registry, llm_provider
+    return agent_registry, llm_provider, coordination_strategy_registry
 
 
 @click.group()
@@ -590,7 +600,9 @@ def run(
 
     if not workflow.requires_kits:
         discovery_result = discover_kits(_resolve_all_kit_paths(kit))
-    agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
+    agent_registry, llm_provider, coordination_strategy_registry = _build_adapter_registries(
+        discovery_result, no_kits=no_kits
+    )
 
     def _safe_workflow_loader(name: str) -> Workflow:
         """Load a sub-workflow by name, confined to the parent directory."""
@@ -619,6 +631,7 @@ def run(
     deps = DefaultDependencies(
         llm_provider=llm_provider,
         agent_registry=agent_registry,
+        coordination_strategy_registry=coordination_strategy_registry or None,
         tool_registry=merged_tools,
         workflow_loader=_safe_workflow_loader,
         registry=registry,
@@ -1676,7 +1689,9 @@ def _build_runtime_app(
             manifests=_filtered_manifests, collisions=_filtered_collisions
         )
 
-    agent_registry, llm_provider = _build_adapter_registries(discovery_result, no_kits=no_kits)
+    agent_registry, llm_provider, coordination_strategy_registry = _build_adapter_registries(
+        discovery_result, no_kits=no_kits
+    )
     parsed_tools = _parse_tool_flags(tools)
 
     # Flow discovery: explicit -w flags + config.json flows_paths
@@ -1774,6 +1789,7 @@ def _build_runtime_app(
         deps = DefaultDependencies(
             llm_provider=llm_provider,
             agent_registry=agent_registry,
+            coordination_strategy_registry=coordination_strategy_registry or None,
             tool_registry=_build_tool_registry(
                 workflow,
                 parsed_tools,
@@ -1830,6 +1846,7 @@ def _build_runtime_app(
                 wf_deps = DefaultDependencies(
                     llm_provider=llm_provider,
                     agent_registry=agent_registry,
+                    coordination_strategy_registry=coordination_strategy_registry or None,
                     tool_registry=_build_tool_registry(
                         wf,
                         parsed_tools,
@@ -1856,6 +1873,7 @@ def _build_runtime_app(
                 _wf_deps = DefaultDependencies(
                     llm_provider=llm_provider,
                     agent_registry=agent_registry,
+                    coordination_strategy_registry=coordination_strategy_registry or None,
                     tool_registry=_build_tool_registry(
                         _wf,
                         parsed_tools,

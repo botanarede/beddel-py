@@ -67,7 +67,7 @@ class TestBuildRuntimeAppIndexSync:
         monkeypatch.setattr("beddel.cli.commands._resolve_all_kit_paths", lambda _: [])
         monkeypatch.setattr(
             "beddel.cli.commands._build_adapter_registries",
-            lambda _dr, **_kw: ({}, MagicMock()),
+            lambda _dr, **_kw: ({}, MagicMock(), {}),
         )
         monkeypatch.setattr("beddel.cli.commands._parse_tool_flags", lambda _: [])
         monkeypatch.setattr(
@@ -127,7 +127,7 @@ class TestBuildRuntimeAppGracefulDegradation:
         monkeypatch.setattr("beddel.cli.commands._resolve_all_kit_paths", lambda _: [])
         monkeypatch.setattr(
             "beddel.cli.commands._build_adapter_registries",
-            lambda _dr, **_kw: ({}, MagicMock()),
+            lambda _dr, **_kw: ({}, MagicMock(), {}),
         )
         monkeypatch.setattr("beddel.cli.commands._parse_tool_flags", lambda _: [])
         monkeypatch.setattr(
@@ -183,7 +183,7 @@ class TestBuildRuntimeAppGracefulDegradation:
         monkeypatch.setattr("beddel.cli.commands._resolve_all_kit_paths", lambda _: [])
         monkeypatch.setattr(
             "beddel.cli.commands._build_adapter_registries",
-            lambda _dr, **_kw: ({}, MagicMock()),
+            lambda _dr, **_kw: ({}, MagicMock(), {}),
         )
         monkeypatch.setattr("beddel.cli.commands._parse_tool_flags", lambda _: [])
         monkeypatch.setattr(
@@ -265,9 +265,9 @@ class TestBuildRuntimeAppKitFiltering:
         monkeypatch.setattr("beddel.tools.kits.discover_kits", lambda _paths: two_kit_result)
         monkeypatch.setattr("beddel.cli.commands._resolve_all_kit_paths", lambda _: [])
 
-        def _capture_adapter_registries(dr: Any, **_kw: Any) -> tuple[dict, MagicMock]:
+        def _capture_adapter_registries(dr: Any, **_kw: Any) -> tuple[dict, MagicMock, dict]:
             captured_discovery_results.append(dr)
-            return ({}, MagicMock())
+            return ({}, MagicMock(), {})
 
         monkeypatch.setattr(
             "beddel.cli.commands._build_adapter_registries",
@@ -353,7 +353,7 @@ class TestBuildRuntimeAppFlowFiltering:
         monkeypatch.setattr("beddel.cli.commands._resolve_all_kit_paths", lambda _: [])
         monkeypatch.setattr(
             "beddel.cli.commands._build_adapter_registries",
-            lambda _dr, **_kw: ({}, MagicMock()),
+            lambda _dr, **_kw: ({}, MagicMock(), {}),
         )
         monkeypatch.setattr("beddel.cli.commands._parse_tool_flags", lambda _: [])
         monkeypatch.setattr(
