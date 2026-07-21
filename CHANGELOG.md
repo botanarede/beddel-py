@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2026-07-21
+
+### Breaking
+- **Pydantic minimum lowered** from `>=2.13` to `>=2.12.5,<3`. All existing APIs remain compatible. Enables `kimi-agent-sdk==0.0.5` co-installation.
+
+### Added
+- Coordination Strategy Registry: kit-loaded `ICoordinationStrategy` instances injected into `ExecutionDependencies`, resolved by `CallAgentPrimitive` (Story K1.17)
+- `agent-kimi-kit` security architecture (§40.11): CVE mitigations, container isolation, tool restriction, approval hardening
+- `production-agent.yaml` bundled config: disables Shell, ReadMediaFile, FetchURL, SearchWeb
+- `agent_config.py`: `get_production_agent_file()` helper
+- Integration tests against real `kimi-agent-sdk==0.0.5` (signature validation)
+- `agent-kimi-kit` Config factory: `build_kimi_config()` returns validated SDK `Config` object with 100K context default (Story K10C.1)
+
+### Changed
+- `agent-kimi-kit` adapter: `Session.create()` no longer passes `sandbox_mode` (unsupported in SDK 0.0.5); `work_dir` now uses `KaosPath` instead of `str`
+- `agent-kimi-kit` default `approval_mode` changed from `"auto"` to `"manual"` (deny-by-default)
+- Kit dependency constraints updated:
+  - `provider-kimi-kit`: `openai==1.82.0` → `openai>=1.50,<3`
+  - `provider-litellm-kit`: `litellm>=1.40,<1.82.7` → `litellm>=1.93,<2`
+  - `observability-langfuse-kit`: `langfuse>=2.0` → `langfuse>=2.60.10,<3`
+  - `auth-firebase-kit`: `pydantic>=2.13,<3` → `pydantic>=2.12.5,<3`
+
+### Fixed
+- `agent-kimi-kit` API incompatibility with real `kimi-agent-sdk==0.0.5` (TypeError on `sandbox_mode`)
+- `resolve_sandbox()` marked deprecated (retained for input validation only)
+- `DefaultDependencies`: forward `coordination_strategy_registry` in executor + child contexts
+
+### Security
+- CVE-2026-25046 (kimi-agent-sdk): documented exception — dev-only scripts, not runtime
+- CVE-2026-25990 (Pillow via kimi-cli): mitigated by disabling ReadMediaFile in production agent config
+- litellm floor raised to >=1.93 (above CVE-2026-42208/42271 fixes)
+- langfuse pinned to v2 (<3) — adapter uses v2 API
+
 ## [Unreleased]
 
 ### Added
