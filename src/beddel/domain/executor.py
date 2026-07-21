@@ -259,7 +259,9 @@ class WorkflowExecutor:
                 memory_provider=self._deps.memory_provider,
                 knowledge_provider=self._deps.knowledge_provider,
                 decision_store=self._deps.decision_store,
+                tool_preprocessors=self._deps.tool_preprocessors,
                 kit_manifests=self._deps.kit_manifests,
+                coordination_strategy_registry=self._deps.coordination_strategy_registry,
             )
         return DefaultDependencies(
             lifecycle_hooks=self._hook_manager,

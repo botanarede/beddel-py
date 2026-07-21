@@ -178,6 +178,9 @@ class CallAgentPrimitive(IPrimitive):
                 workflow_loader=context.deps.workflow_loader,
                 registry=context.deps.registry,
                 tool_registry=context.deps.tool_registry,
+                agent_adapter=context.deps.agent_adapter,
+                agent_registry=context.deps.agent_registry,
+                coordination_strategy_registry=context.deps.coordination_strategy_registry,
             ),
         )
 
@@ -425,6 +428,9 @@ class CallAgentPrimitive(IPrimitive):
                 registry=context.deps.registry,
                 tool_registry=context.deps.tool_registry,
                 kit_manifests=context.deps.kit_manifests,
+                agent_adapter=context.deps.agent_adapter,
+                agent_registry=context.deps.agent_registry,
+                coordination_strategy_registry=context.deps.coordination_strategy_registry,
             ),
         )
 
