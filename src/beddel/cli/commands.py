@@ -1587,6 +1587,7 @@ def _build_runtime_app(
     a2a_enable: bool = False,
     port: int = 8000,
     a2a_advertise_url: str | None = None,
+    bind_host: str = "127.0.0.1",
 ) -> tuple[Any, int, list[str]]:
     """Build a FastAPI app with workflow handlers and optional AG-UI endpoints.
 
@@ -1909,8 +1910,14 @@ def _build_runtime_app(
     # Mounts ONLY when:
     #   1. a2a_enable=True (set by serve() only — not connect/launch)
     #   2. serve-a2a-kit is discovered and enabled in the kit index
+    #   3. no_kits is False (--no-kits suppresses all kit functionality)
     _a2a_kit_available = (
-        (_index_available and _index_store is not None and "serve-a2a-kit" in _enabled_kit_names)
+        (
+            not no_kits
+            and _index_available
+            and _index_store is not None
+            and "serve-a2a-kit" in _enabled_kit_names
+        )
         if _index_available
         else False
     )
@@ -1936,10 +1943,13 @@ def _build_runtime_app(
             _public_url = a2a_advertise_url or f"http://127.0.0.1:{port}"
 
             # Parse hostname for loopback detection (not substring match)
+            # Also consider bind_host: if listener is on 0.0.0.0/::, it's non-loopback
             from urllib.parse import urlparse as _urlparse
 
+            _loopback_addrs = ("127.0.0.1", "localhost", "::1")
             _parsed_host = _urlparse(_public_url).hostname or ""
-            _is_loopback = _parsed_host in ("127.0.0.1", "localhost", "::1")
+            _bind_is_loopback = bind_host in _loopback_addrs
+            _is_loopback = _parsed_host in _loopback_addrs and _bind_is_loopback
 
             # Fail-closed: refuse non-loopback A2A without auth token
             if not _is_loopback and not _a2a_token:
@@ -2249,6 +2259,7 @@ def serve(
         a2a_enable=True,
         port=port,
         a2a_advertise_url=a2a_advertise_url,
+        bind_host=host,
     )
 
     click.echo(f"Beddel v{__version__} — {loaded} workflow(s)")
