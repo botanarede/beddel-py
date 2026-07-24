@@ -1931,12 +1931,15 @@ def _build_runtime_app(
                 build_agent_card,
             )
 
-            # Resolve public URL: CLI option → env var → default loopback
+            # Resolve public URL: CLI option (Click resolves env) → default loopback
             _a2a_token = os.environ.get("A2A_AUTH_TOKEN")
-            _public_url = (
-                a2a_advertise_url or os.environ.get("A2A_PUBLIC_URL") or f"http://127.0.0.1:{port}"
-            )
-            _is_loopback = "127.0.0.1" in _public_url or "localhost" in _public_url
+            _public_url = a2a_advertise_url or f"http://127.0.0.1:{port}"
+
+            # Parse hostname for loopback detection (not substring match)
+            from urllib.parse import urlparse as _urlparse
+
+            _parsed_host = _urlparse(_public_url).hostname or ""
+            _is_loopback = _parsed_host in ("127.0.0.1", "localhost", "::1")
 
             # Fail-closed: refuse non-loopback A2A without auth token
             if not _is_loopback and not _a2a_token:
@@ -1991,7 +1994,7 @@ def _build_runtime_app(
 
                 class _A2ABearerAuthMiddleware(BaseHTTPMiddleware):
                     async def dispatch(self, request: Any, call_next: Any) -> Any:
-                        if request.url.path == "/a2a":
+                        if request.url.path.startswith("/a2a"):
                             auth = request.headers.get("authorization", "")
                             if not auth.startswith("Bearer ") or not _compare_digest(
                                 auth[7:], _token_ref
@@ -2014,11 +2017,14 @@ def _build_runtime_app(
             async def _legacy_agent_card() -> Any:
                 return _RedirectResp("/.well-known/agent-card.json", status_code=301)
 
-            # Register shutdown handler
-            @app.on_event("shutdown")
-            async def _a2a_shutdown() -> None:
-                await a2a_handler.aclose()
+            # Register shutdown handler (use on_shutdown list — on_event is deprecated)
+            app.router.on_shutdown.append(a2a_handler.aclose)
 
+            if not _a2a_registry:
+                click.echo(
+                    "  A2A: WARNING — no workflows, Agent Card has zero skills",
+                    err=True,
+                )
             click.echo(f"  A2A: /.well-known/agent-card.json ({len(_a2a_registry)} workflow(s))")
             click.echo(f"  A2A RPC: POST {_public_url}/a2a")
             if _a2a_token:
