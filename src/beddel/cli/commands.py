@@ -1584,6 +1584,9 @@ def _build_runtime_app(
     tools: tuple[str, ...] = (),
     kit: tuple[Path, ...] = (),
     no_kits: bool = False,
+    a2a_enable: bool = False,
+    port: int = 8000,
+    a2a_advertise_url: str | None = None,
 ) -> tuple[Any, int, list[str]]:
     """Build a FastAPI app with workflow handlers and optional AG-UI endpoints.
 
@@ -1669,7 +1672,7 @@ def _build_runtime_app(
         _migrate_llm_provider_to_user_prefs(_index_store)
 
     if _index_available and _index_store is not None:
-        _enabled_kit_names = {
+        _enabled_kit_names: set[str] = {
             k["name"] for k in asyncio.run(_index_store.list_kits(enabled_only=True))
         }
         _filtered_manifests = [
@@ -1688,6 +1691,9 @@ def _build_runtime_app(
         discovery_result = KitDiscoveryResult(
             manifests=_filtered_manifests, collisions=_filtered_collisions
         )
+    else:
+        # Index unavailable: treat all discovered kits as enabled
+        _enabled_kit_names = {m.kit.name for m in discovery_result.manifests}
 
     agent_registry, llm_provider, coordination_strategy_registry = _build_adapter_registries(
         discovery_result, no_kits=no_kits
@@ -1899,49 +1905,137 @@ def _build_runtime_app(
             listing_router = create_workflow_listing_router(all_workflows)
             app.include_router(listing_router, prefix="/workflows")
 
-            # ── A2A server (Agent Card + task lifecycle) ───────────────────
-            try:
-                from a2a.server.apps.rest import (  # type: ignore[import-not-found]  # noqa: I001
-                    A2ARESTFastAPIApplication,
-                )
-                from a2a.server.request_handlers import DefaultRequestHandler  # type: ignore[import-not-found]
-                from a2a.server.tasks import InMemoryTaskStore  # type: ignore[import-not-found]
-                from beddel_serve_a2a.server import (  # type: ignore[import-not-found]
-                    BeddelA2AExecutor,
-                    build_agent_card,
+    # ── A2A server (Agent Card + JSON-RPC routes) ──────────────────────────
+    # Mounts ONLY when:
+    #   1. a2a_enable=True (set by serve() only — not connect/launch)
+    #   2. serve-a2a-kit is discovered and enabled in the kit index
+    _a2a_kit_available = (
+        (_index_available and _index_store is not None and "serve-a2a-kit" in _enabled_kit_names)
+        if _index_available
+        else False
+    )
+
+    if a2a_enable and _a2a_kit_available:
+        try:
+            from a2a.server.request_handlers import (
+                DefaultRequestHandler,  # type: ignore[import-not-found]
+            )
+            from a2a.server.routes import (  # type: ignore[import-not-found]
+                add_a2a_routes_to_fastapi,
+                create_agent_card_routes,
+                create_jsonrpc_routes,
+            )
+            from a2a.server.tasks import InMemoryTaskStore  # type: ignore[import-not-found]
+            from beddel_serve_a2a import (  # type: ignore[import-not-found]
+                BeddelA2AExecutor,
+                build_agent_card,
+            )
+
+            # Resolve public URL: CLI option → env var → default loopback
+            _a2a_token = os.environ.get("A2A_AUTH_TOKEN")
+            _public_url = (
+                a2a_advertise_url or os.environ.get("A2A_PUBLIC_URL") or f"http://127.0.0.1:{port}"
+            )
+            _is_loopback = "127.0.0.1" in _public_url or "localhost" in _public_url
+
+            # Fail-closed: refuse non-loopback A2A without auth token
+            if not _is_loopback and not _a2a_token:
+                raise click.ClickException(
+                    "A2A_AUTH_TOKEN required for non-loopback A2A. "
+                    f"Set the env var or use --a2a-advertise-url http://127.0.0.1:{port}"
                 )
 
-                # Reuse the same executor registry built for AG-UI unified
-                a2a_registry = _agui_executors
-                agent_card = build_agent_card(a2a_registry)
-                a2a_executor = BeddelA2AExecutor(a2a_registry)
-                task_store = InMemoryTaskStore()
-                a2a_handler = DefaultRequestHandler(  # type: ignore[call-arg]
-                    agent_executor=a2a_executor,
-                    task_store=task_store,
-                )
-                a2a_app = A2ARESTFastAPIApplication(
-                    agent_card=agent_card,
-                    http_handler=a2a_handler,
-                )
+            # Build A2A registry from all_workflows (independent of AG-UI executors)
+            from beddel.domain.executor import WorkflowExecutor as _A2AExec
 
-                # Mount A2A sub-app and root-level Agent Card route
-                a2a_fastapi = a2a_app.build()
-                app.mount("/a2a", a2a_fastapi)
-                click.echo(f"  A2A: /.well-known/agent.json ({len(a2a_registry)} workflow(s))")
-
-                # Serve Agent Card at root /.well-known/agent.json (A2A spec)
-                @app.get("/.well-known/agent.json")
-                async def agent_card_route() -> dict:  # type: ignore[return]
-                    return agent_card.model_dump(exclude_none=True, by_alias=True)
-
-            except ImportError:
-                click.echo(
-                    "Warning: a2a-sdk not available. Install a2a-sdk to enable A2A endpoints.",
-                    err=True,
+            _a2a_registry: dict[str, tuple[Any, Any]] = {}
+            for _wf_id, (_wf, _wf_path) in all_workflows.items():
+                _a2a_deps = DefaultDependencies(
+                    llm_provider=llm_provider,
+                    agent_registry=agent_registry,
+                    coordination_strategy_registry=coordination_strategy_registry or None,
+                    tool_registry=_build_tool_registry(
+                        _wf,
+                        parsed_tools,
+                        kit_paths=list(kit) if kit else None,
+                        no_kits=no_kits,
+                        discovery_result=discovery_result,
+                    ),
+                    workflow_loader=_make_workflow_loader(_wf_path.parent.resolve()),
+                    registry=registry,
                 )
-            except Exception as exc:  # noqa: BLE001
-                click.echo(f"Warning: A2A server setup failed: {exc}", err=True)
+                _a2a_exec = _A2AExec(registry, deps=_a2a_deps)
+                _a2a_registry[_wf_id] = (_wf, _a2a_exec)
+
+            agent_card = build_agent_card(
+                workflows=_a2a_registry,
+                public_base_url=_public_url,
+                include_security=bool(_a2a_token),
+            )
+            a2a_executor = BeddelA2AExecutor(_a2a_registry)
+            task_store = InMemoryTaskStore()
+            a2a_handler = DefaultRequestHandler(
+                agent_executor=a2a_executor,
+                task_store=task_store,
+                agent_card=agent_card,
+            )
+
+            # Bearer auth middleware for A2A routes (skip if no token = loopback-only)
+            if _a2a_token:
+                from secrets import compare_digest as _compare_digest
+
+                from starlette.middleware.base import BaseHTTPMiddleware
+                from starlette.responses import JSONResponse as _StarletteJSON
+
+                _token_ref = _a2a_token  # capture for closure
+
+                class _A2ABearerAuthMiddleware(BaseHTTPMiddleware):
+                    async def dispatch(self, request: Any, call_next: Any) -> Any:
+                        if request.url.path == "/a2a":
+                            auth = request.headers.get("authorization", "")
+                            if not auth.startswith("Bearer ") or not _compare_digest(
+                                auth[7:], _token_ref
+                            ):
+                                return _StarletteJSON({"error": "Unauthorized"}, status_code=401)
+                        return await call_next(request)
+
+                app.add_middleware(_A2ABearerAuthMiddleware)
+
+            add_a2a_routes_to_fastapi(
+                app,
+                agent_card_routes=create_agent_card_routes(agent_card),
+                jsonrpc_routes=create_jsonrpc_routes(a2a_handler, rpc_url="/a2a"),
+            )
+
+            # Legacy alias for backward compat
+            from starlette.responses import RedirectResponse as _RedirectResp
+
+            @app.get("/.well-known/agent.json")
+            async def _legacy_agent_card() -> Any:
+                return _RedirectResp("/.well-known/agent-card.json", status_code=301)
+
+            # Register shutdown handler
+            @app.on_event("shutdown")
+            async def _a2a_shutdown() -> None:
+                await a2a_handler.aclose()
+
+            click.echo(f"  A2A: /.well-known/agent-card.json ({len(_a2a_registry)} workflow(s))")
+            click.echo(f"  A2A RPC: POST {_public_url}/a2a")
+            if _a2a_token:
+                click.echo("  A2A auth: bearer token required")
+
+        except ImportError:
+            # serve-a2a-kit enabled in manifest but Python package not importable
+            raise click.ClickException(
+                "serve-a2a-kit is enabled but beddel_serve_a2a is not importable. "
+                "Run: pip install -e repo/kits/serve-a2a-kit/"
+            ) from None
+        except click.ClickException:
+            raise  # re-raise our own errors (auth token missing, etc.)
+        except Exception as exc:
+            raise click.ClickException(f"A2A kit setup failed: {exc}") from exc
+    elif a2a_enable and not _a2a_kit_available:
+        logger.debug("A2A not mounted: serve-a2a-kit not discovered or not enabled in kit index")
 
     # ── Index API endpoints (unconditional — not gated by dashboard flag) ──
     from fastapi.responses import JSONResponse
@@ -2076,6 +2170,13 @@ def _build_runtime_app(
     default="Beddel Workflows",
     help="MCP server name.",
 )
+@click.option(
+    "--a2a-advertise-url",
+    "a2a_advertise_url",
+    default=None,
+    envvar="A2A_PUBLIC_URL",
+    help="Public URL advertised in A2A Agent Card (env: A2A_PUBLIC_URL).",
+)
 def serve(
     host: str,
     port: int,
@@ -2087,6 +2188,7 @@ def serve(
     transport: str,
     server_name: str,
     no_kits: bool,
+    a2a_advertise_url: str | None,
 ) -> None:
     """Start a FastAPI server exposing workflows as SSE endpoints."""
     # MCP mode — branch early, skip FastAPI
@@ -2133,7 +2235,15 @@ def serve(
 
     from beddel import __version__
 
-    app, loaded, wf_ids = _build_runtime_app(workflow_paths, tools=tools, kit=kit, no_kits=no_kits)
+    app, loaded, wf_ids = _build_runtime_app(
+        workflow_paths,
+        tools=tools,
+        kit=kit,
+        no_kits=no_kits,
+        a2a_enable=True,
+        port=port,
+        a2a_advertise_url=a2a_advertise_url,
+    )
 
     click.echo(f"Beddel v{__version__} — {loaded} workflow(s)")
     click.echo(f"Listening on http://{host}:{port}")
