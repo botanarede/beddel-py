@@ -1906,7 +1906,7 @@ def _build_runtime_app(
                 )
                 from a2a.server.request_handlers import DefaultRequestHandler  # type: ignore[import-not-found]
                 from a2a.server.tasks import InMemoryTaskStore  # type: ignore[import-not-found]
-                from beddel_agent_a2a.server import (  # type: ignore[import-not-found]
+                from beddel_serve_a2a.server import (  # type: ignore[import-not-found]
                     BeddelA2AExecutor,
                     build_agent_card,
                 )
