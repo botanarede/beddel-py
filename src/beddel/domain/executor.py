@@ -21,12 +21,15 @@ from typing import Any
 from beddel.domain.errors import BudgetError, ExecutionError, ResolveError, TracingError
 from beddel.domain.models import (
     SKIPPED,
+    ApprovalResult,
     BeddelEvent,
     BudgetStatus,
+    Decision,
     DefaultDependencies,
     EventType,
     ExecutionContext,
     RetryConfig,
+    RiskLevel,
     Step,
     StrategyType,
     Workflow,
@@ -210,6 +213,8 @@ class WorkflowExecutor:
     def _make_context_deps(
         self,
         execution_strategy: IExecutionStrategy | None = None,
+        *,
+        lifecycle_hooks_override: IHookManager | None = None,
     ) -> DefaultDependencies:
         """Build the :class:`DefaultDependencies` for a workflow run.
 
@@ -217,9 +222,15 @@ class WorkflowExecutor:
         as the base dependency bag with all fields forwarded.
         ``execution_strategy`` is overlaid (the method parameter wins
         when non-``None``, otherwise the value from ``self._deps`` is
-        preserved).  ``lifecycle_hooks`` always comes from
-        ``self._hook_manager`` so that runtime-added hooks (e.g. the
-        streaming ``_Collector``) are visible.
+        preserved).  ``lifecycle_hooks`` comes from *lifecycle_hooks_override*
+        when supplied, otherwise from ``self._hook_manager`` (the default
+        path used by :meth:`execute` and :meth:`execute_step_with_context`
+        callers that do not supply an override).  :meth:`execute_stream`
+        passes its call-local fan-out transport as the override so that
+        every lifecycle dispatch reached during that stream — including
+        dispatches made by primitives that read ``context.deps.lifecycle_hooks``
+        directly — is routed through the call-scoped transport rather than
+        the potentially-shared ``self._hook_manager`` (ADR-0015 Option C).
 
         When ``self._deps`` is ``None``, a minimal
         :class:`DefaultDependencies` is created with only
@@ -227,14 +238,21 @@ class WorkflowExecutor:
 
         Args:
             execution_strategy: Optional execution strategy override.
+            lifecycle_hooks_override: Optional per-call hook-manager override.
+                When ``None`` (the default), ``self._hook_manager`` is used.
 
         Returns:
             A fully-populated :class:`DefaultDependencies` instance.
         """
+        hooks: IHookManager = (
+            lifecycle_hooks_override
+            if lifecycle_hooks_override is not None
+            else self._hook_manager
+        )
         if self._deps is not None:
             return DefaultDependencies(
                 llm_provider=self._deps.llm_provider,
-                lifecycle_hooks=self._hook_manager,
+                lifecycle_hooks=hooks,
                 execution_strategy=(
                     execution_strategy
                     if execution_strategy is not None
@@ -264,7 +282,7 @@ class WorkflowExecutor:
                 coordination_strategy_registry=self._deps.coordination_strategy_registry,
             )
         return DefaultDependencies(
-            lifecycle_hooks=self._hook_manager,
+            lifecycle_hooks=hooks,
             execution_strategy=execution_strategy,
         )
 
@@ -285,9 +303,10 @@ class WorkflowExecutor:
         instance is used as the base dependency bag.  The
         ``execution_strategy`` parameter is overlaid on top, and
         ``lifecycle_hooks`` always comes from the executor's hook manager
-        (so that runtime-added hooks like the streaming collector are
-        visible).  When ``deps`` was not provided, a minimal
-        :class:`DefaultDependencies` is created.
+        (``self._hook_manager``, as configured at construction time).
+        Unlike :meth:`execute_stream`, this default path is not overridden
+        by a call-local transport.  When ``deps`` was not provided, a
+        minimal :class:`DefaultDependencies` is created.
 
         When ``context.deps.tracer`` is not ``None``, a
         ``beddel.workflow`` span wraps the entire execution with the
@@ -335,7 +354,7 @@ class WorkflowExecutor:
                     raise
 
         try:
-            await self._dispatch_hook("on_workflow_start", workflow.id, effective_inputs)
+            await self._dispatch_hook(context, "on_workflow_start", workflow.id, effective_inputs)
 
             strategy = context.deps.execution_strategy or SequentialStrategy()
             await strategy.execute(workflow, context, self._execute_step)
@@ -345,7 +364,7 @@ class WorkflowExecutor:
                 "metadata": dict(context.metadata),
             }
 
-            await self._dispatch_hook("on_workflow_end", workflow.id, result)
+            await self._dispatch_hook(context, "on_workflow_end", workflow.id, result)
             return result
         finally:
             if tracer is not None and workflow_span is not None:
@@ -370,20 +389,35 @@ class WorkflowExecutor:
         :class:`~beddel.domain.models.BeddelEvent` instances at each
         lifecycle point instead of collecting results into a dict.
 
-        A temporary :class:`ILifecycleHook` is installed to capture events
-        produced by the execution internals (``_execute_step``,
-        ``_retry_step``, etc.).  Events are pushed to an
+        A temporary :class:`ILifecycleHook` (the internal ``_Collector``) is
+        registered to capture events produced by the execution internals
+        (``_execute_step``, ``_retry_step``, etc.).  Events are pushed to an
         :class:`asyncio.Queue` and yielded in real-time as the strategy
         executes, rather than being batched after completion.
 
+        Per ADR-0015 (Option C), this call owns a call-scoped lifecycle
+        fan-out (``_StreamHookFanOut``) constructed fresh for this
+        invocation and discarded when the generator completes or is
+        closed.  The ``_Collector`` is registered against that call-local
+        fan-out — never directly against ``self._hook_manager`` — so
+        collector delivery does not depend on (and never leaks into) the
+        potentially-shared, long-lived hook manager.  The fan-out itself
+        forwards every lifecycle notification to both the call's
+        ``_Collector`` and to ``self._hook_manager`` (the caller-supplied
+        manager, or the no-op fallback), so caller-registered hooks
+        continue to be notified exactly as they are during :meth:`execute`.
+        The fan-out is placed in this call's ``context.deps.lifecycle_hooks``
+        (overriding the default which is ``self._hook_manager``), so every
+        lifecycle dispatch reached during the stream — ``_dispatch_hook``
+        calls, retry/error, budget, circuit-breaker, and any primitive that
+        reads ``context.deps.lifecycle_hooks`` directly — is routed through
+        the call-local transport.  :meth:`execute` and
+        :meth:`execute_step_with_context` callers that do not supply an
+        override are unaffected and continue to use ``self._hook_manager``
+        directly.
+
         For steps with ``stream=True``, the stored async-generator result
         is consumed and each chunk is yielded as a ``TEXT_CHUNK`` event.
-
-        Dependency resolution follows the same rules as :meth:`execute`:
-        when the executor was constructed with ``deps``, that instance is
-        used as the base with ``execution_strategy`` overlaid and
-        ``lifecycle_hooks`` always sourced from the executor's hook
-        manager (critical — the ``_Collector`` hook is added at runtime).
 
         When ``context.deps.tracer`` is not ``None``, a
         ``beddel.workflow`` span wraps the entire streaming execution
@@ -407,6 +441,94 @@ class WorkflowExecutor:
         # (hooks are already async, so this is safe). Deferred per architect
         # review (Story 4.0g F9).
         queue: asyncio.Queue[BeddelEvent | None] = asyncio.Queue()
+
+        class _StreamHookFanOut(IHookManager):
+            """Call-scoped lifecycle fan-out (ADR-0015 Option C).
+
+            Constructed fresh for a single :meth:`execute_stream` call and
+            never assigned to ``self`` or any module/global state.  Fans
+            every lifecycle notification out to this call's own registered
+            hooks (the internal ``_Collector``, registered via
+            :meth:`add_hook`) *and* to the *delegate* hook manager supplied
+            at construction — ``self._hook_manager`` as configured on the
+            executor at construction time (the no-op fallback, or a
+            caller-supplied concrete manager).
+
+            ``add_hook``/``remove_hook`` register/remove hooks against this
+            call-local instance only — they never touch the delegate's own
+            hook collection.  This is what keeps the ``_Collector`` scoped
+            to a single stream: it is never added to the potentially
+            shared, long-lived ``self._hook_manager``.
+
+            Each notification method fans out to every locally-registered
+            hook and to the delegate, isolating errors per-target so a
+            misbehaving collector or delegate never suppresses the other.
+            """
+
+            def __init__(self, delegate: IHookManager) -> None:
+                self._delegate = delegate
+                self._local_hooks: list[ILifecycleHook] = []
+
+            async def add_hook(self, hook: ILifecycleHook) -> None:
+                self._local_hooks.append(hook)
+
+            async def remove_hook(self, hook: ILifecycleHook) -> None:
+                with contextlib.suppress(ValueError):
+                    self._local_hooks.remove(hook)
+
+            async def _fan_out(self, method_name: str, *args: Any) -> None:
+                for hook in list(self._local_hooks):
+                    try:
+                        await getattr(hook, method_name)(*args)
+                    except Exception:
+                        logger.warning(
+                            "Stream-scoped lifecycle hook %s.%s raised (ignored)",
+                            type(hook).__name__,
+                            method_name,
+                            exc_info=True,
+                        )
+                try:
+                    await getattr(self._delegate, method_name)(*args)
+                except Exception:
+                    logger.warning(
+                        "Delegate lifecycle hook manager %s raised (ignored)",
+                        method_name,
+                        exc_info=True,
+                    )
+
+            async def on_workflow_start(self, workflow_id: str, inputs: dict[str, Any]) -> None:
+                await self._fan_out("on_workflow_start", workflow_id, inputs)
+
+            async def on_workflow_end(self, workflow_id: str, result: dict[str, Any]) -> None:
+                await self._fan_out("on_workflow_end", workflow_id, result)
+
+            async def on_step_start(self, step_id: str, primitive: str) -> None:
+                await self._fan_out("on_step_start", step_id, primitive)
+
+            async def on_step_end(self, step_id: str, result: Any) -> None:
+                await self._fan_out("on_step_end", step_id, result)
+
+            async def on_error(self, step_id: str, error: Exception) -> None:
+                await self._fan_out("on_error", step_id, error)
+
+            async def on_retry(self, step_id: str, attempt: int, error: Exception) -> None:
+                await self._fan_out("on_retry", step_id, attempt, error)
+
+            async def on_decision(self, decision: Decision) -> None:
+                await self._fan_out("on_decision", decision)
+
+            async def on_budget_threshold(
+                self, workflow_id: str, cumulative_cost: float, threshold: float
+            ) -> None:
+                await self._fan_out("on_budget_threshold", workflow_id, cumulative_cost, threshold)
+
+            async def on_approval_requested(
+                self, step_id: str, action: str, risk_level: RiskLevel
+            ) -> None:
+                await self._fan_out("on_approval_requested", step_id, action, risk_level)
+
+            async def on_approval_received(self, step_id: str, result: ApprovalResult) -> None:
+                await self._fan_out("on_approval_received", step_id, result)
 
         class _Collector(ILifecycleHook):
             """Internal hook that pushes events to a queue for real-time streaming.
@@ -476,8 +598,12 @@ class WorkflowExecutor:
                     )
                 )
 
+        # Call-scoped fan-out (ADR-0015 Option C) — local variable only,
+        # never assigned to self or module/global state. Discarded when
+        # this generator completes, errors, or is closed early.
+        fan_out = _StreamHookFanOut(self._hook_manager)
         collector = _Collector(queue)
-        await self._hook_manager.add_hook(collector)
+        await fan_out.add_hook(collector)
 
         try:
             effective_inputs = inputs or {}
@@ -485,7 +611,9 @@ class WorkflowExecutor:
                 workflow_id=workflow.id,
                 inputs=effective_inputs,
             )
-            context.deps = self._make_context_deps(execution_strategy)
+            context.deps = self._make_context_deps(
+                execution_strategy, lifecycle_hooks_override=fan_out
+            )
             context.metadata["_workflow_allowed_tools"] = workflow.allowed_tools
 
             tracer = context.deps.tracer
@@ -514,6 +642,7 @@ class WorkflowExecutor:
                     """
                     try:
                         await self._dispatch_hook(
+                            context,
                             "on_workflow_start",
                             workflow.id,
                             effective_inputs,
@@ -561,6 +690,7 @@ class WorkflowExecutor:
                             "metadata": dict(context.metadata),
                         }
                         await self._dispatch_hook(
+                            context,
                             "on_workflow_end",
                             workflow.id,
                             result,
@@ -593,7 +723,9 @@ class WorkflowExecutor:
                         else:
                             raise
         finally:
-            await self._hook_manager.remove_hook(collector)
+            # Remove the collector from the call-local fan-out — never
+            # from self._hook_manager, which never held it directly.
+            await fan_out.remove_hook(collector)
 
     async def execute_step_with_context(self, step: Step, context: ExecutionContext) -> Any:
         """Execute a single workflow step against an existing context.
@@ -630,7 +762,7 @@ class WorkflowExecutor:
             ExecutionError: ``BEDDEL-EXEC-002`` when the step fails.
         """
         context.current_step_id = step.id
-        await self._dispatch_hook("on_step_start", step.id, step.primitive)
+        await self._dispatch_hook(context, "on_step_start", step.id, step.primitive)
 
         # --- Circuit breaker check (LLM primitives only) ---
         cb = context.deps.circuit_breaker
@@ -679,7 +811,7 @@ class WorkflowExecutor:
             else:
                 result = await self._run_with_timeout(step, context)
 
-            await self._dispatch_hook("on_step_end", step.id, result)
+            await self._dispatch_hook(context, "on_step_end", step.id, result)
 
             # --- Budget enforcement ---
             be = context.deps.budget_enforcer
@@ -702,6 +834,7 @@ class WorkflowExecutor:
                     context.metadata["_budget_degraded"] = True
                     context.metadata["_degradation_model"] = be.degradation_model
                     await self._dispatch_hook(
+                        context,
                         "on_budget_threshold",
                         context.workflow_id,
                         be.cumulative_cost,
@@ -716,6 +849,7 @@ class WorkflowExecutor:
                 state_after = cb.state(_cb_provider)
                 if state_before == "half-open" and state_after == "closed":
                     await self._dispatch_hook(
+                        context,
                         "on_step_end",
                         step.id,
                         BeddelEvent(
@@ -733,6 +867,7 @@ class WorkflowExecutor:
                 state_after = cb.state(_cb_provider)
                 if state_before != "open" and state_after == "open":
                     await self._dispatch_hook(
+                        context,
                         "on_step_end",
                         step.id,
                         BeddelEvent(
@@ -754,10 +889,10 @@ class WorkflowExecutor:
                         raise
                 step_span = None  # Prevent double-end in finally
 
-            await self._dispatch_hook("on_error", step.id, exc)
+            await self._dispatch_hook(context, "on_error", step.id, exc)
             result = await self._apply_strategy(step, exc, context)
             context.step_results[step.id] = result
-            await self._dispatch_hook("on_step_end", step.id, result)
+            await self._dispatch_hook(context, "on_step_end", step.id, result)
             return result
         finally:
             if tracer is not None and step_span is not None:
@@ -790,19 +925,41 @@ class WorkflowExecutor:
         """
         return await self.execute_step_with_context(step, context)
 
-    async def _dispatch_hook(self, method_name: str, *args: Any) -> None:
-        """Dispatch a lifecycle event via the hook manager.
+    async def _dispatch_hook(
+        self, context: ExecutionContext, method_name: str, *args: Any
+    ) -> None:
+        """Dispatch a lifecycle event via the call's configured hook manager.
 
-        Delegates to the corresponding method on ``self._hook_manager``
-        (an :class:`IHookManager` instance).  The manager fans out to all
+        Delegates to the corresponding method on ``context.deps.lifecycle_hooks``
+        when set, falling back to ``self._hook_manager`` otherwise (an
+        :class:`IHookManager` instance).  The manager fans out to all
         registered hooks and handles per-hook error isolation internally.
 
+        For :meth:`execute` and :meth:`execute_step_with_context` callers
+        that do not supply an override, ``context.deps.lifecycle_hooks`` is
+        always ``self._hook_manager`` (set by :meth:`_make_context_deps`),
+        so this preserves the exact default dispatch path.  For
+        :meth:`execute_stream`, ``context.deps.lifecycle_hooks`` is instead
+        the call-local fan-out transport constructed for that stream
+        (ADR-0015 Option C), so every dispatch reached during the stream —
+        including dispatches from primitives that read
+        ``context.deps.lifecycle_hooks`` directly — is routed through the
+        call-scoped transport.
+
         Args:
+            context: The execution context whose ``deps.lifecycle_hooks``
+                supplies the hook manager for this dispatch, or ``None`` to
+                fall back to ``self._hook_manager``.
             method_name: Name of the :class:`ILifecycleHook` method to call.
             *args: Positional arguments forwarded to the hook method.
         """
+        hooks: IHookManager = (
+            context.deps.lifecycle_hooks
+            if context.deps.lifecycle_hooks is not None
+            else self._hook_manager
+        )
         try:
-            method = getattr(self._hook_manager, method_name)
+            method = getattr(hooks, method_name)
             await method(*args)
         except Exception:
             logger.warning(
@@ -1086,7 +1243,7 @@ class WorkflowExecutor:
                 delay *= random.uniform(0.5, 1.5)  # noqa: S311
 
             await asyncio.sleep(delay)
-            await self._dispatch_hook("on_retry", step.id, attempt, last_error)
+            await self._dispatch_hook(context, "on_retry", step.id, attempt, last_error)
 
             try:
                 return await self._run_with_timeout(step, context)

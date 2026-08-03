@@ -1015,6 +1015,102 @@ class TestLifecycleHookOrder:
 class TestExecuteStream:
     """Verify correct BeddelEvent sequence emitted by execute_stream()."""
 
+    async def test_no_hook_manager_real_executor_emits_full_sequence(self) -> None:
+        """AC1 (SH1.1): real executor + DefaultDependencies() + no lifecycle_hooks
+        still yields the full event sequence via execute_stream().
+
+        This is the case that was broken pre-fix: WorkflowExecutor.__init__
+        falls back to the no-op IHookManager() when lifecycle_hooks is not
+        supplied, and the old implementation registered the internal
+        _Collector directly on that no-op instance, so add_hook() silently
+        did nothing and zero events were ever yielded. The ADR-0015 Option C
+        stream-scoped fan-out fixes this by owning the collector's
+        registration independently of self._hook_manager.
+
+        Uses a real WorkflowExecutor, DefaultDependencies() with
+        lifecycle_hooks left as None (default), and a real registered
+        IPrimitive stub — no mocking of execute_stream() or the executor.
+        """
+        registry, _ = _registry_with_stub(return_value="hello")
+        wf = _make_workflow([_make_step("s1")])
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies())
+
+        assert executor._deps.lifecycle_hooks is None  # type: ignore[union-attr]
+        assert isinstance(executor._hook_manager, IHookManager)
+        assert not isinstance(executor._hook_manager, LifecycleHookManager)
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf):
+            events.append(event)
+
+        types = [e.event_type for e in events]
+        assert types == [
+            EventType.WORKFLOW_START,
+            EventType.STEP_START,
+            EventType.STEP_END,
+            EventType.WORKFLOW_END,
+        ]
+        # WORKFLOW_END is the terminal event — nothing after it.
+        assert events[-1].event_type == EventType.WORKFLOW_END
+
+    async def test_caller_hook_and_collector_both_notified_exactly_once(self) -> None:
+        """AC1 (SH1.1): a caller-supplied IHookManager with a registered hook
+        still receives every lifecycle notification exactly once, and the
+        internal collector still receives the complete event sequence —
+        both delivery paths are independent and neither suppresses the
+        other (call-local fan-out forwards to both).
+        """
+        calls: list[tuple[str, tuple[Any, ...]]] = []
+
+        class _TrackingHook(ILifecycleHook):
+            async def on_workflow_start(self, workflow_id: str, inputs: dict[str, Any]) -> None:
+                calls.append(("on_workflow_start", (workflow_id,)))
+
+            async def on_workflow_end(self, workflow_id: str, result: dict[str, Any]) -> None:
+                calls.append(("on_workflow_end", (workflow_id,)))
+
+            async def on_step_start(self, step_id: str, primitive: str) -> None:
+                calls.append(("on_step_start", (step_id, primitive)))
+
+            async def on_step_end(self, step_id: str, result: Any) -> None:
+                calls.append(("on_step_end", (step_id,)))
+
+        hook = _TrackingHook()
+        manager = LifecycleHookManager([hook])
+        registry, _ = _registry_with_stub(return_value="hello")
+        wf = _make_workflow([_make_step("s1")])
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(lifecycle_hooks=manager))
+
+        events: list[BeddelEvent] = []
+        async for event in executor.execute_stream(wf):
+            events.append(event)
+
+        # Collector delivery — full sequence via the queue/generator.
+        types = [e.event_type for e in events]
+        assert types == [
+            EventType.WORKFLOW_START,
+            EventType.STEP_START,
+            EventType.STEP_END,
+            EventType.WORKFLOW_END,
+        ]
+
+        # Caller-hook delivery — each notification exactly once.
+        call_names = [name for name, _ in calls]
+        assert call_names == [
+            "on_workflow_start",
+            "on_step_start",
+            "on_step_end",
+            "on_workflow_end",
+        ]
+        assert call_names.count("on_workflow_start") == 1
+        assert call_names.count("on_step_start") == 1
+        assert call_names.count("on_step_end") == 1
+        assert call_names.count("on_workflow_end") == 1
+
+        # The collector's registration never leaked onto the caller manager.
+        assert hook in manager._hooks  # type: ignore[union-attr]
+        assert len(manager._hooks) == 1  # type: ignore[union-attr]
+
     async def test_event_sequence_single_step(self) -> None:
         registry, _ = _registry_with_stub(return_value="result")
         wf = _make_workflow([_make_step("s1")])
@@ -1189,6 +1285,39 @@ class TestExecuteStream:
             async for _ in executor.execute_stream(wf):
                 pass
 
+        assert executor._hook_manager._hooks == [original_hook]  # type: ignore[union-attr]
+
+    async def test_execute_stream_early_aclose_leaves_no_transport_attached(self) -> None:
+        """Closing the generator early (aclose()) cleans up the call-scoped
+        transport: no reference to it remains on the executor or the
+        caller-supplied manager, and the background task is cancelled.
+
+        Proves Task 3's cleanup semantics for early generator closure, the
+        third of the three completion paths (normal completion, error,
+        early close) that must all release the call-local collector.
+        """
+        execution_started = asyncio.Event()
+
+        async def _slow_exec(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            execution_started.set()
+            await asyncio.sleep(10)
+            return "should not reach"
+
+        registry, _ = _registry_with_stub(side_effect=_slow_exec)
+        original_hook = ILifecycleHook()
+        wf = _make_workflow([_make_step("s1")])
+        manager = LifecycleHookManager([original_hook])
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(lifecycle_hooks=manager))
+
+        gen = executor.execute_stream(wf)
+        # Consume only the first event, then close the generator early.
+        first_event = await gen.__anext__()
+        assert first_event.event_type == EventType.WORKFLOW_START
+        await gen.aclose()
+
+        # No call-scoped collector remains attached to the caller's manager
+        # or to the executor's own hook manager after early closure.
+        assert manager._hooks == [original_hook]  # type: ignore[union-attr]
         assert executor._hook_manager._hooks == [original_hook]  # type: ignore[union-attr]
 
     async def test_execute_stream_respects_custom_strategy(self) -> None:
