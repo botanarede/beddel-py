@@ -737,6 +737,24 @@ class WorkflowExecutor:
         :class:`ExecutionContext` and need to drive step execution without
         creating a new one.
 
+        **Lifecycle hook dispatch precedence (SH1.1 contract widening):**
+        All lifecycle notifications emitted during this call are dispatched
+        via ``_dispatch_hook(context, ...)``, which reads
+        ``context.deps.lifecycle_hooks`` first and falls back to
+        ``self._hook_manager`` only when it is ``None``.  When this method
+        is called from :meth:`execute` or directly by a caller that did not
+        supply a ``lifecycle_hooks_override``, ``context.deps.lifecycle_hooks``
+        is always ``self._hook_manager`` (set by :meth:`_make_context_deps`),
+        so behaviour is identical to pre-SH1.1.  When called from within
+        :meth:`execute_stream`, ``context.deps.lifecycle_hooks`` is the
+        call-scoped fan-out transport constructed for that stream
+        (ADR-0015 Option C) — **a non-None ``context.deps.lifecycle_hooks``
+        therefore takes precedence over ``self._hook_manager``; the
+        instance manager is only a fallback.**  This invariant applies to
+        every lifecycle dispatch site in the executor (``_dispatch_hook``,
+        retry, error, budget-threshold, circuit-breaker) that routes through
+        the context.
+
         If the step has an ``if_condition``, it is evaluated first.  When
         truthy the step's primitive runs and any ``then_steps`` are executed
         afterwards.  When falsy the primitive is skipped and ``else_steps``
@@ -930,10 +948,12 @@ class WorkflowExecutor:
     ) -> None:
         """Dispatch a lifecycle event via the call's configured hook manager.
 
-        Delegates to the corresponding method on ``context.deps.lifecycle_hooks``
-        when set, falling back to ``self._hook_manager`` otherwise (an
-        :class:`IHookManager` instance).  The manager fans out to all
-        registered hooks and handles per-hook error isolation internally.
+        **Precedence invariant (SH1.1):** a non-``None``
+        ``context.deps.lifecycle_hooks`` takes precedence over
+        ``self._hook_manager``; the instance manager is only a fallback.
+        Concretely: when ``context.deps.lifecycle_hooks`` is set (i.e. not
+        ``None``), it is used exclusively for this dispatch; ``self._hook_manager``
+        is consulted only when ``context.deps.lifecycle_hooks`` is ``None``.
 
         For :meth:`execute` and :meth:`execute_step_with_context` callers
         that do not supply an override, ``context.deps.lifecycle_hooks`` is
@@ -946,10 +966,14 @@ class WorkflowExecutor:
         ``context.deps.lifecycle_hooks`` directly — is routed through the
         call-scoped transport.
 
+        The manager fans out to all registered hooks and handles per-hook
+        error isolation internally.
+
         Args:
             context: The execution context whose ``deps.lifecycle_hooks``
-                supplies the hook manager for this dispatch, or ``None`` to
-                fall back to ``self._hook_manager``.
+                supplies the hook manager for this dispatch.  A non-``None``
+                value takes precedence; ``self._hook_manager`` is the
+                fallback when the context's value is ``None``.
             method_name: Name of the :class:`ILifecycleHook` method to call.
             *args: Positional arguments forwarded to the hook method.
         """
