@@ -52,14 +52,20 @@ Hook-notification tests (SH1.3 post-review fix):
           harness and depend on proto/google packages that are kit-external.
     See: repo/kits/serve-a2a-kit/tests/test_a2a_integration.py
 
-Dashboard bridge gap:
-    repo/kits/serve-fastapi-kit/python/beddel_serve_fastapi/dashboard/bridge.py
-    uses execute_stream() but has no exported factory and requires a WebSocket
-    transport layer, not HTTP SSE. A regression test harness would need to mock
-    the WebSocket protocol, which is not feasible within this story. The bridge
-    is structurally fixed by SH1.1 (the stream-scoped fan-out applies to every
-    execute_stream() call regardless of caller). This gap is explicitly documented
-    rather than silently assumed fixed (per PRD FR-SH1.3 and SH1.4 Dev Notes).
+Dashboard bridge — DashboardSSEBridge.execute_and_stream() (FIX 1, SH1.4 post-review):
+    The original claim that DashboardSSEBridge requires a WebSocket transport and
+    is not directly testable was FALSE. DashboardSSEBridge.execute_and_stream() is
+    a plain async method that calls self._executor.execute_stream() and returns an
+    async generator of SSE dicts via BeddelSSEAdapter — no WebSocket, no HTTP,
+    no ASGI transport anywhere in the class. A grep across beddel_serve_fastapi/
+    for WebSocket found zero matches. The bridge IS directly testable by constructing
+    a real WorkflowExecutor + ExecutionHistoryStore and calling execute_and_stream().
+    Direct regression coverage is now provided in TestDashboardBridgeRealExecutor
+    (see below): it constructs a real WorkflowExecutor with DefaultDependencies()
+    (no lifecycle_hooks, matching the pre-SH1.3 CLI pattern), calls execute_and_stream(),
+    iterates the async generator, and asserts non-empty events, a "workflow_end" terminal
+    event in the SSE event field, and that the ExecutionHistoryStore record ends with
+    status "success". This class is NOT deferred — it is present and passing.
 
 Validation:
     source src/beddel-py/.venv/bin/activate
@@ -75,6 +81,8 @@ from typing import Any
 import httpx
 from beddel_ag_ui.endpoint import create_agui_endpoint
 from beddel_ag_ui.unified import create_unified_agui_endpoint
+from beddel_serve_fastapi.dashboard.bridge import DashboardSSEBridge
+from beddel_serve_fastapi.dashboard.history import ExecutionHistoryStore
 from beddel_serve_fastapi.handler import create_beddel_handler
 from fastapi import FastAPI
 
@@ -273,6 +281,12 @@ class TestAGUIEndpointRealExecutor:
 
         Uses DefaultDependencies() with lifecycle_hooks=None (exact pre-SH1.3
         construction) to prove SH1.1 structural fix is sufficient.
+
+        Router is mounted at prefix=/ag-ui/{wf.id}, matching the production
+        _build_runtime_app() composition in commands.py line 1871:
+            app.include_router(agui_router, prefix=f"/ag-ui/{wf_id}")
+        Testing at the bare /ag-ui/ prefix would not exercise the per-workflow-ID
+        composition boundary that this epic fixed.
         """
         registry = _make_registry()
         # stream=False: AG-UI always calls execute_stream() regardless
@@ -281,13 +295,14 @@ class TestAGUIEndpointRealExecutor:
         deps = DefaultDependencies(registry=registry)
         app = FastAPI()
         router = create_agui_endpoint(wf, deps=deps)
-        app.include_router(router, prefix="/ag-ui")
+        # Use the real per-workflow prefix pattern from commands.py line 1871
+        app.include_router(router, prefix=f"/ag-ui/{wf.id}")
 
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.post(
-                "/ag-ui/",
+                f"/ag-ui/{wf.id}/",
                 json={},
                 headers={"Accept": "text/event-stream"},
             )
@@ -310,9 +325,12 @@ class TestAGUIEndpointRealExecutor:
 
         # Verify a RunFinishedEvent is present (terminal event for AG-UI protocol).
         # The event type is sent as SSE "event:" field by the AG-UI adapter.
+        # BeddelAGUIAdapter maps WORKFLOW_END → RunFinishedEvent whose type.value is
+        # "RUN_FINISHED" (ag_ui.core.EventType.RUN_FINISHED).
         event_field_values = [e.get("event", "") for e in events]
         has_run_finished = any(
-            "RunFinished" in ev or "run_finished" in ev.lower() for ev in event_field_values
+            "RunFinished" in ev or "run_finished" in ev.lower() or "RUN_FINISHED" in ev
+            for ev in event_field_values
         )
         assert has_run_finished, (
             f"No RunFinishedEvent found in AG-UI SSE stream. "
@@ -320,7 +338,10 @@ class TestAGUIEndpointRealExecutor:
         )
 
     async def test_agui_endpoint_with_concrete_hooks_also_streams(self) -> None:
-        """Verifies that post-SH1.3 concrete hooks don't break the AG-UI stream."""
+        """Verifies that post-SH1.3 concrete hooks don't break the AG-UI stream.
+
+        Router is mounted at prefix=/ag-ui/{wf.id} (production pattern).
+        """
         registry = _make_registry()
         wf = _make_output_gen_workflow()
 
@@ -330,13 +351,13 @@ class TestAGUIEndpointRealExecutor:
         )
         app = FastAPI()
         router = create_agui_endpoint(wf, deps=deps)
-        app.include_router(router, prefix="/ag-ui")
+        app.include_router(router, prefix=f"/ag-ui/{wf.id}")
 
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.post(
-                "/ag-ui/",
+                f"/ag-ui/{wf.id}/",
                 json={},
                 headers={"Accept": "text/event-stream"},
             )
@@ -359,6 +380,13 @@ class TestUnifiedAGUIRealExecutor:
 
         Uses DefaultDependencies() with lifecycle_hooks=None (exact pre-SH1.3
         construction) to prove SH1.1 structural fix is sufficient.
+
+        Also asserts a terminal RunFinishedEvent (SSE event field "RUN_FINISHED") is
+        present — a stream that hangs or ends abnormally without a terminal frame would
+        previously have passed this test (SH1.4 post-review FIX 2).
+        The unified endpoint emits AG-UI events via _agui_sse_stream which uses
+        event.type.value as the SSE event field; WORKFLOW_END maps to RunFinishedEvent
+        whose type.value is "RUN_FINISHED" (ag_ui.core.EventType.RUN_FINISHED).
         """
         registry = _make_registry()
         wf = _make_output_gen_workflow()
@@ -394,6 +422,21 @@ class TestUnifiedAGUIRealExecutor:
 
         data_events = [e for e in events if e.get("data")]
         assert data_events, f"No data-bearing SSE events in unified AG-UI response: {events!r}"
+
+        # Assert terminal RunFinishedEvent is present.
+        # The unified endpoint's _agui_sse_stream serialises events using event.type.value
+        # as the SSE "event:" field. WORKFLOW_END → RunFinishedEvent → type.value = "RUN_FINISHED".
+        event_field_values = [e.get("event", "") for e in events]
+        has_run_finished = any(
+            "RUN_FINISHED" in ev or "RunFinished" in ev or "run_finished" in ev.lower()
+            for ev in event_field_values
+        )
+        assert has_run_finished, (
+            f"No RunFinishedEvent (RUN_FINISHED) found in unified AG-UI SSE stream. "
+            f"A stream that terminates abnormally or hangs without a terminal frame "
+            f"would produce this failure. "
+            f"Events: {event_field_values!r}\nRaw SSE: {sse_text[:1000]}"
+        )
 
     async def test_unified_agui_with_concrete_hooks_also_streams(self) -> None:
         """Verifies that post-SH1.3 concrete hooks don't break the unified AG-UI stream."""
@@ -451,6 +494,100 @@ class TestUnifiedAGUIRealExecutor:
         assert response.status_code == 200
         assert response.text.strip(), (
             "Unified AG-UI SSE body empty when using single-workflow default"
+        )
+
+
+# ---------------------------------------------------------------------------
+# SH1.4 post-review fix — Dashboard bridge real-executor regression
+# ---------------------------------------------------------------------------
+# FIX 1: DashboardSSEBridge.execute_and_stream() is a plain async method that
+# calls self._executor.execute_stream() and returns an async generator of SSE
+# dicts via BeddelSSEAdapter — no WebSocket, no HTTP, no ASGI transport.
+# A grep across beddel_serve_fastapi/ for WebSocket found zero matches.
+# The original claim in the story Dev Notes and the module docstring that a
+# harness was "not feasible" due to WebSocket requirements was FALSE.
+# This class directly tests the bridge with a real WorkflowExecutor, proving:
+#   (a) events are non-empty
+#   (b) a "workflow_end" terminal event is present in the SSE event field
+#   (c) the ExecutionHistoryStore record for that run_id ends with status "success"
+# ---------------------------------------------------------------------------
+
+
+class TestDashboardBridgeRealExecutor:
+    """DashboardSSEBridge.execute_and_stream() with real executor, no mocking.
+
+    Guards the dashboard bridge path in
+    beddel_serve_fastapi.dashboard.bridge.DashboardSSEBridge.
+
+    The bridge is a plain async class: execute_and_stream() calls
+    self._executor.execute_stream() and pipes results through
+    BeddelSSEAdapter.stream_events(), returning (run_id, sse_stream).
+    No WebSocket, no HTTP transport, no ASGI required — the class is
+    directly instantiable with a WorkflowExecutor + ExecutionHistoryStore.
+
+    This test class disproves the original (false) claim that the bridge
+    was not directly testable due to WebSocket requirements.
+    """
+
+    async def test_bridge_execute_and_stream_returns_nonempty_events_with_terminal(
+        self,
+    ) -> None:
+        """DashboardSSEBridge yields non-empty SSE dicts with a workflow_end terminal event.
+
+        Constructs a real WorkflowExecutor with DefaultDependencies() (no
+        lifecycle_hooks, matching the pre-SH1.3 CLI pattern) and a real
+        ExecutionHistoryStore, calls execute_and_stream(), iterates the
+        returned async generator, and asserts:
+          (a) the event list is non-empty,
+          (b) a "workflow_end" terminal event is present (SSE dict "event" field),
+          (c) the ExecutionHistoryStore record for that run_id ends with status "success".
+
+        BeddelSSEAdapter.stream_events() yields dicts where the "event" key is
+        set to event.event_type.value — so the terminal event has event="workflow_end".
+        """
+        registry = _make_registry()
+        wf = _make_output_gen_workflow()
+
+        # DefaultDependencies() with no lifecycle_hooks — mirrors pre-SH1.3 CLI pattern
+        deps = DefaultDependencies(registry=registry)
+        executor = WorkflowExecutor(registry, deps=deps)
+        store = ExecutionHistoryStore()
+
+        bridge = DashboardSSEBridge(executor=executor, history=store)
+        run_id, sse_stream = await bridge.execute_and_stream(wf)
+
+        # Drain the async generator
+        collected: list[dict[str, str]] = []
+        async for sse_dict in sse_stream:
+            collected.append(sse_dict)
+
+        # (a) non-empty events
+        assert collected, (
+            "DashboardSSEBridge.execute_and_stream() yielded zero SSE dicts — "
+            "execute_stream() returned no events (pre-SH1.1 regression in bridge path)"
+        )
+
+        # (b) terminal "workflow_end" event must be present
+        # BeddelSSEAdapter yields {"event": event.event_type.value, "data": ...}
+        # so the terminal event has event="workflow_end".
+        event_values = [d.get("event", "") for d in collected]
+        assert "workflow_end" in event_values, (
+            f"No workflow_end terminal event in DashboardSSEBridge SSE output. "
+            f"event values: {event_values!r}"
+        )
+
+        # (c) ExecutionHistoryStore record ends with status "success"
+        record = store.get(run_id)
+        assert record is not None, (
+            f"ExecutionHistoryStore has no record for run_id={run_id!r} — "
+            "bridge.execute_and_stream() did not call history.add() for this run"
+        )
+        assert record.status == "success", (
+            f"ExecutionHistoryStore record for run_id={run_id!r} has status={record.status!r}, "
+            f"expected 'success'. events collected: {collected!r}"
+        )
+        assert record.finished_at is not None, (
+            "ExecutionHistoryStore record has no finished_at — stream did not complete cleanly"
         )
 
 
