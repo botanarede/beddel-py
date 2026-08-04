@@ -1619,6 +1619,7 @@ def _build_runtime_app(
         )
         raise SystemExit(1) from None
 
+    from beddel.adapters.hooks import LifecycleHookManager as _LifecycleHookManager
     from beddel.domain.errors import BeddelError
     from beddel.domain.models import DefaultDependencies, Workflow
     from beddel.domain.parser import WorkflowParser
@@ -1806,6 +1807,7 @@ def _build_runtime_app(
             ),
             workflow_loader=_make_workflow_loader(wf_parent),
             registry=registry,
+            lifecycle_hooks=_LifecycleHookManager(),
         )
         router = create_beddel_handler(
             workflow,
@@ -1863,6 +1865,7 @@ def _build_runtime_app(
                     ),
                     workflow_loader=_make_workflow_loader(wf_path_.parent.resolve()),
                     registry=registry,
+                    lifecycle_hooks=_LifecycleHookManager(),
                 )
                 agui_router = create_agui_endpoint(wf, deps=wf_deps)
                 app.include_router(agui_router, prefix=f"/ag-ui/{wf_id}")
@@ -1890,6 +1893,7 @@ def _build_runtime_app(
                     ),
                     workflow_loader=_make_workflow_loader(_wf_path.parent.resolve()),
                     registry=registry,
+                    lifecycle_hooks=_LifecycleHookManager(),
                 )
                 _executor = _WFExec(registry, deps=_wf_deps)
                 _agui_executors[_wf_id] = (_wf, _executor)
@@ -1976,6 +1980,7 @@ def _build_runtime_app(
                     ),
                     workflow_loader=_make_workflow_loader(_wf_path.parent.resolve()),
                     registry=registry,
+                    lifecycle_hooks=_LifecycleHookManager(),
                 )
                 _a2a_exec = _A2AExec(registry, deps=_a2a_deps)
                 _a2a_registry[_wf_id] = (_wf, _a2a_exec)
