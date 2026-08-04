@@ -1619,6 +1619,105 @@ class TestExecuteStream:
         assert error_events[0].step_id == "fail-s"
         assert "fatal" in error_events[0].data["error"]
 
+    async def test_concurrent_stream_isolation_no_cross_talk(self) -> None:
+        """AC1 (SH1.2 / PRD AC5 / FR-SH1.4): two concurrent execute_stream() calls
+        on the SAME executor instance each receive only their own events —
+        no events from the other stream leak in.
+
+        PRE-FIX SCENARIO (would have FAILED against pre-SH1.1 code):
+        Before ADR-0015 Option C, execute_stream() registered its internal
+        _Collector directly on the long-lived, instance-scoped self._hook_manager.
+        The CLI reuses one WorkflowExecutor per workflow across all HTTP requests.
+        When two concurrent execute_stream() calls shared that instance, both
+        collectors were added to the same manager, so each stream received every
+        lifecycle notification from both calls. A second concurrent stream received
+        its own 4 events PLUS all 4 events of the first stream (8 total instead of 4).
+
+        POST-FIX GUARANTEE (this test proves):
+        ADR-0015 Option C constructs a fresh _StreamHookFanOut per execute_stream()
+        call as a local variable only, never assigned to self. Each collector is
+        registered against its own call-local fan-out, never against the shared
+        self._hook_manager. Two concurrent calls therefore cannot share collectors,
+        and no event from stream A can appear in stream B's queue.
+
+        Uses:
+        - A single WorkflowExecutor instance (same pattern as the CLI)
+        - DefaultDependencies() with no lifecycle_hooks (exact CLI construction)
+        - Two distinct workflow IDs so cross-talk is detectable by event data
+        - asyncio.gather to drive both streams concurrently
+        - Real WorkflowExecutor and real registered primitives — no mocking
+        """
+        registry, _ = _registry_with_stub(return_value="ok")
+        wf_a = _make_workflow([_make_step("s1")], workflow_id="wf-a")
+        wf_b = _make_workflow([_make_step("s1")], workflow_id="wf-b")
+
+        # Single executor instance — same pattern the CLI uses (one per workflow,
+        # reused across all HTTP requests for that workflow).
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies())
+
+        events_a: list[BeddelEvent] = []
+        events_b: list[BeddelEvent] = []
+
+        async def collect_a() -> None:
+            async for event in executor.execute_stream(wf_a):
+                events_a.append(event)
+
+        async def collect_b() -> None:
+            async for event in executor.execute_stream(wf_b):
+                events_b.append(event)
+
+        # Run both streams concurrently against the same executor instance.
+        await asyncio.gather(collect_a(), collect_b())
+
+        # Both streams must have terminated correctly.
+        assert events_a, "stream A yielded no events"
+        assert events_b, "stream B yielded no events"
+        assert events_a[-1].event_type == EventType.WORKFLOW_END, (
+            f"stream A did not end with WORKFLOW_END: {[e.event_type for e in events_a]}"
+        )
+        assert events_b[-1].event_type == EventType.WORKFLOW_END, (
+            f"stream B did not end with WORKFLOW_END: {[e.event_type for e in events_b]}"
+        )
+
+        # Each stream must contain exactly 4 events (WORKFLOW_START, STEP_START,
+        # STEP_END, WORKFLOW_END) — not 8 (which would indicate cross-talk).
+        assert len(events_a) == 4, (
+            f"stream A: expected 4 events, got {len(events_a)}: {[e.event_type for e in events_a]}"
+        )
+        assert len(events_b) == 4, (
+            f"stream B: expected 4 events, got {len(events_b)}: {[e.event_type for e in events_b]}"
+        )
+
+        # No cross-talk: WORKFLOW_START events must carry each stream's own workflow_id.
+        wf_start_a = next(e for e in events_a if e.event_type == EventType.WORKFLOW_START)
+        wf_start_b = next(e for e in events_b if e.event_type == EventType.WORKFLOW_START)
+        assert wf_start_a.data.get("workflow_id") == "wf-a", (
+            f"stream A received wrong workflow_id in WORKFLOW_START: "
+            f"{wf_start_a.data.get('workflow_id')!r}"
+        )
+        assert wf_start_b.data.get("workflow_id") == "wf-b", (
+            f"stream B received wrong workflow_id in WORKFLOW_START: "
+            f"{wf_start_b.data.get('workflow_id')!r}"
+        )
+
+        # Confirm the wf-b workflow_id never appears in stream A and vice versa.
+        a_wf_ids = {
+            e.data.get("workflow_id")
+            for e in events_a
+            if isinstance(e.data, dict) and "workflow_id" in e.data
+        }
+        b_wf_ids = {
+            e.data.get("workflow_id")
+            for e in events_b
+            if isinstance(e.data, dict) and "workflow_id" in e.data
+        }
+        assert "wf-b" not in a_wf_ids, (
+            f"stream A contains wf-b events (cross-talk detected): {a_wf_ids}"
+        )
+        assert "wf-a" not in b_wf_ids, (
+            f"stream B contains wf-a events (cross-talk detected): {b_wf_ids}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # AC-6 — Strategy injection
