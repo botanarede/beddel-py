@@ -1,4 +1,4 @@
-"""Real-executor streaming regression tests for Epic SH1 (Story SH1.4).
+"""Real-executor streaming regression tests for Epic SH1 (Stories SH1.4 and SH1.3).
 
 These tests drive a REAL ``WorkflowExecutor`` (no ``execute_stream()`` mocking)
 through the actual HTTP surface kit factories over a real ASGI transport, proving
@@ -13,10 +13,44 @@ WHAT WAS BROKEN (pre-SH1.1):
     so add_hook() silently did nothing. These tests ensure that defect cannot
     re-emerge without a failing test at the HTTP layer.
 
-Surfaces covered:
+Surfaces covered (SH1.4 — streaming non-regression):
     - /workflows/{id} with stream=True step (via create_beddel_handler)
     - /ag-ui/{id}  (via create_agui_endpoint)
     - /ag-ui (unified, via create_unified_agui_endpoint + WorkflowExecutor)
+
+Hook-notification tests (SH1.3 post-review fix):
+    The 4 CLI streaming surfaces in commands.py (lines 1810, 1868, 1896, 1983)
+    each inject ``lifecycle_hooks=LifecycleHookManager()`` into DefaultDependencies
+    (the SH1.3 fix).  The tests in ``TestHookNotificationBeddelHandler``,
+    ``TestHookNotificationAGUIEndpoint``, and ``TestHookNotificationUnifiedAGUI``
+    verify that a user-supplied ILifecycleHook registered into a LifecycleHookManager
+    and wired through the same construction pattern as each CLI site actually has its
+    ``on_workflow_start`` and ``on_workflow_end`` callbacks invoked at least once when
+    a workflow is executed.  These tests are structurally capable of failing: if the
+    lifecycle_hooks kwarg is omitted from DefaultDependencies (or a bare IHookManager()
+    is used instead of LifecycleHookManager), the hook's callbacks will not fire and
+    the assertions will fail — exactly the silent-delivery regression class this epic
+    exists to prevent.
+
+    Surfaces 1–3 (create_beddel_handler, create_agui_endpoint,
+    create_unified_agui_endpoint) are covered directly here.
+
+    Surface 4 — A2A (BeddelA2AExecutor / commands.py line 1983) — is DEFERRED
+    to repo/kits/serve-a2a-kit/tests/.  Rationale:
+        • ``beddel_serve_a2a`` is not installed in the SDK venv (it lives in the
+          serve-a2a-kit and is only available via conftest.py sys.path injection
+          when running from the kit's test directory, or when serve-a2a-kit is
+          installed as an editable extra).
+        • BeddelA2AExecutor.execute() requires a real a2a-sdk RequestContext,
+          EventQueue, and DefaultRequestHandler, which means the test harness
+          must boot the full a2a JSON-RPC stack.  The existing
+          test_a2a_integration.py in serve-a2a-kit already validates that
+          BeddelA2AExecutor drives execute_stream() end-to-end.  Adding hook
+          assertions there (with a _TrackingHook wired into the WorkflowExecutor
+          stored in the _StubWorkflowExecutor's place) is the correct location.
+        • Running those tests in this module would duplicate the entire a2a kit
+          harness and depend on proto/google packages that are kit-external.
+    See: repo/kits/serve-a2a-kit/tests/test_a2a_integration.py
 
 Dashboard bridge gap:
     repo/kits/serve-fastapi-kit/python/beddel_serve_fastapi/dashboard/bridge.py
@@ -47,6 +81,7 @@ from fastapi import FastAPI
 from beddel.adapters.hooks import LifecycleHookManager
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import DefaultDependencies, Step, Workflow
+from beddel.domain.ports import ILifecycleHook
 from beddel.domain.registry import PrimitiveRegistry
 from beddel.primitives import register_builtins
 
@@ -416,4 +451,267 @@ class TestUnifiedAGUIRealExecutor:
         assert response.status_code == 200
         assert response.text.strip(), (
             "Unified AG-UI SSE body empty when using single-workflow default"
+        )
+
+
+# ---------------------------------------------------------------------------
+# SH1.3 post-review fix — hook-notification tests for CLI streaming surfaces
+# ---------------------------------------------------------------------------
+# Each test below registers a real _TrackingHook (an ILifecycleHook subclass
+# that records which on_* callbacks were called) into a LifecycleHookManager,
+# drives it through the construction pattern that each CLI injection site
+# (commands.py lines 1810, 1868, 1896) actually uses, executes one workflow,
+# and asserts that on_workflow_start and on_workflow_end were each called at
+# least once.
+#
+# Why these tests are structurally capable of failing
+# ---------------------------------------------------
+# The assertion `assert "on_workflow_start" in hook.calls` will fail if:
+#   - lifecycle_hooks is not supplied to DefaultDependencies (the pre-SH1.3
+#     state), because the executor falls back to a no-op IHookManager and
+#     add_hook() silently does nothing — hooks registered on the fallback
+#     manager are never invoked.
+#   - A bare IHookManager() is used instead of LifecycleHookManager, same result.
+#   - The LifecycleHookManager is constructed but the hook is not added to it.
+#   - execute_stream() is bypassed (e.g. stream=False on the step for site 1,
+#     which routes through the non-streaming code path — see note on Site 1).
+#
+# Site 4 (A2A / BeddelA2AExecutor at commands.py line 1983) is deferred to
+# repo/kits/serve-a2a-kit/tests/. See the module docstring for full rationale.
+# ---------------------------------------------------------------------------
+
+
+class _TrackingHook(ILifecycleHook):
+    """Records every on_* callback invocation by name.
+
+    Reusable across all 3 surface tests.  Instantiate fresh per test
+    (do not share across tests — calls list is mutable).
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def on_workflow_start(self, workflow_id: str, inputs: dict[str, Any]) -> None:
+        self.calls.append("on_workflow_start")
+
+    async def on_workflow_end(self, workflow_id: str, result: dict[str, Any]) -> None:
+        self.calls.append("on_workflow_end")
+
+    async def on_step_start(self, step_id: str, primitive: str) -> None:
+        self.calls.append(f"on_step_start:{step_id}")
+
+    async def on_step_end(self, step_id: str, result: Any) -> None:
+        self.calls.append(f"on_step_end:{step_id}")
+
+
+class TestHookNotificationBeddelHandler:
+    """Site 1 — create_beddel_handler (commands.py line 1810).
+
+    The CLI construction pattern at this site is:
+        deps = DefaultDependencies(
+            ...,
+            lifecycle_hooks=_LifecycleHookManager(),
+        )
+        router = create_beddel_handler(workflow, deps=deps)
+
+    This test replicates that pattern exactly, registers a _TrackingHook into
+    the manager, drives one workflow execution via HTTP, and asserts the hook's
+    on_workflow_start and on_workflow_end were called.
+
+    NOTE: stream=True is required on the step so that
+    beddel_serve_fastapi.handler._has_stream_steps is True and the handler
+    calls execute_stream() rather than the fallback execute() path.  The
+    lifecycle hook notifications are emitted by execute_stream(); the non-
+    streaming execute() path may or may not call them (out of scope for this
+    story).  This matches what the CLI uses when a workflow file declares a
+    streaming step.
+    """
+
+    async def test_tracking_hook_receives_workflow_start_and_end(self) -> None:
+        """on_workflow_start and on_workflow_end are called via create_beddel_handler.
+
+        Fails if lifecycle_hooks is omitted from DefaultDependencies (pre-SH1.3
+        regression) because the executor's no-op IHookManager silently discards
+        add_hook() calls and the tracking hook's callbacks are never invoked.
+        """
+        registry = _make_registry()
+        # stream=True forces execute_stream() path in the handler (see class docstring)
+        wf = _make_output_gen_workflow(stream=True)
+
+        hook = _TrackingHook()
+        manager = LifecycleHookManager([hook])
+
+        # Mirror commands.py site 1 (line 1810):
+        #   deps = DefaultDependencies(..., lifecycle_hooks=_LifecycleHookManager())
+        deps = DefaultDependencies(
+            registry=registry,
+            lifecycle_hooks=manager,
+        )
+        app = FastAPI()
+        router = create_beddel_handler(wf, deps=deps)
+        app.include_router(router, prefix=f"/workflows/{wf.id}")
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                f"/workflows/{wf.id}/",
+                json={},
+                headers={"Accept": "text/event-stream"},
+            )
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text[:200]}"
+        )
+        assert response.text.strip(), "SSE body is empty — execute_stream() yielded zero events"
+
+        # Hook notification assertions — these fail if lifecycle_hooks was
+        # omitted from DefaultDependencies (the pre-SH1.3 regression).
+        assert "on_workflow_start" in hook.calls, (
+            f"on_workflow_start was not called. hook.calls={hook.calls!r}\n"
+            "This means LifecycleHookManager was not wired into DefaultDependencies "
+            "(pre-SH1.3 regression: silent hook non-delivery on CLI streaming surface 1)."
+        )
+        assert "on_workflow_end" in hook.calls, (
+            f"on_workflow_end was not called. hook.calls={hook.calls!r}\n"
+            "Workflow may have failed before completion, or hooks are not wired."
+        )
+
+
+class TestHookNotificationAGUIEndpoint:
+    """Site 2 — create_agui_endpoint (commands.py line 1868).
+
+    The CLI construction pattern at this site is:
+        wf_deps = DefaultDependencies(
+            ...,
+            lifecycle_hooks=_LifecycleHookManager(),
+        )
+        agui_router = create_agui_endpoint(wf, deps=wf_deps)
+
+    This test replicates that pattern exactly with a tracking hook and
+    asserts on_workflow_start and on_workflow_end were called.
+
+    The AG-UI endpoint always calls execute_stream() regardless of whether
+    any step has stream=True, so stream=False (the default) is fine here.
+    """
+
+    async def test_tracking_hook_receives_workflow_start_and_end(self) -> None:
+        """on_workflow_start and on_workflow_end are called via create_agui_endpoint.
+
+        Fails if lifecycle_hooks is omitted from DefaultDependencies (pre-SH1.3
+        regression) because the executor's no-op IHookManager silently discards
+        add_hook() calls and the tracking hook's callbacks are never invoked.
+        """
+        registry = _make_registry()
+        wf = _make_output_gen_workflow()  # stream=False is fine; AG-UI always streams
+
+        hook = _TrackingHook()
+        manager = LifecycleHookManager([hook])
+
+        # Mirror commands.py site 2 (line 1868):
+        #   wf_deps = DefaultDependencies(..., lifecycle_hooks=_LifecycleHookManager())
+        #   agui_router = create_agui_endpoint(wf, deps=wf_deps)
+        deps = DefaultDependencies(
+            registry=registry,
+            lifecycle_hooks=manager,
+        )
+        app = FastAPI()
+        router = create_agui_endpoint(wf, deps=deps)
+        app.include_router(router, prefix="/ag-ui")
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/ag-ui/",
+                json={},
+                headers={"Accept": "text/event-stream"},
+            )
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text[:200]}"
+        )
+        assert response.text.strip(), (
+            "AG-UI SSE body is empty — execute_stream() yielded zero events"
+        )
+
+        assert "on_workflow_start" in hook.calls, (
+            f"on_workflow_start was not called via AG-UI endpoint. hook.calls={hook.calls!r}\n"
+            "This means LifecycleHookManager was not wired into DefaultDependencies "
+            "(pre-SH1.3 regression: silent hook non-delivery on CLI streaming surface 2)."
+        )
+        assert "on_workflow_end" in hook.calls, (
+            f"on_workflow_end was not called via AG-UI endpoint. hook.calls={hook.calls!r}"
+        )
+
+
+class TestHookNotificationUnifiedAGUI:
+    """Site 3 — create_unified_agui_endpoint + WorkflowExecutor (commands.py line 1896).
+
+    The CLI construction pattern at this site is:
+        _wf_deps = DefaultDependencies(
+            ...,
+            lifecycle_hooks=_LifecycleHookManager(),
+        )
+        _executor = _WFExec(registry, deps=_wf_deps)
+        _agui_executors[_wf_id] = (_wf, _executor)
+        unified_router = create_unified_agui_endpoint(_agui_executors)
+
+    This test replicates that pattern exactly with a tracking hook and
+    asserts on_workflow_start and on_workflow_end were called.
+    """
+
+    async def test_tracking_hook_receives_workflow_start_and_end(self) -> None:
+        """on_workflow_start and on_workflow_end are called via create_unified_agui_endpoint.
+
+        Fails if lifecycle_hooks is omitted from DefaultDependencies (pre-SH1.3
+        regression) because the executor's no-op IHookManager silently discards
+        add_hook() calls and the tracking hook's callbacks are never invoked.
+        """
+        registry = _make_registry()
+        wf = _make_output_gen_workflow()
+
+        hook = _TrackingHook()
+        manager = LifecycleHookManager([hook])
+
+        # Mirror commands.py site 3 (line 1896):
+        #   _wf_deps = DefaultDependencies(..., lifecycle_hooks=_LifecycleHookManager())
+        #   _executor = _WFExec(registry, deps=_wf_deps)
+        #   _agui_executors[_wf_id] = (_wf, _executor)
+        #   unified_router = create_unified_agui_endpoint(_agui_executors)
+        deps = DefaultDependencies(
+            registry=registry,
+            lifecycle_hooks=manager,
+        )
+        executor = WorkflowExecutor(registry, deps=deps)
+        executors: dict[str, Any] = {wf.id: (wf, executor)}
+
+        app = FastAPI()
+        router = create_unified_agui_endpoint(executors)
+        app.include_router(router, prefix="/ag-ui")
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/ag-ui/",
+                json={"state": {"workflow_id": wf.id}},
+                headers={"Accept": "text/event-stream"},
+            )
+
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text[:200]}"
+        )
+        assert response.text.strip(), (
+            "Unified AG-UI SSE body is empty — execute_stream() yielded zero events"
+        )
+
+        assert "on_workflow_start" in hook.calls, (
+            f"on_workflow_start was not called via unified AG-UI endpoint. "
+            f"hook.calls={hook.calls!r}\n"
+            "This means LifecycleHookManager was not wired into DefaultDependencies "
+            "(pre-SH1.3 regression: silent hook non-delivery on CLI streaming surface 3)."
+        )
+        assert "on_workflow_end" in hook.calls, (
+            f"on_workflow_end was not called via unified AG-UI endpoint. hook.calls={hook.calls!r}"
         )
