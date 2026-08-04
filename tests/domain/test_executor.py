@@ -1670,14 +1670,32 @@ class TestExecuteStream:
         on the SAME executor instance each receive only their own events —
         no events from the other stream leak in.
 
+        FIXTURE RATIONALE — why a SHARED CONCRETE LifecycleHookManager is used:
+        This test deliberately constructs the executor with a shared concrete
+        LifecycleHookManager (passed via DefaultDependencies(lifecycle_hooks=manager))
+        rather than the null no-op fallback.  This is the only construction under
+        which the pre-fix cross-talk defect could actually manifest: before ADR-0015
+        Option C, execute_stream() registered its internal _Collector directly on
+        self._hook_manager.  When self._hook_manager was the no-op IHookManager(),
+        add_hook() was a no-op, so ZERO events would be produced — the test would
+        "fail" for the wrong reason (total event absence) and would never exercise
+        the actual cross-talk path.  Using a concrete manager is also the CLI's real
+        post-SH1.3 construction pattern: commands.py will inject one concrete
+        LifecycleHookManager at four sites, one executor per workflow, reused across
+        all concurrent HTTP requests.  This test therefore directly mirrors that
+        production scenario.
+
         PRE-FIX SCENARIO (would have FAILED against pre-SH1.1 code):
         Before ADR-0015 Option C, execute_stream() registered its internal
         _Collector directly on the long-lived, instance-scoped self._hook_manager.
-        The CLI reuses one WorkflowExecutor per workflow across all HTTP requests.
-        When two concurrent execute_stream() calls shared that instance, both
-        collectors were added to the same manager, so each stream received every
+        With a shared concrete manager, two concurrent execute_stream() calls both
+        added their collectors to the same manager, so each stream received every
         lifecycle notification from both calls. A second concurrent stream received
         its own 4 events PLUS all 4 events of the first stream (8 total instead of 4).
+        Code inspection confirms: pre-fix, fan_out = _StreamHookFanOut(self._hook_manager)
+        did not exist; the collector was added via
+        await self._hook_manager.add_hook(collector) and removed at the end, meaning
+        both concurrent collectors lived on the same shared manager simultaneously.
 
         POST-FIX GUARANTEE (this test proves):
         ADR-0015 Option C constructs a fresh _StreamHookFanOut per execute_stream()
@@ -1686,20 +1704,62 @@ class TestExecuteStream:
         self._hook_manager. Two concurrent calls therefore cannot share collectors,
         and no event from stream A can appear in stream B's queue.
 
+        SYNCHRONIZATION BARRIER:
+        asyncio.gather alone does not guarantee both _run_strategy background tasks
+        are in-flight simultaneously — the stub could complete so fast that wf-a
+        finishes entirely before wf-b's task even starts.  An asyncio.Barrier(2)
+        inside the primitive stub forces both primitive executions to rendezvous
+        before either returns, making both execute_stream() calls provably concurrent
+        at the point that matters: while the internal collectors are registered.
+
+        LOW-FIDELITY GAP (documented, not fixed):
+        The test uses two DIFFERENT workflow objects (wf-a, wf-b) on one executor,
+        which is close to but not identical to the CLI's real pattern where the same
+        workflow definition may be invoked twice concurrently.  The isolation
+        guarantee holds in both cases (it is structural, not data-dependent), but
+        a future enhancement could drive the same workflow object twice to close
+        this minor fidelity gap.
+
         Uses:
-        - A single WorkflowExecutor instance (same pattern as the CLI)
-        - DefaultDependencies() with no lifecycle_hooks (exact CLI construction)
+        - A single WorkflowExecutor instance (same pattern as the CLI post-SH1.3)
+        - DefaultDependencies(lifecycle_hooks=manager) with a SHARED CONCRETE
+          LifecycleHookManager — the construction that can expose cross-talk
+        - asyncio.Barrier(2) inside the primitive stub to guarantee both streams
+          are provably in-flight simultaneously
         - Two distinct workflow IDs so cross-talk is detectable by event data
         - asyncio.gather to drive both streams concurrently
         - Real WorkflowExecutor and real registered primitives — no mocking
         """
-        registry, _ = _registry_with_stub(return_value="ok")
+        # asyncio.Barrier(2): both primitive executions must arrive before either
+        # is allowed to return.  This guarantees both _run_strategy tasks (and
+        # therefore both collectors) are registered and active at the same time,
+        # making the concurrency deterministic rather than scheduling-luck-dependent.
+        barrier = asyncio.Barrier(2)
+
+        async def _barrier_stub(config: dict[str, Any], ctx: ExecutionContext) -> str:
+            await barrier.wait()
+            return "ok"
+
+        from beddel.domain.ports import IPrimitive
+
+        class _BarrierPrimitive(IPrimitive):
+            async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
+                return await _barrier_stub(config, context)
+
+        registry = PrimitiveRegistry()
+        registry.register("test-prim", _BarrierPrimitive())
+
         wf_a = _make_workflow([_make_step("s1")], workflow_id="wf-a")
         wf_b = _make_workflow([_make_step("s1")], workflow_id="wf-b")
 
+        # Shared concrete manager — this is the construction under which the
+        # pre-fix cross-talk defect occurred (the null no-op would never expose it).
+        # Also matches the CLI's real post-SH1.3 pattern.
+        manager = LifecycleHookManager()
+
         # Single executor instance — same pattern the CLI uses (one per workflow,
         # reused across all HTTP requests for that workflow).
-        executor = WorkflowExecutor(registry, deps=DefaultDependencies())
+        executor = WorkflowExecutor(registry, deps=DefaultDependencies(lifecycle_hooks=manager))
 
         events_a: list[BeddelEvent] = []
         events_b: list[BeddelEvent] = []
@@ -1713,6 +1773,7 @@ class TestExecuteStream:
                 events_b.append(event)
 
         # Run both streams concurrently against the same executor instance.
+        # The barrier inside the stub guarantees they are simultaneously in-flight.
         await asyncio.gather(collect_a(), collect_b())
 
         # Both streams must have terminated correctly.
