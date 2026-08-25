@@ -1,29 +1,10 @@
-# Beddel — Development Environment
+# Compatibility notice — this file is no longer a dependency source.
 #
-# Bootstraps everything needed to develop, test, lint, type-check, and publish Beddel.
-# The first line installs Beddel itself in editable mode; subsequent lines pin dev tools.
+# Beddel development dependencies live in pyproject.toml's `dev` dependency
+# group and their complete resolution is committed in uv.lock. From this
+# directory, provision the pinned environment with:
 #
-# Usage:
-#   source src/beddel-py/.venv/bin/activate
-#   pip install -r src/beddel-py/requirements-dev.txt
+#   uv sync --locked
 #
-# Runtime deps (pydantic, pyyaml, click) come transitively via `-e`.
-# Kit-specific deps (litellm, httpx, fastapi, etc.) are managed by `beddel init`
-# and the per-kit kit.yaml manifests — they are NOT installed here.
-
--e src/beddel-py/
-
-# Test runners
-pytest
-pytest-asyncio
-pytest-cov
-pytest-timeout
-
-# Lint + type check
-ruff
-mypy
-types-jsonschema
-
-# Packaging + publish
-build
-twine
+# Keeping a second pip requirements list here would allow it to drift from the
+# locked environment. Kit-specific dependencies remain outside the core SDK.
