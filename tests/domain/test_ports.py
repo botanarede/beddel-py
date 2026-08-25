@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 
 import pytest
 
@@ -295,8 +296,8 @@ class TestICircuitBreaker:
         """ExecutionDependencies Protocol defines circuit_breaker property."""
         from beddel.domain.ports import ExecutionDependencies
 
-        hints = ExecutionDependencies.__protocol_attrs__
-        assert "circuit_breaker" in hints
+        assert "circuit_breaker" in dir(ExecutionDependencies)
+        inspect.getattr_static(ExecutionDependencies, "circuit_breaker")
 
 
 class TestIEventStore:
@@ -330,8 +331,8 @@ class TestIEventStore:
         """ExecutionDependencies Protocol defines event_store property."""
         from beddel.domain.ports import ExecutionDependencies
 
-        hints = ExecutionDependencies.__protocol_attrs__
-        assert "event_store" in hints
+        assert "event_store" in dir(ExecutionDependencies)
+        inspect.getattr_static(ExecutionDependencies, "event_store")
 
 
 class TestIMCPClient:
@@ -391,5 +392,5 @@ class TestIMCPClient:
         """ExecutionDependencies Protocol defines mcp_registry property."""
         from beddel.domain.ports import ExecutionDependencies
 
-        hints = ExecutionDependencies.__protocol_attrs__
-        assert "mcp_registry" in hints
+        assert "mcp_registry" in dir(ExecutionDependencies)
+        inspect.getattr_static(ExecutionDependencies, "mcp_registry")

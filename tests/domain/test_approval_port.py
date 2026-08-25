@@ -5,6 +5,8 @@ Tests: Protocol conformance, ExecutionDependencies wiring, pause/resume integrat
 
 from __future__ import annotations
 
+import inspect
+
 from beddel.adapters.approval import ConfigurableApprovalGate, InMemoryApprovalGate
 from beddel.domain.models import (
     DefaultDependencies,
@@ -83,8 +85,8 @@ class TestExecutionDependenciesWiring:
         assert deps.approval_gate is None
 
     def test_execution_dependencies_protocol_has_approval_gate(self) -> None:
-        attrs = ExecutionDependencies.__protocol_attrs__
-        assert "approval_gate" in attrs
+        assert "approval_gate" in dir(ExecutionDependencies)
+        inspect.getattr_static(ExecutionDependencies, "approval_gate")
 
     def test_default_dependencies_satisfies_protocol(self) -> None:
         """DefaultDependencies structurally satisfies ExecutionDependencies."""

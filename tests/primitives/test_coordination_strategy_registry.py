@@ -11,6 +11,7 @@ Tests:
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -102,8 +103,8 @@ class TestExecutionDependenciesProtocol:
 
     def test_protocol_has_coordination_strategy_registry(self) -> None:
         """ExecutionDependencies Protocol defines coordination_strategy_registry."""
-        attrs = ExecutionDependencies.__protocol_attrs__
-        assert "coordination_strategy_registry" in attrs
+        assert "coordination_strategy_registry" in dir(ExecutionDependencies)
+        inspect.getattr_static(ExecutionDependencies, "coordination_strategy_registry")
 
 
 # ---------------------------------------------------------------------------
