@@ -31,6 +31,10 @@ _SECRET_PATTERN: Final = re.compile(
     r"(?:api[_-]?key|token|password|secret)\s*[=:]\s*)[^\s'\"]+"
 )
 _URL_CREDENTIAL_PATTERN: Final = re.compile(r"(https?://)[^\s/@:]+:[^\s/@]+@", re.IGNORECASE)
+_MYPY_ERROR_PATTERN: Final = re.compile(
+    r"^(?P<path>.+?):\d+(?::\d+)?: error: "
+    r"(?P<message>.*?)(?:\s+\[(?P<code>[^\]]+)\])?\s*$"
+)
 _MYPY_SUMMARY_PATTERN: Final = re.compile(
     r"^\s*Found\s+(?P<count>\d+)\s+errors?\s+in\s+\d+\s+files?\b",
     re.MULTILINE,
