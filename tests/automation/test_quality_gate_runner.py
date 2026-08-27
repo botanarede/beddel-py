@@ -145,13 +145,25 @@ def test_mypy_fingerprint_drops_position_but_keeps_identity(tmp_path: Path) -> N
 
 
 def _write_mypy_report(path: Path, diagnostics: list[runner_module.Diagnostic]) -> None:
+    returncode = 1 if diagnostics else 0
+    summary = (
+        f"Found {len(diagnostics)} error{'s' if len(diagnostics) != 1 else ''} in 1 file\n"
+        if diagnostics
+        else "Success: no issues found in 1 source file\n"
+    )
     path.write_text(
         json.dumps(
             {
-                "exit_code": 0,
+                "exit_code": returncode,
                 "results": [
                     {
                         "operation": "mypy",
+                        "status": "failed" if returncode else "passed",
+                        "returncode": returncode,
+                        "duration_seconds": 0.0,
+                        "timed_out": False,
+                        "stdout": summary,
+                        "stderr": "",
                         "diagnostics_fingerprint": [
                             list(diagnostic) for diagnostic in diagnostics
                         ],
@@ -240,7 +252,9 @@ def test_runner_aggregates_failures_without_fail_fast(monkeypatch: pytest.Monkey
     assert all(result.status == "passed" for result in report.results[1:])
 
 
-def test_runner_mypy_failure_is_advisory_without_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_runner_mypy_failure_is_blocking_without_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     root = Path(__file__).resolve().parents[2]
     monkeypatch.setattr(runner_module, "_package_root", lambda: root)
 
@@ -263,7 +277,106 @@ def test_runner_mypy_failure_is_advisory_without_baseline(monkeypatch: pytest.Mo
 
     assert report.results[-1].operation == "mypy"
     assert report.results[-1].status == "failed"
+    assert report.exit_code == 1
+
+
+def test_runner_mypy_failure_with_valid_baseline_and_no_additions_is_allowed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(runner_module, "_package_root", lambda: root)
+    diagnostic = ("src/a.py", "arg-type", "bad type")
+
+    def fake_run(
+        self: runner_module.QualityGateRunner,
+        operation: runner_module.GateOperation,
+        command: tuple[str, ...],
+        command_root: Path,
+        environment: dict[str, str],
+    ) -> runner_module.GateResult:
+        del self, command, command_root, environment
+        if operation is runner_module.GateOperation.MYPY:
+            return runner_module.GateResult(
+                operation=operation.value,
+                status="failed",
+                returncode=1,
+                duration_seconds=0.0,
+                timed_out=False,
+                stdout="Found 1 error in 1 file\n",
+                stderr="",
+                diagnostics_fingerprint=(diagnostic,),
+            )
+        return _result(operation, "passed")
+
+    monkeypatch.setattr(runner_module.QualityGateRunner, "_run_operation", fake_run)
+    baseline = tmp_path / "baseline.json"
+    _write_mypy_report(baseline, [diagnostic])
+
+    report = runner_module.QualityGateRunner().run(baseline=baseline)
+
     assert report.exit_code == 0
+    assert report.comparison == {"added": [], "removed": []}
+
+
+def test_runner_mypy_additions_with_valid_baseline_are_blocking(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(runner_module, "_package_root", lambda: root)
+    baseline_diagnostic = ("src/a.py", "arg-type", "bad type")
+    added_diagnostic = ("src/b.py", "name-defined", "missing name")
+
+    def fake_run(
+        self: runner_module.QualityGateRunner,
+        operation: runner_module.GateOperation,
+        command: tuple[str, ...],
+        command_root: Path,
+        environment: dict[str, str],
+    ) -> runner_module.GateResult:
+        del self, command, command_root, environment
+        if operation is runner_module.GateOperation.MYPY:
+            return runner_module.GateResult(
+                operation=operation.value,
+                status="failed",
+                returncode=1,
+                duration_seconds=0.0,
+                timed_out=False,
+                stdout="Found 2 errors in 1 file\n",
+                stderr="",
+                diagnostics_fingerprint=(baseline_diagnostic, added_diagnostic),
+            )
+        return _result(operation, "passed")
+
+    monkeypatch.setattr(runner_module.QualityGateRunner, "_run_operation", fake_run)
+    baseline = tmp_path / "baseline.json"
+    _write_mypy_report(baseline, [baseline_diagnostic])
+
+    report = runner_module.QualityGateRunner().run(baseline=baseline)
+
+    assert report.exit_code == 1
+    assert report.comparison is not None
+    assert report.comparison["added"]
+
+
+def test_runner_invalid_baseline_is_blocking_with_exit_two(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(runner_module, "_package_root", lambda: root)
+    monkeypatch.setattr(
+        runner_module.QualityGateRunner,
+        "_run_operation",
+        lambda self, operation, command, command_root, environment: _result(operation, "passed"),
+    )
+    baseline = tmp_path / "invalid.json"
+    baseline.write_text("not json", encoding="utf-8")
+
+    report = runner_module.QualityGateRunner().run(baseline=baseline)
+
+    assert report.exit_code == 2
+    assert report.comparison == {
+        "reason": {"check": "readable_report", "side": "base"}
+    }
 
 
 def test_runner_returns_two_when_fixed_layout_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:

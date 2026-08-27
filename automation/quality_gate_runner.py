@@ -67,12 +67,16 @@ class GateReport:
 
     results: tuple[GateResult, ...]
     exit_code: int
+    comparison: dict[str, object] | None = None
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        report: dict[str, object] = {
             "exit_code": self.exit_code,
             "results": [asdict(result) for result in self.results],
         }
+        if self.comparison is not None:
+            report["comparison"] = self.comparison
+        return report
 
 
 class GateConfigurationError(RuntimeError):
@@ -172,12 +176,13 @@ def _report_fingerprint(report: dict[str, object]) -> tuple[Diagnostic, ...]:
     return ()
 
 
-def compare_reports(
-    base_report: str | Path, candidate_report: str | Path
-) -> dict[str, list[dict[str, object]]]:
-    """Return multiplicity-aware mypy diagnostics added to or removed from candidate."""
-    base = json.loads(Path(base_report).read_text(encoding="utf-8"))
-    candidate = json.loads(Path(candidate_report).read_text(encoding="utf-8"))
+def _invalid_comparison(check: str, side: str) -> dict[str, object]:
+    return {"reason": {"check": check, "side": side}}
+
+
+def _compare_report_data(
+    base: dict[str, object], candidate: dict[str, object]
+) -> dict[str, object]:
     base_counts = Counter(_report_fingerprint(base))
     candidate_counts = Counter(_report_fingerprint(candidate))
 
@@ -194,6 +199,20 @@ def compare_reports(
     }
 
 
+def compare_reports(base_report: str | Path, candidate_report: str | Path) -> dict[str, object]:
+    """Return multiplicity-aware mypy diagnostics added to or removed from candidate."""
+    reports: list[dict[str, object]] = []
+    for side, path in (("base", base_report), ("candidate", candidate_report)):
+        try:
+            loaded = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return _invalid_comparison("readable_report", side)
+        if not isinstance(loaded, dict):
+            return _invalid_comparison("report_object", side)
+        reports.append(loaded)
+    return _compare_report_data(reports[0], reports[1])
+
+
 class QualityGateRunner:
     """Run the fixed Python bootstrap core profile without fail-fast behavior."""
 
@@ -202,7 +221,7 @@ class QualityGateRunner:
             raise ValueError("timeout_seconds must be positive")
         self._timeout_seconds = timeout_seconds
 
-    def run(self) -> GateReport:
+    def run(self, baseline: str | Path | None = None) -> GateReport:
         """Run every operation unless the operator interrupts the process."""
         try:
             root = _package_root()
@@ -220,6 +239,7 @@ class QualityGateRunner:
             return GateReport(results=(result,), exit_code=2)
 
         results: list[GateResult] = []
+        comparison: dict[str, object] | None = None
         with tempfile.TemporaryDirectory(prefix="beddel-gate-") as temporary_home:
             environment = _safe_environment(Path(temporary_home))
             for operation, command in commands:
@@ -239,16 +259,30 @@ class QualityGateRunner:
                     return GateReport(results=tuple(results), exit_code=130)
                 results.append(result)
 
+            if baseline is not None:
+                candidate_path = Path(temporary_home) / "candidate-report.json"
+                candidate_path.write_text(
+                    json.dumps({"results": [asdict(result) for result in results]}),
+                    encoding="utf-8",
+                )
+                comparison = compare_reports(baseline, candidate_path)
+
         if any(result.status == "invalid" for result in results):
+            exit_code = 2
+        elif comparison is not None and "reason" in comparison:
             exit_code = 2
         elif any(
             result.status != "passed" and result.operation != GateOperation.MYPY.value
             for result in results
         ):
             exit_code = 1
+        elif baseline is None and any(result.status != "passed" for result in results):
+            exit_code = 1
+        elif comparison is not None and bool(comparison.get("added")):
+            exit_code = 1
         else:
             exit_code = 0
-        return GateReport(results=tuple(results), exit_code=exit_code)
+        return GateReport(results=tuple(results), exit_code=exit_code, comparison=comparison)
 
     @staticmethod
     def _commands(root: Path) -> tuple[tuple[GateOperation, tuple[str, ...]], ...]:
@@ -379,9 +413,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         comparison = compare_reports(arguments[1], arguments[2])
         print(json.dumps(comparison, ensure_ascii=False, sort_keys=True))
+        if "reason" in comparison:
+            return 2
         return 0 if not comparison["added"] else 1
 
-    report = QualityGateRunner().run()
+    baseline: str | None = None
+    if arguments:
+        if len(arguments) != 2 or arguments[0] != "--baseline":
+            print("usage: quality_gate_runner.py [--baseline BASELINE_REPORT]", file=sys.stderr)
+            return 2
+        baseline = arguments[1]
+    report = QualityGateRunner().run(baseline=baseline)
     print(json.dumps(report.as_dict(), ensure_ascii=False, sort_keys=True))
     return report.exit_code
 
