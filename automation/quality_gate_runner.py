@@ -103,6 +103,8 @@ def _safe_environment(home: Path) -> dict[str, str]:
         "PYTHONNOUSERSITE": "1",
         "PYTHONSAFEPATH": "1",
         "PYTHONUTF8": "1",
+        "MYPY_CACHE_DIR": str(home / ".cache" / "mypy"),
+        "PYTHONPYCACHEPREFIX": str(home / ".cache" / "pycache"),
     }
 
 
@@ -196,6 +198,8 @@ class QualityGateRunner:
                     "-m",
                     "pytest",
                     "-q",
+                    "-p",
+                    "no:cacheprovider",
                     *checked_pytest_targets,
                     f"--deselect={excluded_mcp_class}",
                 ),

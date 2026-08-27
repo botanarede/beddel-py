@@ -104,6 +104,18 @@ def test_safe_environment_drops_inherited_secrets(
     assert "SECRET_TOKEN" not in environment
     assert environment["HOME"] == str(tmp_path)
     assert environment["PYTHONNOUSERSITE"] == "1"
+    assert environment["MYPY_CACHE_DIR"] == str(tmp_path / ".cache" / "mypy")
+    assert environment["PYTHONPYCACHEPREFIX"] == str(tmp_path / ".cache" / "pycache")
+
+
+def test_pytest_disables_cache_provider() -> None:
+    root = Path(__file__).resolve().parents[2]
+    pytest_command = dict(runner_module.QualityGateRunner._commands(root))[
+        runner_module.GateOperation.PYTEST
+    ]
+
+    assert "-p" in pytest_command
+    assert pytest_command[pytest_command.index("-p") + 1] == "no:cacheprovider"
 
 
 def test_redaction_and_output_cap() -> None:
