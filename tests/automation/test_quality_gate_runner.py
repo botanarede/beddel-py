@@ -144,35 +144,37 @@ def test_mypy_fingerprint_drops_position_but_keeps_identity(tmp_path: Path) -> N
     assert first != different_diagnostics
 
 
-def _write_mypy_report(path: Path, diagnostics: list[runner_module.Diagnostic]) -> None:
-    returncode = 1 if diagnostics else 0
+def _mypy_report_data(
+    diagnostics: list[runner_module.Diagnostic],
+    *,
+    timed_out: bool = False,
+    stdout: str | None = None,
+) -> dict[str, object]:
+    resolved_returncode = 1 if diagnostics else 0
     summary = (
         f"Found {len(diagnostics)} error{'s' if len(diagnostics) != 1 else ''} in 1 file\n"
         if diagnostics
         else "Success: no issues found in 1 source file\n"
     )
-    path.write_text(
-        json.dumps(
+    return {
+        "exit_code": resolved_returncode,
+        "results": [
             {
-                "exit_code": returncode,
-                "results": [
-                    {
-                        "operation": "mypy",
-                        "status": "failed" if returncode else "passed",
-                        "returncode": returncode,
-                        "duration_seconds": 0.0,
-                        "timed_out": False,
-                        "stdout": summary,
-                        "stderr": "",
-                        "diagnostics_fingerprint": [
-                            list(diagnostic) for diagnostic in diagnostics
-                        ],
-                    }
-                ],
+                "operation": "mypy",
+                "status": "failed" if resolved_returncode else "passed",
+                "returncode": resolved_returncode,
+                "duration_seconds": 0.0,
+                "timed_out": timed_out,
+                "stdout": summary if stdout is None else stdout,
+                "stderr": "",
+                "diagnostics_fingerprint": [list(diagnostic) for diagnostic in diagnostics],
             }
-        ),
-        encoding="utf-8",
-    )
+        ],
+    }
+
+
+def _write_mypy_report(path: Path, diagnostics: list[runner_module.Diagnostic]) -> None:
+    path.write_text(json.dumps(_mypy_report_data(diagnostics)), encoding="utf-8")
 
 
 def test_compare_reports_detects_changes_and_multiplicity(tmp_path: Path) -> None:
@@ -234,6 +236,55 @@ def test_runner_aggregates_failures_without_fail_fast(monkeypatch: pytest.Monkey
         self: runner_module.QualityGateRunner,
         operation: runner_module.GateOperation,
         command: tuple[str, ...],
+
+
+def _mypy_result(report: dict[str, object]) -> dict[str, object]:
+    results = report["results"]
+    assert isinstance(results, list)
+    result = results[0]
+    assert isinstance(result, dict)
+    return result
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_check"),
+    [
+        ("missing_operation", "mypy_operation_present"),
+        ("returncode_two", "mypy_returncode"),
+        ("returncode_none", "mypy_returncode"),
+        ("timed_out", "mypy_timed_out"),
+        ("fingerprint_count", "mypy_fingerprint_count_matches_summary"),
+        ("summary_absent", "mypy_summary_present"),
+    ],
+)
+@pytest.mark.parametrize("side", ["base", "candidate"])
+def test_compare_reports_rejects_each_untrustworthy_mypy_report(
+    tmp_path: Path, side: str, mutation: str, expected_check: str
+) -> None:
+    diagnostic = ("src/a.py", "arg-type", "bad type")
+    reports = [_mypy_report_data([diagnostic]), _mypy_report_data([diagnostic])]
+    selected = reports[0 if side == "base" else 1]
+    if mutation == "missing_operation":
+        _mypy_result(selected)["operation"] = "pytest"
+    elif mutation == "returncode_two":
+        _mypy_result(selected)["returncode"] = 2
+    elif mutation == "returncode_none":
+        _mypy_result(selected)["returncode"] = None
+    elif mutation == "timed_out":
+        _mypy_result(selected)["timed_out"] = True
+    elif mutation == "fingerprint_count":
+        _mypy_result(selected)["stdout"] = "Found 2 errors in 1 file\n"
+    elif mutation == "summary_absent":
+        _mypy_result(selected)["stdout"] = ""
+
+    base_path = tmp_path / "base.json"
+    candidate_path = tmp_path / "candidate.json"
+    base_path.write_text(json.dumps(reports[0]), encoding="utf-8")
+    candidate_path.write_text(json.dumps(reports[1]), encoding="utf-8")
+
+    comparison = runner_module.compare_reports(base_path, candidate_path)
+
+    assert comparison == {"reason": {"check": expected_check, "side": side}}
         command_root: Path,
         environment: dict[str, str],
     ) -> runner_module.GateResult:

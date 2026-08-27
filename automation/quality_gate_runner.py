@@ -31,9 +31,9 @@ _SECRET_PATTERN: Final = re.compile(
     r"(?:api[_-]?key|token|password|secret)\s*[=:]\s*)[^\s'\"]+"
 )
 _URL_CREDENTIAL_PATTERN: Final = re.compile(r"(https?://)[^\s/@:]+:[^\s/@]+@", re.IGNORECASE)
-_MYPY_ERROR_PATTERN: Final = re.compile(
-    r"^(?P<path>.+?):\d+(?::\d+)?: error: "
-    r"(?P<message>.*?)(?:\s+\[(?P<code>[^\]]+)\])?\s*$"
+_MYPY_SUMMARY_PATTERN: Final = re.compile(
+    r"^\s*Found\s+(?P<count>\d+)\s+errors?\s+in\s+\d+\s+files?\b",
+    re.MULTILINE,
 )
 Diagnostic = tuple[str, str, str]
 
@@ -180,11 +180,63 @@ def _invalid_comparison(check: str, side: str) -> dict[str, object]:
     return {"reason": {"check": check, "side": side}}
 
 
+def _validated_mypy_fingerprint(
+    report: dict[str, object], side: str
+) -> tuple[Diagnostic, ...] | dict[str, object]:
+    results = report.get("results")
+    if not isinstance(results, list):
+        return _invalid_comparison("mypy_operation_present", side)
+    mypy_results = [
+        result
+        for result in results
+        if isinstance(result, dict) and result.get("operation") == GateOperation.MYPY.value
+    ]
+    if not mypy_results:
+        return _invalid_comparison("mypy_operation_present", side)
+    if len(mypy_results) != 1:
+        return _invalid_comparison("mypy_operation_unique", side)
+
+    mypy_result = mypy_results[0]
+    returncode = mypy_result.get("returncode")
+    if isinstance(returncode, bool) or returncode not in (0, 1):
+        return _invalid_comparison("mypy_returncode", side)
+    if mypy_result.get("timed_out") is not False:
+        return _invalid_comparison("mypy_timed_out", side)
+
+    fingerprint = mypy_result.get("diagnostics_fingerprint")
+    if not isinstance(fingerprint, list) or any(
+        not isinstance(entry, list) or len(entry) != 3 for entry in fingerprint
+    ):
+        return _invalid_comparison("mypy_fingerprint", side)
+    diagnostics = tuple(
+        (str(entry[0]), str(entry[1]), str(entry[2])) for entry in fingerprint
+    )
+
+    stdout = mypy_result.get("stdout", "")
+    stderr = mypy_result.get("stderr", "")
+    output = "\n".join(value for value in (stdout, stderr) if isinstance(value, str))
+    summary_counts = [
+        int(match.group("count")) for match in _MYPY_SUMMARY_PATTERN.finditer(output)
+    ]
+    if summary_counts and any(count != len(diagnostics) for count in summary_counts):
+        return _invalid_comparison("mypy_fingerprint_count_matches_summary", side)
+    if returncode == 1 and not summary_counts:
+        return _invalid_comparison("mypy_summary_present", side)
+    return diagnostics
+
+
 def _compare_report_data(
     base: dict[str, object], candidate: dict[str, object]
 ) -> dict[str, object]:
-    base_counts = Counter(_report_fingerprint(base))
-    candidate_counts = Counter(_report_fingerprint(candidate))
+    validated: list[tuple[Diagnostic, ...]] = []
+    for side, report in (("base", base), ("candidate", candidate)):
+        result = _validated_mypy_fingerprint(report, side)
+        if isinstance(result, dict):
+            return result
+        validated.append(result)
+
+    base_counts = Counter(validated[0])
+    candidate_counts = Counter(validated[1])
 
     def entries(counts: Counter[Diagnostic]) -> list[dict[str, object]]:
         return [
