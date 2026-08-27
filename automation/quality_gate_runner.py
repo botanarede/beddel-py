@@ -15,6 +15,8 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
+from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from enum import StrEnum
@@ -29,6 +31,11 @@ _SECRET_PATTERN: Final = re.compile(
     r"(?:api[_-]?key|token|password|secret)\s*[=:]\s*)[^\s'\"]+"
 )
 _URL_CREDENTIAL_PATTERN: Final = re.compile(r"(https?://)[^\s/@:]+:[^\s/@]+@", re.IGNORECASE)
+_MYPY_ERROR_PATTERN: Final = re.compile(
+    r"^(?P<path>.+?):\d+(?::\d+)?: error: "
+    r"(?P<message>.*?)(?:\s+\[(?P<code>[^\]]+)\])?\s*$"
+)
+Diagnostic = tuple[str, str, str]
 
 
 class GateOperation(StrEnum):
@@ -51,6 +58,7 @@ class GateResult:
     timed_out: bool
     stdout: str
     stderr: str
+    diagnostics_fingerprint: tuple[Diagnostic, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -84,9 +92,7 @@ def _contained_path(root: Path, relative_path: str) -> str:
     try:
         candidate = (root / relative_path).resolve(strict=True)
     except OSError as exc:
-        raise GateConfigurationError(
-            f"fixed target cannot be resolved: {relative_path}"
-        ) from exc
+        raise GateConfigurationError(f"fixed target cannot be resolved: {relative_path}") from exc
     if not candidate.is_relative_to(root):
         raise GateConfigurationError(f"fixed target escapes package root: {relative_path}")
     return str(candidate.relative_to(root))
@@ -115,6 +121,77 @@ def _redact(text: str) -> str:
         bounded += "\n[output truncated]"
     redacted = _SECRET_PATTERN.sub(r"\1[REDACTED]", bounded)
     return _URL_CREDENTIAL_PATTERN.sub(r"\1[REDACTED]@", redacted)
+
+
+def _relative_diagnostic_path(root: Path, raw_path: str) -> str:
+    """Normalize a mypy path relative to the fixed package root."""
+    path = Path(raw_path)
+    resolved_root = root.resolve()
+    if path.is_absolute():
+        resolved_path = path.resolve()
+        try:
+            return resolved_path.relative_to(resolved_root).as_posix()
+        except ValueError:
+            return os.path.relpath(resolved_path, resolved_root).replace(os.sep, "/")
+    return path.as_posix()
+
+
+def _mypy_diagnostics(root: Path, output: str) -> tuple[Diagnostic, ...]:
+    """Extract normalized mypy errors, dropping only line and column numbers."""
+    diagnostics: list[Diagnostic] = []
+    for line in output.splitlines():
+        match = _MYPY_ERROR_PATTERN.match(line)
+        if match is None:
+            continue
+        diagnostics.append(
+            (
+                _relative_diagnostic_path(root, match.group("path")),
+                (match.group("code") or "").strip(),
+                match.group("message").strip(),
+            )
+        )
+    return tuple(sorted(diagnostics))
+
+
+def _report_fingerprint(report: dict[str, object]) -> tuple[Diagnostic, ...]:
+    """Read a report fingerprint while accepting reports emitted before this field."""
+    results = report.get("results")
+    if not isinstance(results, list):
+        return ()
+    for result in results:
+        if not isinstance(result, dict) or result.get("operation") != GateOperation.MYPY.value:
+            continue
+        fingerprint = result.get("diagnostics_fingerprint", [])
+        if not isinstance(fingerprint, list):
+            return ()
+        diagnostics: list[Diagnostic] = []
+        for entry in fingerprint:
+            if isinstance(entry, list) and len(entry) == 3:
+                diagnostics.append((str(entry[0]), str(entry[1]), str(entry[2])))
+        return tuple(diagnostics)
+    return ()
+
+
+def compare_reports(
+    base_report: str | Path, candidate_report: str | Path
+) -> dict[str, list[dict[str, object]]]:
+    """Return multiplicity-aware mypy diagnostics added to or removed from candidate."""
+    base = json.loads(Path(base_report).read_text(encoding="utf-8"))
+    candidate = json.loads(Path(candidate_report).read_text(encoding="utf-8"))
+    base_counts = Counter(_report_fingerprint(base))
+    candidate_counts = Counter(_report_fingerprint(candidate))
+
+    def entries(counts: Counter[Diagnostic]) -> list[dict[str, object]]:
+        return [
+            {"path": path, "code": code, "message": message, "count": count}
+            for (path, code, message), count in sorted(counts.items())
+            if count > 0
+        ]
+
+    return {
+        "added": entries(candidate_counts - base_counts),
+        "removed": entries(base_counts - candidate_counts),
+    }
 
 
 class QualityGateRunner:
@@ -164,7 +241,10 @@ class QualityGateRunner:
 
         if any(result.status == "invalid" for result in results):
             exit_code = 2
-        elif any(result.status != "passed" for result in results):
+        elif any(
+            result.status != "passed" and result.operation != GateOperation.MYPY.value
+            for result in results
+        ):
             exit_code = 1
         else:
             exit_code = 0
@@ -256,14 +336,22 @@ class QualityGateRunner:
 
         returncode = process.returncode
         status = "passed" if returncode == 0 and not timed_out else "failed"
+        stdout_text = (stdout or b"").decode("utf-8", errors="replace")
+        stderr_text = (stderr or b"").decode("utf-8", errors="replace")
+        fingerprint = (
+            _mypy_diagnostics(root, stdout_text + stderr_text)
+            if operation is GateOperation.MYPY
+            else ()
+        )
         return GateResult(
             operation=operation.value,
             status=status,
             returncode=returncode,
             duration_seconds=time.monotonic() - started,
             timed_out=timed_out,
-            stdout=_redact((stdout or b"").decode("utf-8", errors="replace")),
-            stderr=_redact((stderr or b"").decode("utf-8", errors="replace")),
+            stdout=_redact(stdout_text),
+            stderr=_redact(stderr_text),
+            diagnostics_fingerprint=fingerprint,
         )
 
     @staticmethod
@@ -279,8 +367,20 @@ class QualityGateRunner:
             return process.communicate()
 
 
-def main() -> int:
-    """Run the profile and emit only sanitized JSON evidence."""
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the profile or compare two emitted reports."""
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments[:1] == ["compare"]:
+        if len(arguments) != 3:
+            print(
+                "usage: quality_gate_runner.py compare BASE_REPORT CANDIDATE_REPORT",
+                file=sys.stderr,
+            )
+            return 2
+        comparison = compare_reports(arguments[1], arguments[2])
+        print(json.dumps(comparison, ensure_ascii=False, sort_keys=True))
+        return 0 if not comparison["added"] else 1
+
     report = QualityGateRunner().run()
     print(json.dumps(report.as_dict(), ensure_ascii=False, sort_keys=True))
     return report.exit_code

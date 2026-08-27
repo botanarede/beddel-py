@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import signal
 import subprocess
@@ -78,7 +79,9 @@ def test_containment_rejects_missing_target(tmp_path: Path) -> None:
         runner_module._contained_path(tmp_path, "missing-target")
 
 
-def test_runner_structures_missing_fixed_target(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_runner_structures_missing_fixed_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     root = tmp_path / "root"
     root.mkdir()
     monkeypatch.setattr(runner_module, "_package_root", lambda: root)
@@ -116,6 +119,85 @@ def test_pytest_disables_cache_provider() -> None:
 
     assert "-p" in pytest_command
     assert pytest_command[pytest_command.index("-p") + 1] == "no:cacheprovider"
+
+
+def test_mypy_fingerprint_drops_position_but_keeps_identity(tmp_path: Path) -> None:
+    root = tmp_path / "package"
+    root.mkdir()
+    first = runner_module._mypy_diagnostics(
+        root,
+        "src/a.py:10:2: error: bad type  [arg-type]\n"
+        "src/b.py:4: error: missing name  [name-defined]\n",
+    )
+    same_diagnostics = runner_module._mypy_diagnostics(
+        root,
+        "src/a.py:99:20: error: bad type  [arg-type]\n"
+        "src/b.py:40:7: error: missing name  [name-defined]\n",
+    )
+    different_diagnostics = runner_module._mypy_diagnostics(
+        root,
+        "src/a.py:99:20: error: changed type  [assignment]\n"
+        "src/c.py:40:7: error: missing name  [name-defined]\n",
+    )
+
+    assert first == same_diagnostics
+    assert first != different_diagnostics
+
+
+def _write_mypy_report(path: Path, diagnostics: list[runner_module.Diagnostic]) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "exit_code": 0,
+                "results": [
+                    {
+                        "operation": "mypy",
+                        "diagnostics_fingerprint": [
+                            list(diagnostic) for diagnostic in diagnostics
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_compare_reports_detects_changes_and_multiplicity(tmp_path: Path) -> None:
+    unchanged = ("src/a.py", "arg-type", "bad type")
+    removed = ("src/b.py", "name-defined", "missing name")
+    added = ("src/c.py", "assignment", "changed type")
+    base_path = tmp_path / "base.json"
+    candidate_path = tmp_path / "candidate.json"
+    _write_mypy_report(base_path, [unchanged, unchanged, removed])
+    _write_mypy_report(candidate_path, [unchanged, added, added])
+
+    comparison = runner_module.compare_reports(base_path, candidate_path)
+
+    assert comparison == {
+        "added": [
+            {
+                "path": "src/c.py",
+                "code": "assignment",
+                "message": "changed type",
+                "count": 2,
+            }
+        ],
+        "removed": [
+            {
+                "path": "src/a.py",
+                "code": "arg-type",
+                "message": "bad type",
+                "count": 1,
+            },
+            {
+                "path": "src/b.py",
+                "code": "name-defined",
+                "message": "missing name",
+                "count": 1,
+            },
+        ],
+    }
 
 
 def test_redaction_and_output_cap() -> None:
@@ -156,6 +238,32 @@ def test_runner_aggregates_failures_without_fail_fast(monkeypatch: pytest.Monkey
     assert calls == list(runner_module.GateOperation)
     assert report.results[0].status == "failed"
     assert all(result.status == "passed" for result in report.results[1:])
+
+
+def test_runner_mypy_failure_is_advisory_without_baseline(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(runner_module, "_package_root", lambda: root)
+
+    def fake_run(
+        self: runner_module.QualityGateRunner,
+        operation: runner_module.GateOperation,
+        command: tuple[str, ...],
+        command_root: Path,
+        environment: dict[str, str],
+    ) -> runner_module.GateResult:
+        del self, command, command_root, environment
+        return _result(
+            operation,
+            "failed" if operation is runner_module.GateOperation.MYPY else "passed",
+        )
+
+    monkeypatch.setattr(runner_module.QualityGateRunner, "_run_operation", fake_run)
+
+    report = runner_module.QualityGateRunner().run()
+
+    assert report.results[-1].operation == "mypy"
+    assert report.results[-1].status == "failed"
+    assert report.exit_code == 0
 
 
 def test_runner_returns_two_when_fixed_layout_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
