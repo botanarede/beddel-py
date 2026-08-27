@@ -1,0 +1,16 @@
+{
+  "description": "Expected resolution output for workflow-llm.yaml",
+  "sample_inputs": {},
+  "sample_step_results": {},
+  "sample_env": {},
+  "steps": {
+    "generate": {
+      "config": {
+        "model": "gpt-4o",
+        "prompt": "Hello, world!",
+        "temperature": 0.7,
+        "max_tokens": 100
+      }
+    }
+  }
+}

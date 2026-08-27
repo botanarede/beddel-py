@@ -1,0 +1,17 @@
+{
+  "description": "Expected resolution output for simple.yaml",
+  "sample_inputs": {
+    "topic": "AI safety"
+  },
+  "sample_step_results": {},
+  "sample_env": {},
+  "steps": {
+    "generate": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Write a short paragraph about AI safety",
+        "temperature": 0.7
+      }
+    }
+  }
+}

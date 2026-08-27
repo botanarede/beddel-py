@@ -1,0 +1,43 @@
+# Multi-step workflow with cross-step variable resolution.
+# Tests $input.*, $stepResult.*, $env.*, and nested/recursive references.
+id: multi-step-workflow
+name: Multi-Step Research Pipeline
+description: >
+  A research pipeline that summarizes a topic, extracts keywords,
+  then generates a final report combining results from prior steps.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+    depth:
+      type: string
+  required:
+    - topic
+    - depth
+
+steps:
+  # Step 1 — summarize the topic using $input refs
+  - id: summarize
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Summarize $input.topic at $input.depth level"
+      temperature: 0.5
+
+  # Step 2 — extract keywords from the summary using $stepResult ref
+  - id: extract_keywords
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Extract keywords from: $stepResult.summarize.text"
+      max_tokens: 100
+
+  # Step 3 — generate report combining $input, $stepResult, and $env refs
+  - id: report
+    primitive: llm
+    config:
+      model: gpt-4o
+      prompt: "Write a $input.depth report on $input.topic using keywords $stepResult.extract_keywords.keywords and API key $env.REPORT_API_KEY"
+      temperature: 0.3

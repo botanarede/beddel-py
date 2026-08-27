@@ -1,0 +1,31 @@
+# Workflow using budget limits to cap LLM costs.
+# Requires an InMemoryBudgetEnforcer (or compatible IBudgetEnforcer) in context.deps.
+name: budget_demo
+id: budget_demo
+metadata:
+  budget_config:
+    max_cost_usd: 5.0
+    degradation_threshold: 0.8
+    degradation_model: "gpt-4o-mini"
+steps:
+  - id: initial_draft
+    primitive: llm
+    config:
+      model: gpt-4o
+      prompt: "Write a first draft of the report."
+
+  - id: refine_draft
+    primitive: llm
+    config:
+      model: gpt-4o
+      prompt: "Refine the draft for clarity and conciseness."
+
+  - id: final_review
+    primitive: chat
+    config:
+      model: gpt-4o
+      messages:
+        - role: system
+          content: "You are an editorial reviewer."
+        - role: user
+          content: "Review this report for factual accuracy."

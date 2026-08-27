@@ -1,0 +1,21 @@
+# Minimal single-step workflow using Gemini via LiteLLM.
+id: simple-gemini
+name: Simple Gemini Workflow
+description: A minimal workflow that generates content using Gemini.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+  required:
+    - topic
+
+steps:
+  - id: generate
+    primitive: llm
+    config:
+      model: gemini/gemini-2.0-flash
+      prompt: "Write one sentence about $input.topic"
+      temperature: 0.7
+      max_tokens: 100

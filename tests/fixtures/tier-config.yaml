@@ -1,0 +1,6 @@
+# Tier configuration example — maps logical tier names to concrete models.
+# Used by StaticTierRouter (Story 5.5).
+model_tiers:
+  fast: "gpt-4o-mini"
+  balanced: "gpt-4o"
+  powerful: "claude-opus-4"

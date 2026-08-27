@@ -1,0 +1,32 @@
+# Multi-agent coordination workflow using call-agent with coordination config.
+# Demonstrates supervisor strategy delegating to named agents.
+# This fixture validates parsing only — not execution.
+id: multi-agent-coordination
+name: Multi-Agent Coordination Workflow
+description: Demonstrates multi-agent coordination via call-agent with supervisor strategy.
+
+input_schema:
+  type: object
+  properties:
+    task_description:
+      type: string
+  required:
+    - task_description
+
+steps:
+  - id: coordinate-agents
+    primitive: call-agent
+    config:
+      coordination:
+        strategy: supervisor
+        agents:
+          - codex
+          - claude
+        config:
+          max_handoffs: 3
+        prompt: "$input.task_description"
+        subtasks:
+          - "Analyze code structure"
+          - "Review documentation"
+        context_data:
+          project: beddel

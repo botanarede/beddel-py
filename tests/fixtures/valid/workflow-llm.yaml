@@ -1,0 +1,13 @@
+# Simple single-turn LLM invocation workflow.
+id: workflow-llm
+name: LLM Workflow
+description: Simple single-turn LLM invocation
+version: "1.0"
+steps:
+  - id: generate
+    primitive: llm
+    config:
+      model: gpt-4o
+      prompt: "Hello, world!"
+      temperature: 0.7
+      max_tokens: 100

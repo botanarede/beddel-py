@@ -1,0 +1,12 @@
+# Invalid: missing required `steps` field → BEDDEL-PARSE-002
+id: missing-steps
+name: Workflow Without Steps
+description: This workflow has metadata but no steps list.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+  required:
+    - topic

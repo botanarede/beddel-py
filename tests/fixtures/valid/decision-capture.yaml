@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../schemas/workflow.schema.json
+# Decision capture workflow — uses the `decide` expansion pack primitive.
+id: decision-capture
+name: Decision Capture Workflow
+description: A workflow that captures a structured decision via the decide primitive.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+  required:
+    - topic
+
+steps:
+  - id: choose-model
+    primitive: decide
+    config:
+      intent: "Select summarization model"
+      options:
+        - gpt-4o
+        - claude-3-opus
+        - gemini-pro
+      chosen: claude-3-opus
+      reasoning: "Best quality for long documents"

@@ -1,0 +1,17 @@
+# Skill invocation workflow — uses call-agent primitive with skill config
+# to reference a reusable workflow from a solution kit manifest.
+# Validates that the parser handles skill import syntax in call-agent steps.
+# This fixture validates parsing only — not execution.
+id: skill-invocation-demo
+name: Skill Invocation Demo
+description: Workflow that invokes a skill from a solution kit via call-agent.
+version: "1.0"
+
+steps:
+  - id: use-skill
+    primitive: call-agent
+    config:
+      skill:
+        kit: "software-development-kit"
+        workflow: "create-epic"
+        version: ">=0.1.0"

@@ -1,0 +1,30 @@
+{
+  "description": "Expected resolution output for tool-invocation.yaml",
+  "sample_inputs": {
+    "query": "beddel workflow engine"
+  },
+  "sample_step_results": {
+    "prepare": {
+      "search_query": "beddel workflow engine",
+      "max_results": 5
+    }
+  },
+  "sample_env": {},
+  "steps": {
+    "prepare": {
+      "config": {
+        "template": "{\"search_query\": \"beddel workflow engine\", \"max_results\": 5}",
+        "format": "json"
+      }
+    },
+    "search": {
+      "config": {
+        "tool": "web-search",
+        "arguments": {
+          "query": "beddel workflow engine",
+          "limit": 5
+        }
+      }
+    }
+  }
+}

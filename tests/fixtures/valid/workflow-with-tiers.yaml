@@ -1,0 +1,27 @@
+# Workflow using tier names instead of concrete model identifiers.
+# Requires a StaticTierRouter (or compatible ITierRouter) in context.deps.
+name: tier_demo
+id: tier_demo
+steps:
+  - id: quick_summary
+    primitive: llm
+    config:
+      model: fast
+      prompt: "Summarize this in one sentence."
+
+  - id: detailed_analysis
+    primitive: llm
+    config:
+      model: balanced
+      prompt: "Analyze the following text in detail."
+      effort: high
+
+  - id: expert_review
+    primitive: chat
+    config:
+      model: powerful
+      messages:
+        - role: system
+          content: "You are an expert reviewer."
+        - role: user
+          content: "Review this analysis."

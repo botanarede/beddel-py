@@ -1,0 +1,40 @@
+# =============================================================================
+# Fixture: gate tools (pytest_run, ruff_check, ruff_format, mypy_check)
+# =============================================================================
+
+id: fixture_gate_tools
+name: Gate Tools Fixture
+description: "Exercise the 4 gate builtin tools."
+version: "1.0"
+
+steps:
+  - id: pytest
+    primitive: tool
+    config:
+      tool: pytest_run
+      arguments:
+        cmd: "pytest -x --timeout=30"
+
+  - id: ruff_check
+    primitive: tool
+    config:
+      tool: ruff_check
+      arguments:
+        cmd: "ruff check ."
+    condition: "$stepResult.pytest.exit_code == 0"
+
+  - id: ruff_format
+    primitive: tool
+    config:
+      tool: ruff_format
+      arguments:
+        cmd: "ruff format --check ."
+    condition: "$stepResult.ruff_check.exit_code == 0"
+
+  - id: mypy
+    primitive: tool
+    config:
+      tool: mypy_check
+      arguments:
+        cmd: "mypy ."
+    condition: "$stepResult.ruff_format.exit_code == 0"

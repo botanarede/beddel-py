@@ -1,0 +1,24 @@
+# Skill governance workflow — demonstrates strict governance policy
+# restricting which solution kits are allowed for skill invocation.
+# Validates that the parser handles metadata.skills.governance config.
+# This fixture validates parsing only — not execution.
+id: skill-governance-demo
+name: Skill Governance Demo
+description: Workflow with strict skill governance and a skill invocation step.
+version: "1.0"
+
+metadata:
+  skills:
+    governance:
+      policy: strict
+      allowed:
+        - "software-development-kit"
+
+steps:
+  - id: use-governed-skill
+    primitive: call-agent
+    config:
+      skill:
+        kit: "software-development-kit"
+        workflow: "create-epic"
+        version: ">=0.1.0"

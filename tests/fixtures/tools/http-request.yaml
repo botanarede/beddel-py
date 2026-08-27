@@ -1,0 +1,29 @@
+# =============================================================================
+# Fixture: http_request tool
+# =============================================================================
+
+id: fixture_http_request
+name: HTTP Request Fixture
+description: "Exercise the http_request builtin tool."
+version: "1.0"
+
+steps:
+  - id: get_request
+    primitive: tool
+    config:
+      tool: http_request
+      arguments:
+        method: "GET"
+        url: "https://httpbin.org/get"
+
+  - id: post_json
+    primitive: tool
+    config:
+      tool: http_request
+      arguments:
+        method: "POST"
+        url: "https://httpbin.org/post"
+        headers:
+          Content-Type: "application/json"
+        body:
+          key: "value"

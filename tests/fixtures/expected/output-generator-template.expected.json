@@ -1,0 +1,27 @@
+{
+  "description": "Expected resolution output for output-generator-template.yaml",
+  "sample_inputs": {
+    "user": "Alice"
+  },
+  "sample_step_results": {
+    "generate": {
+      "content": "Alice has contributed significantly to the project."
+    }
+  },
+  "sample_env": {},
+  "steps": {
+    "generate": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Write a summary for Alice",
+        "temperature": 0.5
+      }
+    },
+    "render": {
+      "config": {
+        "template": "Report for Alice: Alice has contributed significantly to the project.",
+        "format": "text"
+      }
+    }
+  }
+}

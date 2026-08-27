@@ -1,0 +1,31 @@
+{
+  "description": "Expected resolution output for call-agent-nested.yaml",
+  "sample_inputs": {
+    "topic": "machine learning"
+  },
+  "sample_step_results": {
+    "generate": {
+      "content": "Machine learning is a subset of AI that learns from data."
+    }
+  },
+  "sample_env": {},
+  "steps": {
+    "generate": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Summarize machine learning",
+        "temperature": 0.5
+      }
+    },
+    "delegate": {
+      "config": {
+        "workflow": "refine-summary",
+        "inputs": {
+          "summary": "Machine learning is a subset of AI that learns from data.",
+          "topic": "machine learning"
+        },
+        "max_depth": 3
+      }
+    }
+  }
+}

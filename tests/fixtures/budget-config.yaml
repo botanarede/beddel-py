@@ -1,0 +1,5 @@
+# Budget configuration example — defines per-workflow cost limits.
+# Used by InMemoryBudgetEnforcer (Story 5.6).
+max_cost_usd: 5.0
+degradation_threshold: 0.8
+degradation_model: "gpt-4o-mini"

@@ -1,0 +1,41 @@
+{
+  "description": "Expected resolution output for multi-step.yaml",
+  "sample_inputs": {
+    "topic": "quantum computing",
+    "depth": "detailed"
+  },
+  "sample_step_results": {
+    "summarize": {
+      "text": "Quantum computing uses qubits to perform parallel computations."
+    },
+    "extract_keywords": {
+      "keywords": "qubits, superposition, entanglement"
+    }
+  },
+  "sample_env": {
+    "REPORT_API_KEY": "rk-test-456"
+  },
+  "steps": {
+    "summarize": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Summarize quantum computing at detailed level",
+        "temperature": 0.5
+      }
+    },
+    "extract_keywords": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Extract keywords from: Quantum computing uses qubits to perform parallel computations.",
+        "max_tokens": 100
+      }
+    },
+    "report": {
+      "config": {
+        "model": "gpt-4o",
+        "prompt": "Write a detailed report on quantum computing using keywords qubits, superposition, entanglement and API key rk-test-456",
+        "temperature": 0.3
+      }
+    }
+  }
+}

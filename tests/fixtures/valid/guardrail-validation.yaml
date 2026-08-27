@@ -1,0 +1,25 @@
+# Guardrail validation workflow with return_errors strategy.
+# Step 1 generates structured data; step 2 validates it against a schema.
+id: guardrail-validation
+name: Guardrail Validation Workflow
+description: Demonstrates guardrail validation with schema checking and return_errors strategy.
+
+steps:
+  - id: produce
+    primitive: output-generator
+    config:
+      template: "$input.payload"
+      format: json
+
+  - id: validate
+    primitive: guardrail
+    config:
+      data: "$stepResult.produce.data"
+      schema:
+        fields:
+          name:
+            type: str
+            required: true
+          age:
+            type: int
+      strategy: return_errors

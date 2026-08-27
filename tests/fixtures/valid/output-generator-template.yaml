@@ -1,0 +1,27 @@
+# Output-generator template rendering with $input and $stepResult variables.
+# Step 1 generates content via LLM; step 2 renders a template referencing step 1 output.
+id: output-generator-template
+name: Output Generator Template Workflow
+description: Demonstrates template rendering with variable interpolation and text format.
+
+input_schema:
+  type: object
+  properties:
+    user:
+      type: string
+  required:
+    - user
+
+steps:
+  - id: generate
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Write a summary for $input.user"
+      temperature: 0.5
+
+  - id: render
+    primitive: output-generator
+    config:
+      template: "Report for $input.user: $stepResult.generate.content"
+      format: text

@@ -1,0 +1,19 @@
+# Event-driven schedule workflow demonstrating timer-based triggers.
+# Validates that the parser handles metadata.trigger config for schedules.
+# This fixture validates parsing only — not execution.
+id: event-driven-schedule-demo
+name: Event-Driven Schedule Demo
+description: Workflow triggered on a schedule with configurable interval.
+version: "1.0"
+
+metadata:
+  trigger:
+    type: schedule
+    config:
+      interval: 60
+
+steps:
+  - id: scheduled-task
+    primitive: output-generator
+    config:
+      template: "Running scheduled task"

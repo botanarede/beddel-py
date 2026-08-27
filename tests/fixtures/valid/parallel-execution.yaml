@@ -1,0 +1,43 @@
+# Parallel execution workflow — mixed sequential and parallel steps.
+id: parallel-execution
+name: Parallel Execution Workflow
+description: A workflow with sequential and parallel steps demonstrating fan-out/fan-in.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+  required:
+    - topic
+
+steps:
+  - id: prepare
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Prepare an outline about $input.topic"
+      temperature: 0.5
+
+  - id: research
+    primitive: llm
+    parallel: true
+    config:
+      model: gpt-4o-mini
+      prompt: "Research facts about $input.topic"
+      temperature: 0.3
+
+  - id: examples
+    primitive: llm
+    parallel: true
+    config:
+      model: gpt-4o-mini
+      prompt: "Find examples related to $input.topic"
+      temperature: 0.3
+
+  - id: synthesize
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Synthesize the outline, research, and examples into a final document about $input.topic"
+      temperature: 0.7
