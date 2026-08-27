@@ -108,6 +108,7 @@ def test_safe_environment_drops_inherited_secrets(
     assert environment["HOME"] == str(tmp_path)
     assert environment["PYTHONNOUSERSITE"] == "1"
     assert environment["MYPY_CACHE_DIR"] == str(tmp_path / ".cache" / "mypy")
+    assert environment["RUFF_CACHE_DIR"] == str(tmp_path / ".cache" / "ruff")
     assert environment["PYTHONPYCACHEPREFIX"] == str(tmp_path / ".cache" / "pycache")
 
 
@@ -428,6 +429,25 @@ def test_runner_invalid_baseline_is_blocking_with_exit_two(
     assert report.comparison == {
         "reason": {"check": "readable_report", "side": "base"}
     }
+
+
+def test_runner_process_leaves_no_cache_artifacts() -> None:
+    root = Path(__file__).resolve().parents[2]
+    environment = os.environ.copy()
+    environment.pop("PYTHONDONTWRITEBYTECODE", None)
+    environment.pop("PYTHONPYCACHEPREFIX", None)
+    completed = subprocess.run(
+        [sys.executable, "-m", "automation.quality_gate_runner", "--invalid"],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    cache_names = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+    assert not any(path.name in cache_names for path in root.rglob("*"))
 
 
 def test_runner_returns_two_when_fixed_layout_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -38,6 +38,22 @@ _MYPY_SUMMARY_PATTERN: Final = re.compile(
 Diagnostic = tuple[str, str, str]
 
 
+def _disable_local_bytecode_cache() -> None:
+    """Prevent this runner from leaving its own import bytecode in the tree."""
+    sys.dont_write_bytecode = True
+    cache_dir = Path(__file__).with_name("__pycache__")
+    if not cache_dir.is_dir():
+        return
+    for bytecode in cache_dir.glob("*.pyc"):
+        with suppress(OSError):
+            bytecode.unlink()
+    with suppress(OSError):
+        cache_dir.rmdir()
+
+
+_disable_local_bytecode_cache()
+
+
 class GateOperation(StrEnum):
     """The complete, closed set of bootstrap gate operations."""
 
@@ -114,6 +130,7 @@ def _safe_environment(home: Path) -> dict[str, str]:
         "PYTHONSAFEPATH": "1",
         "PYTHONUTF8": "1",
         "MYPY_CACHE_DIR": str(home / ".cache" / "mypy"),
+        "RUFF_CACHE_DIR": str(home / ".cache" / "ruff"),
         "PYTHONPYCACHEPREFIX": str(home / ".cache" / "pycache"),
     }
 
