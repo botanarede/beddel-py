@@ -81,7 +81,12 @@ def _package_root() -> Path:
 
 def _contained_path(root: Path, relative_path: str) -> str:
     """Return a root-relative path only when resolving it cannot escape *root*."""
-    candidate = (root / relative_path).resolve(strict=True)
+    try:
+        candidate = (root / relative_path).resolve(strict=True)
+    except OSError as exc:
+        raise GateConfigurationError(
+            f"fixed target cannot be resolved: {relative_path}"
+        ) from exc
     if not candidate.is_relative_to(root):
         raise GateConfigurationError(f"fixed target escapes package root: {relative_path}")
     return str(candidate.relative_to(root))

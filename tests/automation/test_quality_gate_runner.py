@@ -70,6 +70,30 @@ def test_containment_rejects_symlink_escape(tmp_path: Path) -> None:
         runner_module._contained_path(root, "escape")
 
 
+def test_containment_rejects_missing_target(tmp_path: Path) -> None:
+    with pytest.raises(
+        runner_module.GateConfigurationError,
+        match="cannot be resolved: missing-target",
+    ):
+        runner_module._contained_path(tmp_path, "missing-target")
+
+
+def test_runner_structures_missing_fixed_target(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    monkeypatch.setattr(runner_module, "_package_root", lambda: root)
+
+    report = runner_module.QualityGateRunner().run()
+
+    assert len(report.results) == 1
+    assert report.results[0].operation == "bootstrap"
+    assert report.results[0].status == "invalid"
+    assert report.results[0].returncode is None
+    assert report.exit_code == 2
+    assert "cannot be resolved" in report.results[0].stderr
+    assert "tests/automation" in report.results[0].stderr
+
+
 def test_safe_environment_drops_inherited_secrets(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
