@@ -229,9 +229,7 @@ def _validated_mypy_fingerprint(
         not isinstance(entry, list) or len(entry) != 3 for entry in fingerprint
     ):
         return _invalid_comparison("mypy_fingerprint", side)
-    diagnostics = tuple(
-        (str(entry[0]), str(entry[1]), str(entry[2])) for entry in fingerprint
-    )
+    diagnostics = tuple((str(entry[0]), str(entry[1]), str(entry[2])) for entry in fingerprint)
 
     stdout = mypy_result.get("stdout", "")
     stderr = mypy_result.get("stderr", "")
@@ -340,18 +338,20 @@ class QualityGateRunner:
                 )
                 comparison = compare_reports(baseline, candidate_path)
 
-        if any(result.status == "invalid" for result in results):
-            exit_code = 2
-        elif comparison is not None and "reason" in comparison:
-            exit_code = 2
-        elif any(
+        invalid_report = any(result.status == "invalid" for result in results)
+        invalid_comparison = comparison is not None and "reason" in comparison
+        non_mypy_failure = any(
             result.status != "passed" and result.operation != GateOperation.MYPY.value
             for result in results
-        ):
-            exit_code = 1
-        elif baseline is None and any(result.status != "passed" for result in results):
-            exit_code = 1
-        elif comparison is not None and bool(comparison.get("added")):
+        )
+        mypy_without_baseline = baseline is None and any(
+            result.status != "passed" for result in results
+        )
+        mypy_regression = comparison is not None and bool(comparison.get("added"))
+
+        if invalid_report or invalid_comparison:
+            exit_code = 2
+        elif non_mypy_failure or mypy_without_baseline or mypy_regression:
             exit_code = 1
         else:
             exit_code = 0

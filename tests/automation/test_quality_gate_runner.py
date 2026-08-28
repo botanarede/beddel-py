@@ -227,18 +227,6 @@ def test_redaction_and_output_cap() -> None:
     assert "[output truncated]" in redacted
 
 
-def test_runner_aggregates_failures_without_fail_fast(monkeypatch: pytest.MonkeyPatch) -> None:
-    root = Path(__file__).resolve().parents[2]
-    calls: list[runner_module.GateOperation] = []
-
-    monkeypatch.setattr(runner_module, "_package_root", lambda: root)
-
-    def fake_run(
-        self: runner_module.QualityGateRunner,
-        operation: runner_module.GateOperation,
-        command: tuple[str, ...],
-
-
 def _mypy_result(report: dict[str, object]) -> dict[str, object]:
     results = report["results"]
     assert isinstance(results, list)
@@ -286,6 +274,18 @@ def test_compare_reports_rejects_each_untrustworthy_mypy_report(
     comparison = runner_module.compare_reports(base_path, candidate_path)
 
     assert comparison == {"reason": {"check": expected_check, "side": side}}
+
+
+def test_runner_aggregates_failures_without_fail_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = Path(__file__).resolve().parents[2]
+    calls: list[runner_module.GateOperation] = []
+
+    monkeypatch.setattr(runner_module, "_package_root", lambda: root)
+
+    def fake_run(
+        self: runner_module.QualityGateRunner,
+        operation: runner_module.GateOperation,
+        command: tuple[str, ...],
         command_root: Path,
         environment: dict[str, str],
     ) -> runner_module.GateResult:
@@ -426,9 +426,7 @@ def test_runner_invalid_baseline_is_blocking_with_exit_two(
     report = runner_module.QualityGateRunner().run(baseline=baseline)
 
     assert report.exit_code == 2
-    assert report.comparison == {
-        "reason": {"check": "readable_report", "side": "base"}
-    }
+    assert report.comparison == {"reason": {"check": "readable_report", "side": "base"}}
 
 
 def test_runner_process_leaves_no_cache_artifacts() -> None:
@@ -447,7 +445,10 @@ def test_runner_process_leaves_no_cache_artifacts() -> None:
 
     assert completed.returncode == 2
     cache_names = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
-    assert not any(path.name in cache_names for path in root.rglob("*"))
+    cache_paths = (
+        path for path in root.rglob("*") if ".venv" not in path.parts and path.name in cache_names
+    )
+    assert not any(cache_paths)
 
 
 def test_runner_returns_two_when_fixed_layout_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
