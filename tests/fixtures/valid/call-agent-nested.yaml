@@ -1,0 +1,31 @@
+# Call-agent nested workflow invocation with context passing.
+# Step 1 generates content via LLM; step 2 invokes a nested workflow
+# passing step 1 output as input, demonstrating result propagation.
+id: call-agent-nested
+name: Call Agent Nested Workflow
+description: Demonstrates nested workflow invocation via call-agent with context passing and result propagation.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+  required:
+    - topic
+
+steps:
+  - id: generate
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Summarize $input.topic"
+      temperature: 0.5
+
+  - id: delegate
+    primitive: call-agent
+    config:
+      workflow: refine-summary
+      inputs:
+        summary: "$stepResult.generate.content"
+        topic: "$input.topic"
+      max_depth: 3

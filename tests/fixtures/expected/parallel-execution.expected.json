@@ -1,0 +1,40 @@
+{
+  "description": "Expected resolution output for parallel-execution.yaml",
+  "sample_inputs": {
+    "topic": "machine learning"
+  },
+  "sample_step_results": {},
+  "sample_env": {},
+  "steps": {
+    "prepare": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Prepare an outline about machine learning",
+        "temperature": 0.5
+      }
+    },
+    "research": {
+      "parallel": true,
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Research facts about machine learning",
+        "temperature": 0.3
+      }
+    },
+    "examples": {
+      "parallel": true,
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Find examples related to machine learning",
+        "temperature": 0.3
+      }
+    },
+    "synthesize": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Synthesize the outline, research, and examples into a final document about machine learning",
+        "temperature": 0.7
+      }
+    }
+  }
+}

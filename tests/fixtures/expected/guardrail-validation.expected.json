@@ -1,0 +1,32 @@
+{
+  "description": "Expected resolution output for guardrail-validation.yaml",
+  "sample_inputs": {
+    "payload": "{\"name\": \"Bob\", \"age\": 30}"
+  },
+  "sample_step_results": {
+    "produce": {
+      "data": {"name": "Bob", "age": 30}
+    }
+  },
+  "sample_env": {},
+  "steps": {
+    "produce": {
+      "config": {
+        "template": "{\"name\": \"Bob\", \"age\": 30}",
+        "format": "json"
+      }
+    },
+    "validate": {
+      "config": {
+        "data": {"name": "Bob", "age": 30},
+        "schema": {
+          "fields": {
+            "name": {"type": "str", "required": true},
+            "age": {"type": "int"}
+          }
+        },
+        "strategy": "return_errors"
+      }
+    }
+  }
+}

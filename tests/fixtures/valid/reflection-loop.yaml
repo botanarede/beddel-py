@@ -1,0 +1,36 @@
+# Reflection loop workflow — generate-evaluate cycle with convergence detection.
+id: reflection-loop
+name: Reflection Loop Workflow
+description: A workflow that iteratively generates and evaluates content until convergence.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+  required:
+    - topic
+
+metadata:
+  _reflection_config:
+    max_iterations: 3
+    convergence_algorithm: exact-match
+
+steps:
+  - id: draft
+    primitive: llm
+    tags:
+      - generate
+    config:
+      model: gpt-4o-mini
+      prompt: "Write a short paragraph about $input.topic. Previous feedback: $stepResult._reflection_feedback"
+      temperature: 0.7
+
+  - id: review
+    primitive: llm
+    tags:
+      - evaluate
+    config:
+      model: gpt-4o-mini
+      prompt: "Evaluate the quality of this text and provide feedback: $stepResult.draft"
+      temperature: 0.3

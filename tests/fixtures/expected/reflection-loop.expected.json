@@ -1,0 +1,30 @@
+{
+  "description": "Expected resolution output for reflection-loop.yaml",
+  "sample_inputs": {
+    "topic": "AI safety"
+  },
+  "sample_step_results": {
+    "_reflection_feedback": "Previous evaluation feedback"
+  },
+  "sample_env": {},
+  "steps": {
+    "draft": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Write a short paragraph about AI safety. Previous feedback: Previous evaluation feedback",
+        "temperature": 0.7
+      }
+    },
+    "review": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Evaluate the quality of this text and provide feedback: ",
+        "temperature": 0.3
+      }
+    }
+  },
+  "_reflection": {
+    "max_iterations": 3,
+    "convergence_algorithm": "exact-match"
+  }
+}

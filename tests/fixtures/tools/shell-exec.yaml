@@ -1,0 +1,34 @@
+# =============================================================================
+# Fixture: shell_exec tool
+# =============================================================================
+
+id: fixture_shell_exec
+name: Shell Exec Fixture
+description: "Exercise the shell_exec builtin tool."
+version: "1.0"
+
+steps:
+  - id: echo_hello
+    primitive: tool
+    config:
+      tool: shell_exec
+      arguments:
+        cmd: "echo hello"
+        timeout: 10
+
+  - id: with_cwd
+    primitive: tool
+    config:
+      tool: shell_exec
+      arguments:
+        cmd: "pwd"
+        cwd: "/tmp"
+        timeout: 5
+
+  - id: fail_on_error
+    primitive: tool
+    config:
+      tool: shell_exec
+      arguments:
+        cmd: "echo ok"
+        fail_on_error: true

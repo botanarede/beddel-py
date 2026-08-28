@@ -64,8 +64,19 @@ class TestIAgentAdapterProtocol:
         assert isinstance(adapter, IAgentAdapter)
 
     def test_protocol_is_runtime_checkable(self) -> None:
-        """IAgentAdapter is decorated with @runtime_checkable."""
-        assert hasattr(IAgentAdapter, "__protocol_attrs__")
+        """IAgentAdapter supports isinstance() checks (i.e. is @runtime_checkable).
+
+        A Protocol not decorated with @runtime_checkable raises TypeError on
+        isinstance(). Calling isinstance() here is itself the proof: a
+        conforming object passes and a non-conforming object does not, which
+        is only possible if IAgentAdapter is runtime-checkable.
+        """
+        assert isinstance(_StubAgentAdapter(), IAgentAdapter)
+
+        class _Empty:
+            pass
+
+        assert not isinstance(_Empty(), IAgentAdapter)
 
     def test_object_without_methods_is_not_adapter(self) -> None:
         """A plain object does not satisfy IAgentAdapter."""

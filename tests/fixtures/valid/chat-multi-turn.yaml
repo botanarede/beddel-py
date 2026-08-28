@@ -1,0 +1,27 @@
+# Multi-turn chat workflow with system message and conversation history.
+id: chat-multi-turn
+name: Chat Multi-Turn Workflow
+description: Multi-turn conversation with system message and history
+version: "1.0"
+steps:
+  - id: step1
+    primitive: chat
+    config:
+      model: gpt-4o
+      system: "You are a helpful assistant."
+      messages:
+        - role: user
+          content: "What is Python?"
+
+  - id: step2
+    primitive: chat
+    config:
+      model: gpt-4o
+      system: "You are a helpful assistant."
+      messages:
+        - role: user
+          content: "What is Python?"
+        - role: assistant
+          content: "$stepResult.step1.content"
+        - role: user
+          content: "Tell me more"

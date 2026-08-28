@@ -1,0 +1,16 @@
+# Invalid: malformed variable references → BEDDEL-PARSE-003
+id: circular-ref
+name: Invalid Variable References
+description: Steps contain variable references with invalid namespaces.
+
+steps:
+  - id: broken
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "$unknown.namespace.value"
+  - id: also-broken
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "$self.circular"

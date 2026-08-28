@@ -1,0 +1,29 @@
+# Tool invocation workflow with argument resolution.
+# Step 1 generates structured data via output-generator;
+# step 2 invokes a registered tool function with step 1 output as argument.
+id: tool-invocation
+name: Tool Invocation Workflow
+description: Demonstrates tool primitive invoking a registered function with resolved arguments.
+
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+  required:
+    - query
+
+steps:
+  - id: prepare
+    primitive: output-generator
+    config:
+      template: "{\"search_query\": \"$input.query\", \"max_results\": 5}"
+      format: json
+
+  - id: search
+    primitive: tool
+    config:
+      tool: web-search
+      arguments:
+        query: "$stepResult.prepare.search_query"
+        limit: "$stepResult.prepare.max_results"

@@ -1,0 +1,13 @@
+# Invalid: unrecognized execution strategy type → BEDDEL-PARSE-002
+id: bad-strategy
+name: Bad Strategy Workflow
+description: A step uses an invalid execution strategy type.
+
+steps:
+  - id: generate
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Summarize the input"
+    execution_strategy:
+      type: invalid_strategy

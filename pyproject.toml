@@ -42,6 +42,20 @@ dependencies = [
     "click>=8.0",
 ]
 
+[dependency-groups]
+dev = [
+    "build",
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-timeout",
+    "ruff",
+    "twine",
+    "types-jsonschema",
+    "types-pyyaml",
+]
+
 [project.urls]
 Homepage = "https://beddel.com.br"
 Repository = "https://github.com/botanarede/beddel-py"
@@ -98,6 +112,8 @@ python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+files = ["src/beddel", "automation"]
+exclude = ["^\\.venv/"]
 
 # -----------------------------------------------------------------------------
 # Pytest

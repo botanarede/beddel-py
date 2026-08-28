@@ -1,0 +1,62 @@
+# Workflow with conditional branching and execution strategies.
+id: branching-workflow
+name: Branching Workflow
+description: Demonstrates if/then/else branching, retry, and skip strategies.
+version: "1.1"
+
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+    language:
+      type: string
+  required:
+    - query
+
+steps:
+  # Step 1 — classify the query with retry strategy
+  - id: classify
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Classify this query as 'technical' or 'general': $input.query"
+      max_tokens: 50
+    execution_strategy:
+      type: retry
+      retry:
+        max_attempts: 3
+        backoff_base: 1.5
+        jitter: true
+    timeout: 30.0
+
+  # Step 2 — branch based on classification result
+  - id: route
+    primitive: llm
+    if: "$stepResult.classify.category == 'technical'"
+    then:
+      - id: technical_answer
+        primitive: llm
+        config:
+          model: gpt-4o
+          prompt: "Provide a detailed technical answer to: $input.query"
+          temperature: 0.3
+    else:
+      - id: general_answer
+        primitive: llm
+        config:
+          model: gpt-4o-mini
+          prompt: "Provide a friendly answer to: $input.query"
+          temperature: 0.7
+
+  # Step 3 — optional translation with skip strategy and $env reference
+  - id: translate
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Translate the following to $input.language using key $env.TRANSLATE_API_KEY"
+    execution_strategy:
+      type: skip
+    metadata:
+      optional: true
+      phase: post-processing

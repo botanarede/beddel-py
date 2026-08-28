@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=../../schemas/workflow.schema.json
+# Minimal single-step workflow — one LLM call with $input variable reference.
+id: simple-llm
+name: Simple LLM Workflow
+description: A minimal workflow that generates content about a given topic.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+  required:
+    - topic
+
+steps:
+  - id: generate
+    primitive: llm
+    config:
+      model: gpt-4o-mini
+      prompt: "Write a short paragraph about $input.topic"
+      temperature: 0.7

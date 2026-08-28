@@ -1,0 +1,25 @@
+# =============================================================================
+# Fixture: file tools (file_read, file_write)
+# =============================================================================
+
+id: fixture_file_tools
+name: File Tools Fixture
+description: "Exercise the file_read and file_write builtin tools."
+version: "1.0"
+
+steps:
+  - id: write_file
+    primitive: tool
+    config:
+      tool: file_write
+      arguments:
+        path: "tmp/test-output.txt"
+        content: "hello from fixture"
+
+  - id: read_file
+    primitive: tool
+    config:
+      tool: file_read
+      arguments:
+        path: "tmp/test-output.txt"
+    condition: "$stepResult.write_file.written == true"

@@ -1,0 +1,40 @@
+{
+  "description": "Expected resolution output for chat-multi-turn.yaml",
+  "sample_inputs": {},
+  "sample_step_results": {},
+  "sample_env": {},
+  "steps": {
+    "step1": {
+      "config": {
+        "model": "gpt-4o",
+        "system": "You are a helpful assistant.",
+        "messages": [
+          {
+            "role": "user",
+            "content": "What is Python?"
+          }
+        ]
+      }
+    },
+    "step2": {
+      "config": {
+        "model": "gpt-4o",
+        "system": "You are a helpful assistant.",
+        "messages": [
+          {
+            "role": "user",
+            "content": "What is Python?"
+          },
+          {
+            "role": "assistant",
+            "content": "$stepResult.step1.content"
+          },
+          {
+            "role": "user",
+            "content": "Tell me more"
+          }
+        ]
+      }
+    }
+  }
+}

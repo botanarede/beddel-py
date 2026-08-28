@@ -1,0 +1,20 @@
+# Event-driven webhook workflow demonstrating trigger-based execution.
+# Validates that the parser handles metadata.trigger config for webhooks
+# and that steps can reference $stepResult._trigger.payload.
+# This fixture validates parsing only — not execution.
+id: event-driven-webhook-demo
+name: Event-Driven Webhook Demo
+description: Workflow triggered by webhook events with trigger payload reference.
+version: "1.0"
+
+metadata:
+  trigger:
+    type: webhook
+    config:
+      path: "/hooks/deploy"
+
+steps:
+  - id: process-event
+    primitive: output-generator
+    config:
+      template: "Received webhook event: $stepResult._trigger.payload"

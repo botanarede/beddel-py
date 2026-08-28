@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import time
 
 import pytest
@@ -597,10 +598,11 @@ class TestDefaultDependencies:
         """ExecutionDependencies Protocol defines agent_adapter and agent_registry."""
         from beddel.domain.ports import ExecutionDependencies
 
-        # Protocol members are accessible via __protocol_attrs__ or annotations
-        hints = ExecutionDependencies.__protocol_attrs__
-        assert "agent_adapter" in hints
-        assert "agent_registry" in hints
+        # Protocol members are declared as attributes on the class namespace,
+        # visible via dir() and resolvable through inspect.getattr_static()
+        # without triggering descriptor evaluation.
+        assert "agent_adapter" in dir(ExecutionDependencies)
+        assert "agent_registry" in dir(ExecutionDependencies)
 
     # -- context_reducer --
 
@@ -646,8 +648,8 @@ class TestDefaultDependencies:
         """ExecutionDependencies Protocol defines context_reducer."""
         from beddel.domain.ports import ExecutionDependencies
 
-        hints = ExecutionDependencies.__protocol_attrs__
-        assert "context_reducer" in hints
+        assert "context_reducer" in dir(ExecutionDependencies)
+        inspect.getattr_static(ExecutionDependencies, "context_reducer")
 
 
 # ---------------------------------------------------------------------------

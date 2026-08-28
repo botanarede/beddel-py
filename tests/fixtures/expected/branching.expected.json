@@ -1,0 +1,44 @@
+{
+  "description": "Expected resolution output for branching.yaml",
+  "sample_inputs": {
+    "query": "How does TCP work?",
+    "language": "French"
+  },
+  "sample_step_results": {
+    "classify": {
+      "category": "technical"
+    }
+  },
+  "sample_env": {
+    "TRANSLATE_API_KEY": "sk-test-123"
+  },
+  "steps": {
+    "classify": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Classify this query as 'technical' or 'general': How does TCP work?",
+        "max_tokens": 50
+      }
+    },
+    "technical_answer": {
+      "config": {
+        "model": "gpt-4o",
+        "prompt": "Provide a detailed technical answer to: How does TCP work?",
+        "temperature": 0.3
+      }
+    },
+    "general_answer": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Provide a friendly answer to: How does TCP work?",
+        "temperature": 0.7
+      }
+    },
+    "translate": {
+      "config": {
+        "model": "gpt-4o-mini",
+        "prompt": "Translate the following to French using key sk-test-123"
+      }
+    }
+  }
+}
