@@ -434,6 +434,8 @@ def test_runner_process_leaves_no_cache_artifacts() -> None:
     environment = os.environ.copy()
     environment.pop("PYTHONDONTWRITEBYTECODE", None)
     environment.pop("PYTHONPYCACHEPREFIX", None)
+    # The gate invokes pytest with PYTHONSAFEPATH=1, so cwd is not an import path.
+    environment["PYTHONPATH"] = str(root)
     completed = subprocess.run(
         [sys.executable, "-m", "automation.quality_gate_runner", "--invalid"],
         cwd=root,
