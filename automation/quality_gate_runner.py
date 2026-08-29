@@ -26,6 +26,7 @@ from typing import Final
 _OUTPUT_LIMIT: Final = 8_192
 _TERMINATION_GRACE_SECONDS: Final = 5.0
 _DEFAULT_TIMEOUT_SECONDS: Final = 300.0
+_SCHEMA_DRIFT_TARGET: Final = Path("vendor/beddel/spec/tests/test_schema_sync.py")
 _SECRET_PATTERN: Final = re.compile(
     r"(?im)(authorization\s*:\s*(?:bearer\s+)?|"
     r"(?:api[_-]?key|token|password|secret)\s*[=:]\s*)[^\s'\"]+"
@@ -62,6 +63,7 @@ class GateOperation(StrEnum):
     """The complete, closed set of bootstrap gate operations."""
 
     PYTEST = "pytest"
+    SCHEMA_DRIFT = "schema-drift"
     RUFF_CHECK = "ruff-check"
     RUFF_FORMAT_CHECK = "ruff-format-check"
     MYPY = "mypy"
@@ -341,11 +343,13 @@ class QualityGateRunner:
         invalid_report = any(result.status == "invalid" for result in results)
         invalid_comparison = comparison is not None and "reason" in comparison
         non_mypy_failure = any(
-            result.status != "passed" and result.operation != GateOperation.MYPY.value
+            result.status not in {"passed", "skipped"}
+            and result.operation != GateOperation.MYPY.value
             for result in results
         )
         mypy_without_baseline = baseline is None and any(
-            result.status != "passed" for result in results
+            result.status != "passed" and result.operation == GateOperation.MYPY.value
+            for result in results
         )
         mypy_regression = comparison is not None and bool(comparison.get("added"))
 
@@ -392,6 +396,18 @@ class QualityGateRunner:
                 ),
             ),
             (
+                GateOperation.SCHEMA_DRIFT,
+                (
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "-p",
+                    "no:cacheprovider",
+                    _SCHEMA_DRIFT_TARGET.as_posix(),
+                ),
+            ),
+            (
                 GateOperation.RUFF_CHECK,
                 (sys.executable, "-m", "ruff", "check", source, tests, automation),
             ),
@@ -411,11 +427,33 @@ class QualityGateRunner:
     ) -> GateResult:
         """Run one internally created command in its own process group."""
         started = time.monotonic()
+        command_root = root
+        command_environment = environment
+        if operation is GateOperation.SCHEMA_DRIFT:
+            parent_root = root.parent.parent
+            expected_package_root = parent_root / "packages" / "beddel-py"
+            schema_test = parent_root / _SCHEMA_DRIFT_TARGET
+            if expected_package_root.resolve() != root.resolve() or not schema_test.is_file():
+                return GateResult(
+                    operation=operation.value,
+                    status="skipped",
+                    returncode=None,
+                    duration_seconds=time.monotonic() - started,
+                    timed_out=False,
+                    stdout=(
+                        "Schema drift gate skipped: parent repository schema test "
+                        f"not found at {schema_test}"
+                    ),
+                    stderr="",
+                )
+            command_root = parent_root
+            command_environment = {**environment, "PYTHONPATH": str(root / "src")}
+
         try:
             process = subprocess.Popen(
                 command,
-                cwd=root,
-                env=environment,
+                cwd=command_root,
+                env=command_environment,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 start_new_session=True,

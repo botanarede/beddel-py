@@ -45,6 +45,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "build",
+    "jsonschema>=4.26.0",
     "mypy",
     "pytest",
     "pytest-asyncio",

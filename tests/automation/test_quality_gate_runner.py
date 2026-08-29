@@ -48,6 +48,7 @@ def test_commands_are_closed_and_use_the_current_interpreter() -> None:
 
     assert [operation.value for operation, _ in commands] == [
         "pytest",
+        "schema-drift",
         "ruff-check",
         "ruff-format-check",
         "mypy",
@@ -58,6 +59,8 @@ def test_commands_are_closed_and_use_the_current_interpreter() -> None:
     assert "tests/automation" in pytest_command
     assert "tests/unit/test_onboarding_workflow.py" in pytest_command
     assert "--deselect=tests/primitives/test_tool.py::TestMCPSchemaValidation" in pytest_command
+    schema_drift_command = commands[1][1]
+    assert "vendor/beddel/spec/tests/test_schema_sync.py" in schema_drift_command
     assert all("shell" not in argument for _, command in commands for argument in command)
 
 
@@ -120,6 +123,55 @@ def test_pytest_disables_cache_provider() -> None:
 
     assert "-p" in pytest_command
     assert pytest_command[pytest_command.index("-p") + 1] == "no:cacheprovider"
+
+
+def test_schema_drift_gate_skips_in_isolated_clone(tmp_path: Path) -> None:
+    root = tmp_path / "beddel-py"
+    root.mkdir()
+    runner = runner_module.QualityGateRunner()
+
+    result = runner._run_operation(
+        runner_module.GateOperation.SCHEMA_DRIFT,
+        (sys.executable, "-m", "pytest"),
+        root,
+        runner_module._safe_environment(tmp_path),
+    )
+
+    assert result.status == "skipped"
+    assert result.returncode is None
+    assert "parent repository schema test not found" in result.stdout
+
+
+def test_schema_drift_skip_is_non_blocking(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(runner_module, "_package_root", lambda: root)
+
+    def fake_run(
+        self: runner_module.QualityGateRunner,
+        operation: runner_module.GateOperation,
+        command: tuple[str, ...],
+        command_root: Path,
+        environment: dict[str, str],
+    ) -> runner_module.GateResult:
+        del self, command, command_root, environment
+        if operation is runner_module.GateOperation.SCHEMA_DRIFT:
+            return runner_module.GateResult(
+                operation=operation.value,
+                status="skipped",
+                returncode=None,
+                duration_seconds=0.0,
+                timed_out=False,
+                stdout="parent repository schema test not found",
+                stderr="",
+            )
+        return _result(operation, "passed")
+
+    monkeypatch.setattr(runner_module.QualityGateRunner, "_run_operation", fake_run)
+
+    report = runner_module.QualityGateRunner().run()
+
+    assert report.exit_code == 0
+    assert report.results[1].status == "skipped"
 
 
 def test_mypy_fingerprint_drops_position_but_keeps_identity(tmp_path: Path) -> None:
