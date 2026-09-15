@@ -361,9 +361,9 @@ async def save_setup(
 def is_onboarding_complete() -> bool:
     """Return True if the onboarding wizard has been completed.
 
-    Detection: checks ``onboarding_done`` in SQLite user_prefs.
-    Falls back to legacy detection (``project_name`` in config.json)
-    for backward compatibility with existing installations.
+    Detection: checks ``onboarding_done`` in SQLite user_prefs.  This is
+    the single source of truth — an unreadable or absent store means the
+    onboarding has not run, so the wizard is served.
     """
     import asyncio
 
@@ -377,9 +377,18 @@ def is_onboarding_complete() -> bool:
     except Exception:  # noqa: BLE001
         pass
 
-    # Legacy fallback: config.json project_name
-    cfg = load_global_config()
-    return cfg.get("project_name", _SENTINEL) is not _SENTINEL
+    # Removed fallback, kept for the record:
+    #
+    #     cfg = load_global_config()
+    #     if cfg.get("project_name", _SENTINEL) is not _SENTINEL:
+    #         return True
+    #
+    # It treated a legacy ``project_name`` in config.json as proof that the
+    # onboarding had run, so any machine carrying an older config file
+    # skipped the wizard silently.  ``project_name`` has no runtime reader
+    # (only ``beddel config show`` prints it), which made this the weakest
+    # possible evidence for the strongest possible conclusion.
+    return False
 
 
 # ---------------------------------------------------------------------------

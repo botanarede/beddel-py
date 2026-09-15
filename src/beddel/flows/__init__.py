@@ -18,6 +18,7 @@ __all__ = [
     "get_bundled_flows_dir",
     "get_bundled_workflow_path",
     "BUNDLED_WORKFLOWS",
+    "EXAMPLE_WORKFLOWS",
 ]
 
 BUNDLED_WORKFLOWS = ["setup", "hello", "sum-two-numbers", "create-workflow"]
@@ -25,6 +26,15 @@ BUNDLED_WORKFLOWS = ["setup", "hello", "sum-two-numbers", "create-workflow"]
 
 All bundled workflows MUST work with ``beddel init`` defaults (provider-gemini-kit
 only). Flows requiring additional kits belong in repo/examples/ instead.
+"""
+
+EXAMPLE_WORKFLOWS = ["hello", "sum-two-numbers", "create-workflow"]
+"""Bundled workflows offered in the browser as usage examples.
+
+Deliberately excludes ``setup``: configuration is decided in the terminal,
+where the provider choice determines which provider kit gets installed.  A
+browser form cannot install a kit, so re-asking there would let the user
+save a provider whose kit is absent.
 """
 
 

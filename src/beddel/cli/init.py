@@ -66,7 +66,49 @@ BEDDEL_DATA_DIR = Path.home() / ".config" / "beddel"
 """User-level config directory (only stores index.db)."""
 
 DEFAULT_KITS_DIR = BEDDEL_DATA_DIR / "kits"
-"""Default kits directory. Can be changed later in the onboarding wizard."""
+"""Fallback kits directory, used only by the non-interactive ``--kits-dir`` default."""
+
+PROVIDER_CHOICES: tuple[str, ...] = ("gemini", "litellm", "adk")
+"""Selectable LLM providers.  No provider is pre-selected in the prompt."""
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap state
+# ---------------------------------------------------------------------------
+
+
+def base_kits_present(provider: str | None = None) -> bool:
+    """Return True when every kit the runner needs is present on disk.
+
+    The onboarding wizard is served *by* these kits, so a provisioned
+    database is not sufficient on its own — the kits must be installed
+    as well.  This is the second half of the ``launch`` pre-flight.
+
+    A provider kit is not optional: without one the runner has no LLM and
+    every example flow with an ``llm`` step fails.  ``initialize`` always
+    installs one, so its absence means the install never completed.  When
+    *provider* is None the configured provider is resolved, so the check
+    follows the choice the user actually made.
+    """
+    from beddel.cli.config import resolve_kits_paths, resolve_llm_provider
+
+    kits_paths = resolve_kits_paths()
+    if not kits_paths:
+        return False
+
+    if provider is None:
+        provider = resolve_llm_provider()
+    required = [k["name"] for k in REQUIRED_KITS + PROVIDER_KITS.get(provider, [])]
+    for name in required:
+        if not any((base / name / "kit.yaml").exists() for base in kits_paths):
+            return False
+    return True
+
+
+def is_bootstrapped() -> bool:
+    """Return True when both halves of the pre-flight are satisfied."""
+    db_path = BEDDEL_DATA_DIR / "index.db"
+    return db_path.exists() and base_kits_present()
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +471,175 @@ def save_pref(db_path: Path, key: str, value: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bootstrap: non-interactive core and interactive consent
+# ---------------------------------------------------------------------------
+
+
+def initialize(provider: str, kits_dir: Path, *, force: bool = False) -> None:
+    """Provision the database, install kits and save preferences.
+
+    This is the non-interactive core shared by ``beddel init`` and by the
+    ``beddel launch`` consent prompt.  It performs no prompting: every
+    decision arrives as an argument, so the caller owns consent.
+
+    Args:
+        provider: One of :data:`PROVIDER_CHOICES`.
+        kits_dir: Directory the kits are installed into.
+        force: Recreate the database instead of reusing it.
+
+    Raises:
+        SystemExit: If one or more kits could not be installed.
+    """
+    all_kits = REQUIRED_KITS + PROVIDER_KITS[provider]
+
+    click.echo("Step 1/3: Provisioning SQLite...")
+    db_path = provision_sqlite(force=force)
+
+    click.echo("\nStep 2/3: Installing kits...")
+    kit_names_needed = [k["name"] for k in all_kits]
+    skip_download = False
+
+    # BEDDEL_KIT_PATHS env var (dev environment override)
+    env_kit_paths = os.environ.get("BEDDEL_KIT_PATHS", "")
+    if env_kit_paths:
+        for env_path_str in env_kit_paths.split(":"):
+            env_path = Path(env_path_str.strip())
+            if env_path.is_dir():
+                present = [name for name in kit_names_needed if (env_path / name).is_dir()]
+                if len(present) == len(kit_names_needed):
+                    skip_download = True
+                    click.echo(f"  ✓ All required kits found via BEDDEL_KIT_PATHS: {env_path}")
+                    for kit_info in all_kits:
+                        register_kit_in_db(db_path, kit_info["name"], env_path / kit_info["name"])
+                    break
+
+    # Configured kits_paths as fallback
+    if not skip_download:
+        from beddel.cli.config import resolve_kits_paths
+
+        existing_kits_paths = resolve_kits_paths()
+        if existing_kits_paths:
+            first_path = existing_kits_paths[0]
+            if first_path.is_dir():
+                present = [name for name in kit_names_needed if (first_path / name).is_dir()]
+                if len(present) == len(kit_names_needed):
+                    skip_download = True
+                    click.echo(f"  ✓ All required kits already present in {first_path}")
+                    for kit_info in all_kits:
+                        register_kit_in_db(db_path, kit_info["name"], first_path / kit_info["name"])
+
+    if not skip_download and not install_required_kits(db_path, kits_dir, all_kits):
+        click.echo("\n⚠ Some kits failed. Run 'beddel init' again.", err=True)
+        raise SystemExit(1)
+
+    # Remove a stale fallback kits directory when the kits came from elsewhere
+    if force and skip_download and kits_dir.is_dir():
+        import shutil as _shutil
+
+        _shutil.rmtree(kits_dir, ignore_errors=True)
+        click.echo(f"  ⟳ Removed stale local kits: {kits_dir}")
+
+    click.echo("\nStep 3/3: Saving preferences...")
+    save_pref(db_path, "llm_provider", provider)
+    save_pref(db_path, "initialized", "true")
+
+
+def _persist_kits_dir(kits_dir: Path) -> None:
+    """Record the user's chosen kits directory as the configured path.
+
+    The chosen directory *is* the consent: there is no implicit default,
+    so discovery has nothing to fall back on until this is written.  A
+    project-local ``.beddel.json`` already declaring ``kits_paths`` takes
+    precedence over the global file and is therefore left untouched.
+    """
+    from beddel.cli.config import (
+        _SENTINEL,
+        find_project_config,
+        load_global_config,
+        load_project_config,
+        save_global_config,
+    )
+
+    project_cfg_path = find_project_config()
+    if project_cfg_path is not None and load_project_config(project_cfg_path)["kits_paths"]:
+        click.echo(f"  ✓ Using kits_paths from {project_cfg_path}")
+        return
+
+    data = {k: v for k, v in load_global_config().items() if v is not _SENTINEL}
+    data["kits_paths"] = [str(kits_dir)]
+    save_global_config(data)
+    click.echo(f"  ✓ Saved kits_paths: {kits_dir}")
+
+
+def _stdin_is_tty() -> bool:
+    """Return whether stdin is an interactive terminal.
+
+    Named rather than inlined so the interactive branch stays reachable
+    under test runners that replace ``sys.stdin`` after collection.
+    """
+    return sys.stdin.isatty()
+
+
+def prompt_bootstrap() -> bool:
+    """Ask for every setup decision, then bootstrap on an explicit yes.
+
+    Nothing is written before the user accepts: the provider, the kits
+    directory and the install itself are all confirmed up front, and the
+    reasons for each kit are shown so the cost is visible.
+
+    Returns:
+        True when the environment was bootstrapped, False when the user
+        declined (in which case nothing was written).
+
+    Raises:
+        SystemExit: When there is no TTY to prompt on, naming the
+            non-interactive command instead.
+    """
+    if not _stdin_is_tty():
+        click.echo("  ✗ Beddel is not set up, and there is no terminal to ask on.", err=True)
+        click.echo(
+            "    Run, choosing a provider and a kits directory:\n"
+            "      beddel init --provider <"
+            + "|".join(PROVIDER_CHOICES)
+            + "> --kits-dir <DIR> --yes",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    click.echo()
+    click.echo("  Beddel is not set up yet. Three questions before anything is written.")
+    click.echo()
+
+    provider = click.prompt(
+        "  1. LLM provider",
+        type=click.Choice(PROVIDER_CHOICES, case_sensitive=False),
+        show_choices=True,
+    ).lower()
+
+    kits_dir = Path(
+        click.prompt("  2. Directory to keep kits in", type=str).strip()
+    ).expanduser()
+
+    all_kits = REQUIRED_KITS + PROVIDER_KITS[provider]
+    click.echo()
+    click.echo("  3. This will install, into that directory:")
+    for kit_info in all_kits:
+        click.echo(f"       • {kit_info['name']:22} — {kit_info['reason']}")
+    click.echo("     …plus the Python packages each kit declares.")
+    click.echo()
+
+    if not click.confirm("  Proceed?", default=False):
+        click.echo("  Aborted — nothing was written.")
+        return False
+
+    click.echo()
+    kits_dir.mkdir(parents=True, exist_ok=True)
+    _persist_kits_dir(kits_dir)
+    initialize(provider, kits_dir)
+    return True
+
+
+# ---------------------------------------------------------------------------
 # CLI command
 # ---------------------------------------------------------------------------
 
@@ -441,19 +652,27 @@ def register_init_command(cli: Any) -> None:
     @click.option("--force", "-f", is_flag=True, help="Force re-initialization (recreates DB).")
     @click.option(
         "--provider",
-        type=click.Choice(["gemini", "litellm", "adk"], case_sensitive=False),
-        default="gemini",
-        help="LLM provider to install (default: gemini).",
+        type=click.Choice(list(PROVIDER_CHOICES), case_sensitive=False),
+        required=True,
+        help="LLM provider to install.",
     )
-    def init(*, yes: bool, force: bool, provider: str) -> None:
+    @click.option(
+        "--kits-dir",
+        type=click.Path(file_okay=False, path_type=Path),
+        default=DEFAULT_KITS_DIR,
+        show_default=True,
+        help="Directory to install kits into.",
+    )
+    def init(*, yes: bool, force: bool, provider: str, kits_dir: Path) -> None:
         """Initialize Beddel — provision database and install required kits.
 
-        First command after `pip install beddel`. Provisions SQLite,
-        installs required kits, saves preferences. Idempotent by default —
-        safe to run multiple times. Use --force to recreate the database.
-        Then run `beddel launch` for the interactive onboarding wizard.
+        The non-interactive path, for CI and scripted setup: every decision
+        is a flag.  Interactive users can just run `beddel launch`, which
+        asks the same questions before writing anything.  Idempotent by
+        default; use --force to recreate the database.
         """
-        kits_dir = DEFAULT_KITS_DIR
+        provider = provider.lower()
+        kits_dir = kits_dir.expanduser()
         all_kits = REQUIRED_KITS + PROVIDER_KITS[provider]
 
         click.echo()
@@ -473,65 +692,9 @@ def register_init_command(cli: Any) -> None:
             raise SystemExit(0)
 
         click.echo()
-
-        # Step 1: Provision SQLite
-        click.echo("Step 1/3: Provisioning SQLite...")
-        db_path = provision_sqlite(force=force)
-
-        # Step 2: Install required kits
-        click.echo("\nStep 2/3: Installing kits...")
-        kit_names_needed = [k["name"] for k in all_kits]
-
-        # Check BEDDEL_KIT_PATHS env var first (dev environment override)
-        env_kit_paths = os.environ.get("BEDDEL_KIT_PATHS", "")
-        skip_download = False
-
-        if env_kit_paths:
-            for env_path_str in env_kit_paths.split(":"):
-                env_path = Path(env_path_str.strip())
-                if env_path.is_dir():
-                    present = [name for name in kit_names_needed if (env_path / name).is_dir()]
-                    if len(present) == len(kit_names_needed):
-                        skip_download = True
-                        click.echo(f"  ✓ All required kits found via BEDDEL_KIT_PATHS: {env_path}")
-                        # Register existing kits in DB
-                        for kit_info in all_kits:
-                            kit_path = env_path / kit_info["name"]
-                            register_kit_in_db(db_path, kit_info["name"], kit_path)
-                        break
-
-        # Check config.json kits_paths as fallback
-        if not skip_download:
-            from beddel.cli.config import resolve_kits_paths
-
-            existing_kits_paths = resolve_kits_paths()
-            if existing_kits_paths:
-                first_path = existing_kits_paths[0]
-                if first_path.is_dir():
-                    present = [name for name in kit_names_needed if (first_path / name).is_dir()]
-                    if len(present) == len(kit_names_needed):
-                        skip_download = True
-                        click.echo(f"  ✓ All required kits already present in {first_path}")
-                        # Register existing kits in DB
-                        for kit_info in all_kits:
-                            kit_path = first_path / kit_info["name"]
-                            register_kit_in_db(db_path, kit_info["name"], kit_path)
-
-        if not skip_download and not install_required_kits(db_path, kits_dir, all_kits):
-            click.echo("\n⚠ Some kits failed. Run 'beddel init' again.", err=True)
-            raise SystemExit(1)
-
-        # Clean up stale ~/.config/beddel/kits/ if --force and kits came from elsewhere
-        if force and skip_download and kits_dir.is_dir():
-            import shutil as _shutil
-
-            _shutil.rmtree(kits_dir, ignore_errors=True)
-            click.echo(f"  ⟳ Removed stale local kits: {kits_dir}")
-
-        # Step 3: Save preferences
-        click.echo("\nStep 3/3: Saving preferences...")
-        save_pref(db_path, "llm_provider", provider)
-        save_pref(db_path, "initialized", "true")
+        kits_dir.mkdir(parents=True, exist_ok=True)
+        _persist_kits_dir(kits_dir)
+        initialize(provider, kits_dir, force=force)
 
         click.echo()
         click.echo("=" * 40)

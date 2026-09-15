@@ -65,8 +65,10 @@ def discover_kits(paths: list[Path] | None = None) -> KitDiscoveryResult:
 
     Args:
         paths: Directories to scan. If *None*, uses ``BEDDEL_KIT_PATHS``
-            env var (colon-separated) or the 2-path defaults:
-            sqlite (``~/.config/beddel/kits/``) → local (``./kits/``).
+            env var (colon-separated); otherwise the configured
+            ``kits_paths`` (``.beddel.json`` then the global config), plus
+            ``./kits/`` when that directory exists.  There is no implicit
+            default: with nothing configured, nothing is discovered.
 
     Returns:
         A :class:`KitDiscoveryResult` with alphabetically sorted manifests

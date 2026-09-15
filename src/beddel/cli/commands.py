@@ -2350,13 +2350,13 @@ def deploy(flow_path: str, project: str, region: str, staging_bucket: str) -> No
 def launch(port: int, *, no_browser: bool) -> None:
     """Launch the Beddel flow runner in your browser.
 
-    On first run (before onboarding is completed), only the interactive
-    onboarding wizard is served.  After onboarding, all discovered flows
-    are served — including bundled flows shipped with the package and
-    user-configured ``flows_paths`` from config.json.
+    When the environment is not set up — no database, or the kits that
+    serve the wizard are missing — this asks for the provider, the kits
+    directory and consent to install, then bootstraps.  Declining writes
+    nothing.  On first run only the onboarding wizard is served; after
+    onboarding, all discovered flows are.
 
     Opens ``http://localhost:<port>``.  Runs until Ctrl+C.
-    Requires ``beddel init`` to have been run first.
     """
     import warnings
     import webbrowser
@@ -2370,16 +2370,22 @@ def launch(port: int, *, no_browser: bool) -> None:
     # Determine verbose mode from parent logging config
     _verbose = logging.getLogger().level <= logging.DEBUG
 
-    from beddel.adapters.index_store import _DEFAULT_DB_PATH
+    # Pre-flight — BOTH halves must hold: the database must exist AND the
+    # kits that serve the wizard must be installed, because the wizard is
+    # served by those kits rather than by the wheel itself.
+    from beddel.cli.init import is_bootstrapped, prompt_bootstrap
 
-    if not Path(_DEFAULT_DB_PATH).expanduser().exists():
-        click.echo("  ✗ Beddel is not initialized. Run `beddel init` first.", err=True)
-        raise SystemExit(1)
+    if not is_bootstrapped() and not prompt_bootstrap():
+        raise SystemExit(0)
 
     try:
         import uvicorn
     except ImportError:
-        click.echo("  ✗ Missing dependencies. Install missing kits: beddel init", err=True)
+        click.echo(
+            "  ✗ The kits are installed but their Python packages are not importable.\n"
+            "    Re-run the install: beddel init --provider <name> --kits-dir <DIR> --yes",
+            err=True,
+        )
         raise SystemExit(1) from None
 
     # Suppress warnings during startup (litellm, pydantic, authlib, etc.)
@@ -2390,18 +2396,16 @@ def launch(port: int, *, no_browser: bool) -> None:
     try:
         click.echo("  Loading kits...")
 
-        from beddel.cli.config import is_onboarding_complete
+        # Setup belongs to the terminal: the provider choice there decides
+        # which provider kit is installed, and a browser form cannot install
+        # one.  So the browser serves usage EXAMPLES plus the project's own
+        # configured flows — never the setup wizard.
+        from beddel.flows import EXAMPLE_WORKFLOWS, get_bundled_workflow_path
 
-        if is_onboarding_complete():
-            # Post-onboarding: serve all flows (bundled + config paths)
-            flow_paths = tuple(_resolve_all_flow_paths((), include_bundled=True))
-            click.echo("  Discovering flows...")
-            app, loaded, wf_ids = _build_runtime_app(flow_paths)
-        else:
-            # First run: only the onboarding wizard
-            from beddel.flows import get_bundled_workflow_path
-
-            app, loaded, wf_ids = _build_runtime_app((get_bundled_workflow_path("setup"),))
+        examples = tuple(get_bundled_workflow_path(n) for n in EXAMPLE_WORKFLOWS)
+        flow_paths = tuple(_resolve_all_flow_paths(examples))
+        click.echo("  Discovering flows...")
+        app, loaded, wf_ids = _build_runtime_app(flow_paths)
     finally:
         # Restore warnings/logging regardless of success or failure
         if not _verbose:
