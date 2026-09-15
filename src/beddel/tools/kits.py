@@ -14,6 +14,7 @@ import importlib
 import logging
 import os
 import re
+import sys
 from collections import defaultdict
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, distribution
@@ -215,9 +216,10 @@ def load_kit(manifest: KitManifest) -> dict[str, Callable[..., Any]]:
             raise KitDependencyError(
                 code=KIT_DEPENDENCY_MISSING,
                 message=(
-                    f"Kit '{manifest.kit.name}' requires packages that are "
-                    f"not installed: {pkg_list}. "
-                    f"Install them with: pip install {' '.join(missing)}"
+                    f"Kit '{manifest.kit.name}' requires Python packages that are "
+                    f"not installed in interpreter '{sys.executable}': {pkg_list}. "
+                    f"Provision them into this same interpreter with: "
+                    f"beddel kit install {manifest.kit.name}"
                 ),
                 missing_packages=missing,
                 details={"kit": manifest.kit.name, "missing": missing},
@@ -320,9 +322,10 @@ def load_kit_adapters(manifest: KitManifest) -> dict[tuple[str, str], Any]:
             raise KitDependencyError(
                 code=KIT_DEPENDENCY_MISSING,
                 message=(
-                    f"Kit '{manifest.kit.name}' requires packages that are "
-                    f"not installed: {pkg_list}. "
-                    f"Install them with: pip install {' '.join(missing)}"
+                    f"Kit '{manifest.kit.name}' requires Python packages that are "
+                    f"not installed in interpreter '{sys.executable}': {pkg_list}. "
+                    f"Provision them into this same interpreter with: "
+                    f"beddel kit install {manifest.kit.name}"
                 ),
                 missing_packages=missing,
                 details={"kit": manifest.kit.name, "missing": missing},

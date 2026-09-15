@@ -7,6 +7,7 @@ and saves preferences. Designed to work with minimal dependencies
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 import shutil
@@ -14,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -238,28 +240,85 @@ def download_kit(kit_name: str, kits_dir: Path) -> Path:
     return kit_dir
 
 
-def install_kit_deps(kit_name: str, pip_extras: str) -> bool:
-    """Install pip dependencies for a kit.
+def resolve_install_command(packages: Sequence[str], *, quiet: bool = False) -> list[str]:
+    """Build the command that installs ``packages`` into the running interpreter.
+
+    ``uv`` is preferred when available because a uv-managed virtual environment
+    does not necessarily contain ``pip``.  ``--python sys.executable`` is passed
+    explicitly: ``uv pip install`` otherwise relies on ``VIRTUAL_ENV``, which is
+    unset when the CLI is launched through the environment's console script.
+    ``python -m pip`` remains the fallback so installations from PyPI, where uv
+    is not present, keep working.
+
+    Args:
+        packages: Python requirement specifiers to install.
+        quiet: Whether to suppress the installer's own progress output.
+
+    Returns:
+        The argument vector to execute.
+
+    Raises:
+        RuntimeError: If neither uv nor pip is available in this environment.
+    """
+    uv = shutil.which("uv")
+    if uv:
+        command = [uv, "pip", "install", "--python", sys.executable]
+        if quiet:
+            command.append("--quiet")
+        return [*command, *packages]
+
+    if importlib.util.find_spec("pip") is None:
+        raise RuntimeError(
+            f"No Python package installer available for interpreter "
+            f"'{sys.executable}': neither 'uv' on PATH nor the 'pip' module. "
+            f"Install uv, or use an environment that provides pip."
+        )
+
+    command = [sys.executable, "-m", "pip", "install"]
+    if quiet:
+        command.append("--quiet")
+    return [*command, *packages]
+
+
+def install_requirements(packages: Sequence[str], *, quiet: bool = False) -> bool:
+    """Install Python package requirements into the running interpreter.
+
+    Single installation path shared by every kit provisioning command.
+
+    Args:
+        packages: Python requirement specifiers to install.
+        quiet: Whether to suppress the installer's own progress output.
 
     Returns:
         True if installation succeeded.
     """
-    packages = [p.strip() for p in pip_extras.split(",") if p.strip()]
     if not packages:
         return True
 
     click.echo(f"  ⚙ Installing: {', '.join(packages)}")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--quiet", *packages],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        command = resolve_install_command(packages, quiet=quiet)
+    except RuntimeError as exc:
+        click.echo(f"  ✗ Failed: {exc}", err=True)
+        return False
+
+    result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         click.echo(f"  ✗ Failed: {result.stderr[:200]}", err=True)
         return False
 
     click.echo("  ✓ Deps OK")
     return True
+
+
+def install_kit_deps(kit_name: str, pip_extras: str) -> bool:
+    """Install the Python package requirements declared for a kit.
+
+    Returns:
+        True if installation succeeded.
+    """
+    packages = [p.strip() for p in pip_extras.split(",") if p.strip()]
+    return install_requirements(packages, quiet=True)
 
 
 def register_kit_in_db(

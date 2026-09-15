@@ -2851,10 +2851,10 @@ def _interactive_kit_discovery(*, as_json: bool = False) -> None:
                     pass
 
             if deps:
-                import subprocess
+                from beddel.cli.init import install_requirements
 
-                click.echo(f"Installing dependencies: {', '.join(deps)}")
-                subprocess.run([sys.executable, "-m", "pip", "install", *deps], check=True)
+                if not install_requirements(deps):
+                    raise RuntimeError(f"Failed to install dependencies for {m.kit.name}")
 
             import shutil
 
@@ -2891,7 +2891,6 @@ def kit_install(source: str | None, *, global_install: bool, as_json: bool) -> N
         return _interactive_kit_discovery(as_json=as_json)
 
     import shutil
-    import subprocess
 
     from beddel.domain.errors import KitManifestError
     from beddel.domain.kit import parse_kit_manifest
@@ -2907,7 +2906,8 @@ def kit_install(source: str | None, *, global_install: bool, as_json: bool) -> N
         click.echo(f"Invalid kit manifest: {exc.message}", err=True)
         raise SystemExit(1) from None
 
-    # 3. Install pip dependencies (prefer targets.python.dependencies)
+    # 3. Install the declared Python package requirements
+    #    (prefer targets.python.dependencies)
     from beddel.domain.kit import KitLanguageTarget
 
     deps = manifest.kit.dependencies  # fallback (top-level)
@@ -2921,14 +2921,10 @@ def kit_install(source: str | None, *, global_install: bool, as_json: bool) -> N
             pass
 
     if deps:
-        click.echo(f"Installing dependencies: {', '.join(deps)}")
-        try:
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", *deps],
-                check=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            click.echo(f"Failed to install dependencies: {exc}", err=True)
+        from beddel.cli.init import install_requirements
+
+        if not install_requirements(deps):
+            click.echo("Failed to install dependencies", err=True)
             raise SystemExit(1) from None
 
     # 4. Copy kit directory to target

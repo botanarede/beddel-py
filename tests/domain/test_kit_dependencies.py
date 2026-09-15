@@ -82,7 +82,7 @@ class TestLoadKitDependencyValidation:
         assert "nonexistent-pkg>=1.0" in exc_info.value.missing_packages
 
     def test_missing_dep_error_message_contains_install_hint(self) -> None:
-        """Error message includes pip install hint."""
+        """Error message points at the canonical, manager-neutral provisioning command."""
         manifest = _make_manifest(dependencies=["missing-lib>=2.0"])
 
         with patch("beddel.tools.kits.distribution") as mock_dist:
@@ -90,7 +90,8 @@ class TestLoadKitDependencyValidation:
             with pytest.raises(KitDependencyError) as exc_info:
                 load_kit(manifest)
 
-        assert "pip install" in exc_info.value.message
+        assert "beddel kit install" in exc_info.value.message
+        assert "pip install" not in exc_info.value.message
 
     def test_multiple_deps_one_missing(self) -> None:
         """Only the missing dep appears in missing_packages."""
