@@ -867,6 +867,7 @@ class TestAllExports:
             "InterruptibleContext",
             "KnowledgeEntry",
             "KnowledgeSource",
+            "MCPServerDeclaration",
             "MemoryEntry",
             "PIIPattern",
             "ParallelConfig",
