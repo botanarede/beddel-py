@@ -197,7 +197,11 @@ class ToolPrimitive(IPrimitive):
                 timeout.  Schema discovery (``list_tools``) and the call share
                 that one budget: the call gets what discovery left, and is not
                 made at all when nothing is left.  A cached discovery costs
-                none of it.
+                none of it.  A ``TimeoutError`` raised by the client's own
+                ``list_tools`` (not only one from ``wait_for``) maps to this
+                same ``BEDDEL-PRIM-303``, exactly as it does on the call path.
+                ``timeout=None`` means no limit: discovery and the call both
+                run unbounded (``wait_for(timeout=None)``) and never raise it.
             PrimitiveError: ``BEDDEL-PRIM-301`` if the client raises an
                 exception that is not a Beddel error.  The message is fixed
                 and ``details`` hold only the exception class name
@@ -239,7 +243,8 @@ class ToolPrimitive(IPrimitive):
 
         # One step budget covers discovery and the call: a cached discovery
         # consumes none of it, a slow one leaves the call only the remainder.
-        timeout: int | float = config.get("timeout", 60)
+        # ``timeout=None`` keeps the pre-E1 meaning of no limit at all.
+        timeout: int | float | None = config.get("timeout", 60)
         budget_start = time.monotonic()
 
         # Optional schema validation — when validate_schema is truthy,
@@ -264,7 +269,7 @@ class ToolPrimitive(IPrimitive):
                 try:
                     tools = await asyncio.wait_for(
                         client.list_tools(),
-                        timeout=timeout - (time.monotonic() - budget_start),
+                        timeout=self._remaining_budget(timeout, budget_start),
                     )
                     discovered = {t["name"]: t["inputSchema"] for t in tools}
                 except TimeoutError:
@@ -310,8 +315,8 @@ class ToolPrimitive(IPrimitive):
         }
 
         start_time = time.monotonic()
-        remaining = timeout - (start_time - budget_start)
-        timed_out = remaining <= 0
+        remaining = self._remaining_budget(timeout, budget_start)
+        timed_out = remaining is not None and remaining <= 0
         call_error: str | None = None
         if not timed_out:
             try:
@@ -349,10 +354,21 @@ class ToolPrimitive(IPrimitive):
         }
 
     @staticmethod
+    def _remaining_budget(timeout: float | None, budget_start: float) -> float | None:
+        """Time left in the step budget, or ``None`` for an unbounded step.
+
+        ``timeout=None`` means no limit (the pre-E1 meaning): discovery and the
+        call both run with ``wait_for(timeout=None)``, i.e. unbounded.
+        """
+        if timeout is None:
+            return None
+        return timeout - (time.monotonic() - budget_start)
+
+    @staticmethod
     def _mcp_timeout_error(
         tool_name: str,
         mcp_server: str,
-        timeout: int | float,
+        timeout: int | float | None,
         context: ExecutionContext,
     ) -> PrimitiveError:
         """Build the ``BEDDEL-PRIM-303`` error for an MCP step that ran out of budget.

@@ -668,16 +668,26 @@ class _BudgetClient(FakeMCPClient):
 
 
 class _RecordingAsyncio:
-    """Proxy for the ``asyncio`` name of the tool module that records ``wait_for`` timeouts."""
+    """Proxy for the ``asyncio`` name of the tool module.
 
-    def __init__(self, timeouts: list[float]) -> None:
+    Records the ``timeout`` handed to every ``wait_for`` and the qualified name
+    of the coroutine it wrapped, so a test can assert both the budget split and
+    that ``call_tool`` was never scheduled when the budget was already spent.
+    """
+
+    def __init__(self, timeouts: list[float | None]) -> None:
         self._timeouts = timeouts
+        self.calls: list[tuple[str, float | None]] = []
 
     def __getattr__(self, name: str) -> Any:
         return getattr(asyncio, name)
 
-    async def wait_for(self, awaitable: Any, timeout: float) -> Any:
+    async def wait_for(self, awaitable: Any, timeout: float | None) -> Any:
         self._timeouts.append(timeout)
+        label = getattr(awaitable, "__qualname__", "") or getattr(
+            getattr(awaitable, "cr_code", None), "co_qualname", ""
+        )
+        self.calls.append((str(label), timeout))
         return await asyncio.wait_for(awaitable, timeout)
 
 
@@ -685,7 +695,7 @@ def _budget_context(client: FakeMCPClient) -> ExecutionContext:
     return _context(client, [f"{SERVER}:echo"])
 
 
-def _budget_config(timeout: float, *, validate_schema: bool = True) -> dict[str, Any]:
+def _budget_config(timeout: float | None, *, validate_schema: bool = True) -> dict[str, Any]:
     config: dict[str, Any] = {
         "tool": "echo",
         "mcp_server": SERVER,
@@ -705,8 +715,14 @@ class TestMCPSharedStepBudget:
         return fake
 
     @pytest.fixture
-    def wait_for_timeouts(self, monkeypatch: pytest.MonkeyPatch) -> list[float]:
-        timeouts: list[float] = []
+    def recorder(self, monkeypatch: pytest.MonkeyPatch) -> _RecordingAsyncio:
+        rec = _RecordingAsyncio([])
+        monkeypatch.setattr(tool_module, "asyncio", rec)
+        return rec
+
+    @pytest.fixture
+    def wait_for_timeouts(self, monkeypatch: pytest.MonkeyPatch) -> list[float | None]:
+        timeouts: list[float | None] = []
         monkeypatch.setattr(tool_module, "asyncio", _RecordingAsyncio(timeouts))
         return timeouts
 
@@ -747,7 +763,7 @@ class TestMCPSharedStepBudget:
 
     @pytest.mark.parametrize("discovery_cost", [5.0, 7.5])
     async def test_no_call_is_made_when_discovery_used_the_whole_budget(
-        self, clock: _FakeClock, discovery_cost: float
+        self, clock: _FakeClock, recorder: _RecordingAsyncio, discovery_cost: float
     ) -> None:
         log = EventLog()
         client = _BudgetClient(log, clock=clock, discovery_cost=discovery_cost)
@@ -768,6 +784,11 @@ class TestMCPSharedStepBudget:
         assert_unchained(err)
         assert log.count("list_tools") == 1
         assert log.count("call_tool") == 0
+        # The ``if not timed_out`` guard must skip the call entirely: no
+        # ``wait_for`` wraps ``call_tool`` (otherwise a <=0 timeout would run).
+        call_waits = [label for label, _ in recorder.calls if "call_tool" in label]
+        assert call_waits == []
+        assert [label for label, _ in recorder.calls] == ["_BudgetClient.list_tools"]
 
     async def test_a_cached_discovery_consumes_no_budget(
         self, clock: _FakeClock, wait_for_timeouts: list[float]
@@ -799,30 +820,69 @@ class TestMCPSharedStepBudget:
         assert log.count("list_tools") == 0
         assert wait_for_timeouts == [5]
 
-    async def test_a_call_that_outlasts_the_remainder_times_out(self) -> None:
-        # Real time, wide margins: discovery 0.2 s + a call blocked until the
-        # 0.4 s budget is spent must end near 0.4 s, not near 0.6 s.
+    async def test_null_timeout_runs_uncached_discovery_and_call_unbounded(
+        self, clock: _FakeClock, wait_for_timeouts: list[float | None]
+    ) -> None:
+        # Pre-E1 meaning of ``timeout: null``: no limit anywhere.
+        client = _BudgetClient(EventLog(), clock=clock, discovery_cost=3.0)
+        primitive = ToolPrimitive(schema_validator=stub_validate_tool_arguments)
+
+        result = await primitive.execute(_budget_config(None), _budget_context(client))
+
+        assert result["result"] == {"ok": True}
+        # Both discovery and call get wait_for(timeout=None), unbounded.
+        assert wait_for_timeouts == [None, None]
+
+    async def test_null_timeout_on_a_cached_discovery_leaves_the_call_unbounded(
+        self, clock: _FakeClock, wait_for_timeouts: list[float | None]
+    ) -> None:
+        client = _BudgetClient(EventLog(), clock=clock, discovery_cost=3.0)
+        ctx = _budget_context(client)
+        primitive = ToolPrimitive(schema_validator=stub_validate_tool_arguments)
+        await primitive.execute(_budget_config(None), ctx)
+        wait_for_timeouts.clear()
+
+        await primitive.execute(_budget_config(None), ctx)
+
+        # No discovery wait on the cached path; the call is still unbounded.
+        assert wait_for_timeouts == [None]
+
+    async def test_null_timeout_on_the_plain_call_path_is_unbounded(
+        self, clock: _FakeClock, wait_for_timeouts: list[float | None]
+    ) -> None:
+        client = _BudgetClient(EventLog(), clock=clock, discovery_cost=3.0)
+
+        result = await ToolPrimitive().execute(
+            _budget_config(None, validate_schema=False), _budget_context(client)
+        )
+
+        assert result["result"] == {"ok": True}
+        assert wait_for_timeouts == [None]
+
+    async def test_a_call_that_outlasts_the_remainder_times_out(self, clock: _FakeClock) -> None:
+        # Deterministic: a fake clock splits the budget so the call is handed a
+        # small, exact remainder, and a genuinely blocked call must time out on
+        # that remainder rather than on the full budget.
         class _SlowDiscovery(_BudgetClient):
             async def list_tools(self) -> list[dict[str, Any]]:
-                await asyncio.sleep(0.2)
+                self.clock.now += self.discovery_cost  # type: ignore[union-attr]
                 return await FakeMCPClient.list_tools(self)
 
         log = EventLog()
-        client = _SlowDiscovery(log)
+        client = _SlowDiscovery(log, clock=clock, discovery_cost=9.95)
         client.script = ClientScript(block_call=True)
-        loop = asyncio.get_running_loop()
-        started = loop.time()
 
         with pytest.raises(PrimitiveError) as exc_info:
             await asyncio.wait_for(
                 ToolPrimitive(schema_validator=stub_validate_tool_arguments).execute(
-                    _budget_config(0.4), _budget_context(client)
+                    _budget_config(10), _budget_context(client)
                 ),
                 timeout=5,
             )
 
+        # Discovery left 0.05 s; the call was blocked and timed out on it.
         assert exc_info.value.code == PRIM_TOOL_TIMEOUT
-        assert loop.time() - started < 0.55
+        assert exc_info.value.details["timeout"] == 10
         assert log.count("call_tool") == 1
 
     async def test_a_discovery_timeout_still_disconnects_the_client_once(self) -> None:
