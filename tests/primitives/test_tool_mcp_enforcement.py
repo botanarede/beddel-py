@@ -335,7 +335,7 @@ class TestMCPErrorCodesPreserved:
         err = exc_info.value
         assert err.code == PRIM_TOOL_EXEC_FAILED == "BEDDEL-PRIM-301"
         assert err.message == CALL_FAILED_MESSAGE
-        assert err.details == {"error_type": type(error).__name__}
+        assert err.details == {"error_type": type(error).__name__, "step_id": "step-mcp"}
         assert "original_error" not in err.details
         assert_unchained(err)
         assert_marker_absent(err, caplog)
@@ -349,7 +349,7 @@ class TestMCPErrorCodesPreserved:
         with pytest.raises(PrimitiveError) as exc_info:
             await ToolPrimitive().execute(_config(), _context(client, [QUALIFIED]))
 
-        assert exc_info.value.details == {"error_type": "TransportBroke"}
+        assert exc_info.value.details == {"error_type": "TransportBroke", "step_id": "step-mcp"}
         assert_unchained(exc_info.value)
         assert_marker_absent(exc_info.value)
 
@@ -392,7 +392,7 @@ class TestMCPErrorCodesPreserved:
         err = exc_info.value
         assert err.code == "BEDDEL-PRIM-301"
         assert err.message == DISCOVERY_FAILED_MESSAGE
-        assert err.details == {"error_type": "RuntimeError"}
+        assert err.details == {"error_type": "RuntimeError", "step_id": "step-mcp"}
         assert_unchained(err)
         assert_marker_absent(err, caplog)
         assert log.count("call_tool") == 0
@@ -409,7 +409,7 @@ class TestMCPErrorCodesPreserved:
             )
 
         assert exc_info.value.code == "BEDDEL-PRIM-301"
-        assert exc_info.value.details == {"error_type": "KeyError"}
+        assert exc_info.value.details == {"error_type": "KeyError", "step_id": "step-mcp"}
         assert_unchained(exc_info.value)
         assert log.count("call_tool") == 0
 

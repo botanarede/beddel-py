@@ -195,7 +195,8 @@ class ToolPrimitive(IPrimitive):
             PrimitiveError: ``BEDDEL-PRIM-303`` if tool execution times out.
             PrimitiveError: ``BEDDEL-PRIM-301`` if the client raises an
                 exception that is not a Beddel error.  The message is fixed
-                and ``details`` hold only the exception class name.
+                and ``details`` hold only the exception class name
+                (``error_type``) and the step id (``step_id``).
             BeddelError: any Beddel error raised by the client or by the
                 schema validator (for example an ``MCPError``) is re-raised
                 unchanged, code included.
@@ -262,7 +263,10 @@ class ToolPrimitive(IPrimitive):
                     raise PrimitiveError(
                         code=PRIM_TOOL_EXEC_FAILED,
                         message=_MCP_DISCOVERY_FAILED_MESSAGE,
-                        details={"error_type": discovery_error},
+                        details={
+                            "error_type": discovery_error,
+                            "step_id": context.current_step_id,
+                        },
                     )
                 cache[mcp_server] = discovered
             tool_schema = cache[mcp_server].get(tool_name)
@@ -324,7 +328,7 @@ class ToolPrimitive(IPrimitive):
             raise PrimitiveError(
                 code=PRIM_TOOL_EXEC_FAILED,
                 message=_MCP_CALL_FAILED_MESSAGE,
-                details={"error_type": call_error},
+                details={"error_type": call_error, "step_id": context.current_step_id},
             )
 
         duration_ms = int((time.monotonic() - start_time) * 1000)

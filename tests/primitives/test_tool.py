@@ -704,8 +704,8 @@ class TestMCPDelegation:
             )
 
         assert exc_info.value.code == "BEDDEL-PRIM-301"
-        # Raw exception text is never copied; only the class name is kept (AC 13).
-        assert exc_info.value.details == {"error_type": "RuntimeError"}
+        # Raw exception text is never copied; only the class name and the step id are kept.
+        assert exc_info.value.details == {"error_type": "RuntimeError", "step_id": "step-1"}
         assert "connection lost" not in str(exc_info.value)
         assert exc_info.value.__cause__ is None
         assert exc_info.value.__context__ is None
