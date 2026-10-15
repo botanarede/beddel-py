@@ -102,7 +102,16 @@ _CHILD = textwrap.dedent(
             kit_names=(),
         )
     except BeddelError as exc:
-        print(json.dumps({"status": "composition-error", "details": exc.details}))
+        print(
+            json.dumps(
+                {
+                    "status": "composition-error",
+                    "code": exc.code,
+                    "message": exc.message,
+                    "details": exc.details,
+                }
+            )
+        )
         sys.exit(3)
 
     module = sys.modules[KIT_MODULE]
@@ -154,6 +163,24 @@ def _real_kit_directory() -> Path | None:
     return None
 
 
+def _kit_dependencies_are_missing(facts: dict[str, object]) -> bool:
+    """Whether the child failed only because the kit's own SDK is not installed.
+
+    Either the kit package could not be imported (``kit_unavailable``) or the kit
+    constructed nothing because its guarded SDK import failed: the kit then raises
+    its own ``BEDDEL-MCP-600`` with the fixed sentence "MCP SDK not installed".
+    """
+    details = facts.get("details")
+    if isinstance(details, dict) and details.get("reason") == "kit_unavailable":
+        return True
+    message = facts.get("message")
+    return (
+        facts.get("code") == "BEDDEL-MCP-600"
+        and isinstance(message, str)
+        and "SDK not installed" in message
+    )
+
+
 def _kit_source(kit_dir: Path) -> Path:
     python = kit_dir / "python"
     return python if python.is_dir() else kit_dir / "src"
@@ -198,12 +225,10 @@ def test_composition_against_the_real_kit_constructs_without_io(tmp_path: Path) 
     lines = [line for line in completed.stdout.splitlines() if line.startswith("{")]
     assert lines, completed.stdout[-2000:] + completed.stderr[-2000:]
     facts = json.loads(lines[-1])
-    if facts["status"] == "composition-error" and facts["details"].get("reason") == (
-        "kit_unavailable"
-    ):
+    if facts["status"] == "composition-error" and _kit_dependencies_are_missing(facts):
         pytest.skip(
-            "the real kit's imports are unavailable in this environment "
-            f"({facts['details'].get('error_type')})"
+            "the real kit's own dependencies are unavailable in this environment "
+            f"({facts['details'].get('error_type') or facts['message']})"
         )
     assert completed.returncode == 0, completed.stdout[-2000:] + completed.stderr[-2000:]
     assert facts["status"] == "ok", facts

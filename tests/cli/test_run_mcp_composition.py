@@ -96,6 +96,13 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     state = reset_fake_kit_state()
     purge_kit_modules()
     path_before = list(sys.path)
+    # A real ``beddel_protocol_mcp`` reachable through ``sys.path`` (a kit installed, or put
+    # on ``PYTHONPATH`` as tests/conftest.py intends) is imported by the adapter loader
+    # before the composition runs, and the composition then correctly rejects it as a
+    # module from another location.  These tests exercise their own fake kit, so hide
+    # every other copy for the duration of the test; ``path_before`` restores it.
+    sys.path[:] = [entry for entry in sys.path if not (Path(entry or ".") / KIT_MODULE).is_dir()]
+    importlib.invalidate_caches()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(config_module, "GLOBAL_CONFIG_PATH", tmp_path / "no-global-config.json")
     monkeypatch.setattr(commands_module, "_ensure_kit_paths", lambda: None)
