@@ -59,7 +59,8 @@ class ToolPrimitive(IPrimitive):
         arguments (dict): Optional. Keyword arguments for the tool function.
             Supports ``$input`` and ``$stepResult`` variable references.
         timeout (int): Optional. Timeout in seconds for tool execution.
-            Defaults to 60.
+            Defaults to 60.  For an MCP call it is one budget for the whole
+            step: schema discovery and the call share it.
         mcp_server (str): Optional. When present, the call is delegated to
             the MCP client registered under this name.  It is admitted only
             when the workflow ``allowed_tools`` contains the exact qualified
@@ -192,7 +193,11 @@ class ToolPrimitive(IPrimitive):
                 ``<mcp_server>:<tool>`` is not in the workflow allowlist, or
                 the workflow has no allowlist (checked before arguments are
                 resolved and before any call reaches the client).
-            PrimitiveError: ``BEDDEL-PRIM-303`` if tool execution times out.
+            PrimitiveError: ``BEDDEL-PRIM-303`` if the step runs out of its
+                timeout.  Schema discovery (``list_tools``) and the call share
+                that one budget: the call gets what discovery left, and is not
+                made at all when nothing is left.  A cached discovery costs
+                none of it.
             PrimitiveError: ``BEDDEL-PRIM-301`` if the client raises an
                 exception that is not a Beddel error.  The message is fixed
                 and ``details`` hold only the exception class name
@@ -232,6 +237,11 @@ class ToolPrimitive(IPrimitive):
             resolver = VariableResolver()
             arguments = resolver.resolve(config["arguments"], context)
 
+        # One step budget covers discovery and the call: a cached discovery
+        # consumes none of it, a slow one leaves the call only the remainder.
+        timeout: int | float = config.get("timeout", 60)
+        budget_start = time.monotonic()
+
         # Optional schema validation — when validate_schema is truthy,
         # fetch the tool's inputSchema via list_tools() (cached per-server)
         # and validate arguments before calling the tool.
@@ -250,15 +260,23 @@ class ToolPrimitive(IPrimitive):
             cache = context.metadata.setdefault("beddel._mcp_tool_schemas", {})
             if mcp_server not in cache:
                 discovery_error: str | None = None
+                discovery_timed_out = False
                 try:
-                    tools = await client.list_tools()
+                    tools = await asyncio.wait_for(
+                        client.list_tools(),
+                        timeout=timeout - (time.monotonic() - budget_start),
+                    )
                     discovered = {t["name"]: t["inputSchema"] for t in tools}
+                except TimeoutError:
+                    discovery_timed_out = True
                 except BeddelError:
                     raise
                 except Exception as exc:
                     # Capture the class name only and raise after leaving the
                     # block, so no original exception stays chained.
                     discovery_error = type(exc).__name__
+                if discovery_timed_out:
+                    raise self._mcp_timeout_error(tool_name, mcp_server, timeout, context)
                 if discovery_error is not None:
                     raise PrimitiveError(
                         code=PRIM_TOOL_EXEC_FAILED,
@@ -291,39 +309,29 @@ class ToolPrimitive(IPrimitive):
             "arguments": arguments,
         }
 
-        timeout: int | float = config.get("timeout", 60)
         start_time = time.monotonic()
-        timed_out = False
+        remaining = timeout - (start_time - budget_start)
+        timed_out = remaining <= 0
         call_error: str | None = None
-        try:
-            result = await asyncio.wait_for(
-                client.call_tool(tool_name, arguments),
-                timeout=timeout,
-            )
-        except TimeoutError:
-            timed_out = True
-        except BeddelError:
-            # Any Beddel error (MCPError included) keeps its code and details.
-            raise
-        except Exception as exc:
-            # Capture the class name only and raise after leaving the block:
-            # no raw transport text is copied and neither __cause__ nor
-            # __context__ points at the original exception.
-            call_error = type(exc).__name__
+        if not timed_out:
+            try:
+                result = await asyncio.wait_for(
+                    client.call_tool(tool_name, arguments),
+                    timeout=remaining,
+                )
+            except TimeoutError:
+                timed_out = True
+            except BeddelError:
+                # Any Beddel error (MCPError included) keeps its code and details.
+                raise
+            except Exception as exc:
+                # Capture the class name only and raise after leaving the block:
+                # no raw transport text is copied and neither __cause__ nor
+                # __context__ points at the original exception.
+                call_error = type(exc).__name__
 
         if timed_out:
-            raise PrimitiveError(
-                code=PRIM_TOOL_TIMEOUT,
-                message=(
-                    f"MCP tool '{tool_name}' on server '{mcp_server}' timed out after {timeout}s"
-                ),
-                details={
-                    "tool": tool_name,
-                    "mcp_server": mcp_server,
-                    "timeout": timeout,
-                    "step_id": context.current_step_id,
-                },
-            )
+            raise self._mcp_timeout_error(tool_name, mcp_server, timeout, context)
         if call_error is not None:
             raise PrimitiveError(
                 code=PRIM_TOOL_EXEC_FAILED,
@@ -339,6 +347,30 @@ class ToolPrimitive(IPrimitive):
             "arguments": arguments,
             "duration_ms": duration_ms,
         }
+
+    @staticmethod
+    def _mcp_timeout_error(
+        tool_name: str,
+        mcp_server: str,
+        timeout: int | float,
+        context: ExecutionContext,
+    ) -> PrimitiveError:
+        """Build the ``BEDDEL-PRIM-303`` error for an MCP step that ran out of budget.
+
+        Discovery and the call share one budget, so both paths report the
+        same error.  The caller raises it outside any ``except`` block, so
+        neither ``__cause__`` nor ``__context__`` is set.
+        """
+        return PrimitiveError(
+            code=PRIM_TOOL_TIMEOUT,
+            message=f"MCP tool '{tool_name}' on server '{mcp_server}' timed out after {timeout}s",
+            details={
+                "tool": tool_name,
+                "mcp_server": mcp_server,
+                "timeout": timeout,
+                "step_id": context.current_step_id,
+            },
+        )
 
     @staticmethod
     def _check_mcp_allowlist(

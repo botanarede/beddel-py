@@ -28,6 +28,7 @@ from _mcp_fakes import (
     stub_validate_tool_arguments,
 )
 
+from beddel.cli.mcp_composition import MCPWiring, execute_and_close
 from beddel.domain.errors import BeddelError, ExecutionError, MCPError, ParseError, PrimitiveError
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import DefaultDependencies, ExecutionContext, Step, Workflow
@@ -624,3 +625,228 @@ class TestMCPEnforcementThroughExecutor:
 
         assert exc_info.value.__cause__ is raised
         assert raised.code == "BEDDEL-MCP-605"
+
+
+# ---------------------------------------------------------------------------
+# One step budget for schema discovery and the call
+# ---------------------------------------------------------------------------
+
+
+class _FakeClock:
+    """Stand-in for the ``time`` module of the tool primitive (``monotonic`` only)."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+class _BudgetClient(FakeMCPClient):
+    """Fake whose discovery either hangs or spends a scripted amount of fake time."""
+
+    def __init__(
+        self,
+        log: EventLog,
+        *,
+        clock: _FakeClock | None = None,
+        discovery_cost: float = 0.0,
+        hang_discovery: bool = False,
+    ) -> None:
+        super().__init__("mcp-streamable-http", ENDPOINT, "none", log=log)
+        self.clock = clock
+        self.discovery_cost = discovery_cost
+        self.hang_discovery = hang_discovery
+
+    async def list_tools(self) -> list[dict[str, Any]]:
+        if self.hang_discovery:
+            self.log.record("list_tools")
+            await asyncio.Event().wait()
+        if self.clock is not None:
+            self.clock.now += self.discovery_cost
+        return await super().list_tools()
+
+
+class _RecordingAsyncio:
+    """Proxy for the ``asyncio`` name of the tool module that records ``wait_for`` timeouts."""
+
+    def __init__(self, timeouts: list[float]) -> None:
+        self._timeouts = timeouts
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(asyncio, name)
+
+    async def wait_for(self, awaitable: Any, timeout: float) -> Any:
+        self._timeouts.append(timeout)
+        return await asyncio.wait_for(awaitable, timeout)
+
+
+def _budget_context(client: FakeMCPClient) -> ExecutionContext:
+    return _context(client, [f"{SERVER}:echo"])
+
+
+def _budget_config(timeout: float, *, validate_schema: bool = True) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "tool": "echo",
+        "mcp_server": SERVER,
+        "arguments": {"text": "x"},
+        "timeout": timeout,
+    }
+    if validate_schema:
+        config["validate_schema"] = True
+    return config
+
+
+class TestMCPSharedStepBudget:
+    @pytest.fixture
+    def clock(self, monkeypatch: pytest.MonkeyPatch) -> _FakeClock:
+        fake = _FakeClock()
+        monkeypatch.setattr(tool_module, "time", fake)
+        return fake
+
+    @pytest.fixture
+    def wait_for_timeouts(self, monkeypatch: pytest.MonkeyPatch) -> list[float]:
+        timeouts: list[float] = []
+        monkeypatch.setattr(tool_module, "asyncio", _RecordingAsyncio(timeouts))
+        return timeouts
+
+    async def test_slow_discovery_times_out_and_the_call_is_never_made(self) -> None:
+        log = EventLog()
+        client = _BudgetClient(log, hang_discovery=True)
+        ctx = _budget_context(client)
+        primitive = ToolPrimitive(schema_validator=stub_validate_tool_arguments)
+
+        # The outer bound only keeps a regression from hanging the suite.
+        with pytest.raises(PrimitiveError) as exc_info:
+            await asyncio.wait_for(primitive.execute(_budget_config(0.05), ctx), timeout=5)
+
+        err = exc_info.value
+        assert err.code == PRIM_TOOL_TIMEOUT == "BEDDEL-PRIM-303"
+        assert err.message == f"MCP tool 'echo' on server '{SERVER}' timed out after 0.05s"
+        assert err.details == {
+            "tool": "echo",
+            "mcp_server": SERVER,
+            "timeout": 0.05,
+            "step_id": "step-mcp",
+        }
+        assert_unchained(err)
+        assert log.count("call_tool") == 0
+        assert SERVER not in ctx.metadata.get("beddel._mcp_tool_schemas", {})
+
+    async def test_discovery_and_call_wait_on_the_remaining_budget(
+        self, clock: _FakeClock, wait_for_timeouts: list[float]
+    ) -> None:
+        client = _BudgetClient(EventLog(), clock=clock, discovery_cost=3.0)
+        primitive = ToolPrimitive(schema_validator=stub_validate_tool_arguments)
+
+        result = await primitive.execute(_budget_config(5), _budget_context(client))
+
+        assert result["result"] == {"ok": True}
+        # Discovery waited on the whole budget; the call only on what was left.
+        assert wait_for_timeouts == [5, 2.0]
+
+    @pytest.mark.parametrize("discovery_cost", [5.0, 7.5])
+    async def test_no_call_is_made_when_discovery_used_the_whole_budget(
+        self, clock: _FakeClock, discovery_cost: float
+    ) -> None:
+        log = EventLog()
+        client = _BudgetClient(log, clock=clock, discovery_cost=discovery_cost)
+        ctx = _budget_context(client)
+        primitive = ToolPrimitive(schema_validator=stub_validate_tool_arguments)
+
+        with pytest.raises(PrimitiveError) as exc_info:
+            await primitive.execute(_budget_config(5), ctx)
+
+        err = exc_info.value
+        assert err.code == PRIM_TOOL_TIMEOUT
+        assert err.details == {
+            "tool": "echo",
+            "mcp_server": SERVER,
+            "timeout": 5,
+            "step_id": "step-mcp",
+        }
+        assert_unchained(err)
+        assert log.count("list_tools") == 1
+        assert log.count("call_tool") == 0
+
+    async def test_a_cached_discovery_consumes_no_budget(
+        self, clock: _FakeClock, wait_for_timeouts: list[float]
+    ) -> None:
+        log = EventLog()
+        client = _BudgetClient(log, clock=clock, discovery_cost=3.0)
+        ctx = _budget_context(client)
+        primitive = ToolPrimitive(schema_validator=stub_validate_tool_arguments)
+        await primitive.execute(_budget_config(5), ctx)
+        wait_for_timeouts.clear()
+
+        await primitive.execute(_budget_config(5), ctx)
+
+        assert log.count("list_tools") == 1
+        assert log.count("call_tool") == 2
+        # No discovery wait; the call gets the full budget of the new step.
+        assert wait_for_timeouts == [5]
+
+    async def test_without_schema_validation_the_call_gets_the_full_budget(
+        self, clock: _FakeClock, wait_for_timeouts: list[float]
+    ) -> None:
+        log = EventLog()
+        client = _BudgetClient(log, clock=clock, discovery_cost=3.0)
+
+        await ToolPrimitive().execute(
+            _budget_config(5, validate_schema=False), _budget_context(client)
+        )
+
+        assert log.count("list_tools") == 0
+        assert wait_for_timeouts == [5]
+
+    async def test_a_call_that_outlasts_the_remainder_times_out(self) -> None:
+        # Real time, wide margins: discovery 0.2 s + a call blocked until the
+        # 0.4 s budget is spent must end near 0.4 s, not near 0.6 s.
+        class _SlowDiscovery(_BudgetClient):
+            async def list_tools(self) -> list[dict[str, Any]]:
+                await asyncio.sleep(0.2)
+                return await FakeMCPClient.list_tools(self)
+
+        log = EventLog()
+        client = _SlowDiscovery(log)
+        client.script = ClientScript(block_call=True)
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+
+        with pytest.raises(PrimitiveError) as exc_info:
+            await asyncio.wait_for(
+                ToolPrimitive(schema_validator=stub_validate_tool_arguments).execute(
+                    _budget_config(0.4), _budget_context(client)
+                ),
+                timeout=5,
+            )
+
+        assert exc_info.value.code == PRIM_TOOL_TIMEOUT
+        assert loop.time() - started < 0.55
+        assert log.count("call_tool") == 1
+
+    async def test_a_discovery_timeout_still_disconnects_the_client_once(self) -> None:
+        log = EventLog()
+        client = _BudgetClient(log, hang_discovery=True)
+        wiring = MCPWiring()
+        wiring.add(SERVER, client)
+        registry = PrimitiveRegistry()
+        register_builtins(registry, mcp_schema_validator=stub_validate_tool_arguments)
+        executor = WorkflowExecutor(
+            registry, deps=DefaultDependencies(mcp_registry=wiring.registry)
+        )
+        workflow = Workflow(
+            id="wf-mcp-budget",
+            name="MCP budget",
+            steps=[Step(id="s1", primitive="tool", config=_budget_config(0.05))],
+            allowed_tools=[f"{SERVER}:echo"],
+        )
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await asyncio.wait_for(execute_and_close(executor, workflow, {}, wiring), timeout=5)
+
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, PrimitiveError)
+        assert cause.code == PRIM_TOOL_TIMEOUT
+        assert log.count("call_tool") == 0
+        assert log.count("disconnected") == 1
