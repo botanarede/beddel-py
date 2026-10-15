@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from beddel.domain.errors import PrimitiveError
+from beddel.domain.errors import BeddelError, PrimitiveError
 from beddel.domain.models import ExecutionContext
 from beddel.domain.ports import IPrimitive
 from beddel.domain.resolver import VariableResolver
@@ -26,27 +26,24 @@ from beddel.error_codes import (
     PRIM_TOOL_TIMEOUT,
 )
 
-try:
-    import sys as _sys
-    from pathlib import Path as _Path
-
-    _tool_proj_root = _Path(__file__).resolve().parents[4]
-    _mcp_kit_dir = _tool_proj_root / "repo" / "kits" / "protocol-mcp-kit"
-    _mcp_kit_src = _mcp_kit_dir / "python"
-    if not _mcp_kit_src.is_dir():
-        _mcp_kit_src = _mcp_kit_dir / "src"
-    _mcp_kit_src_str = str(_mcp_kit_src)
-    if _mcp_kit_src_str not in _sys.path:
-        _sys.path.insert(0, _mcp_kit_src_str)
-    from beddel_protocol_mcp.schema_validator import (  # type: ignore[import-not-found]
-        validate_tool_arguments as _validate_tool_arguments,
-    )
-except ImportError:
-    _validate_tool_arguments = None
-
 __all__ = [
+    "SchemaValidator",
     "ToolPrimitive",
 ]
+
+#: Callable that checks tool arguments against an input schema and raises a
+#: Beddel error on violation.  It is supplied by the composition root (AD-21);
+#: this module never imports a kit or computes a path to one.
+SchemaValidator = Callable[[dict[str, Any], dict[str, Any]], None]
+
+# Fixed messages for the MCP path.  They never interpolate the server name,
+# the tool name, the arguments or any text taken from an exception.
+_MCP_NOT_ALLOWED_MESSAGE = "MCP tool is not admitted by the workflow allowed_tools list"
+_MCP_CALL_FAILED_MESSAGE = "MCP tool call failed"
+_MCP_DISCOVERY_FAILED_MESSAGE = "MCP tool schema discovery failed"
+_MCP_NO_VALIDATOR_MESSAGE = (
+    "Schema validation requested but no MCP schema validator was supplied by the composition root"
+)
 
 
 class ToolPrimitive(IPrimitive):
@@ -63,6 +60,13 @@ class ToolPrimitive(IPrimitive):
             Supports ``$input`` and ``$stepResult`` variable references.
         timeout (int): Optional. Timeout in seconds for tool execution.
             Defaults to 60.
+        mcp_server (str): Optional. When present, the call is delegated to
+            the MCP client registered under this name.  It is admitted only
+            when the workflow ``allowed_tools`` contains the exact qualified
+            name ``<mcp_server>:<tool>``.
+        validate_schema (bool): Optional, MCP calls only. Validate the
+            arguments against the tool's ``inputSchema`` before the call,
+            using the validator supplied at construction.
 
     Example config::
 
@@ -71,6 +75,16 @@ class ToolPrimitive(IPrimitive):
             "arguments": {"query": "$input.search_term"},
         }
     """
+
+    def __init__(self, *, schema_validator: SchemaValidator | None = None) -> None:
+        """Create the primitive.
+
+        Args:
+            schema_validator: Optional validator for MCP tool arguments,
+                handed over by the composition root.  Without it a step
+                that sets ``validate_schema`` fails with a distinct error.
+        """
+        self._schema_validator = schema_validator
 
     async def execute(self, config: dict[str, Any], context: ExecutionContext) -> Any:
         """Execute the tool primitive.
@@ -174,8 +188,17 @@ class ToolPrimitive(IPrimitive):
         Raises:
             PrimitiveError: ``BEDDEL-PRIM-005`` if mcp_registry is not
                 configured or the server is not found.
+            PrimitiveError: ``BEDDEL-PRIM-304`` if the exact qualified name
+                ``<mcp_server>:<tool>`` is not in the workflow allowlist, or
+                the workflow has no allowlist (checked before arguments are
+                resolved and before any call reaches the client).
             PrimitiveError: ``BEDDEL-PRIM-303`` if tool execution times out.
-            PrimitiveError: ``BEDDEL-PRIM-301`` if tool execution fails.
+            PrimitiveError: ``BEDDEL-PRIM-301`` if the client raises an
+                exception that is not a Beddel error.  The message is fixed
+                and ``details`` hold only the exception class name.
+            BeddelError: any Beddel error raised by the client or by the
+                schema validator (for example an ``MCPError``) is re-raised
+                unchanged, code included.
         """
         mcp_server: str = config["mcp_server"]
         tool_name: str = config["tool"]
@@ -192,6 +215,15 @@ class ToolPrimitive(IPrimitive):
                 },
             )
 
+        # Defense in depth (AD-21): runs before the arguments are resolved and
+        # before list_tools / call_tool reach the server.
+        self._check_mcp_allowlist(
+            mcp_server,
+            tool_name,
+            context.metadata.get("_workflow_allowed_tools"),
+            context,
+        )
+
         client = mcp_registry[mcp_server]
 
         arguments: dict[str, Any] = {}
@@ -203,23 +235,36 @@ class ToolPrimitive(IPrimitive):
         # fetch the tool's inputSchema via list_tools() (cached per-server)
         # and validate arguments before calling the tool.
         if config.get("validate_schema"):
-            if _validate_tool_arguments is None:
+            validator = self._schema_validator
+            if validator is None:
                 raise PrimitiveError(
                     code=PRIM_TOOL_EXEC_FAILED,
-                    message=(
-                        "Schema validation requested but jsonschema is not installed. "
-                        "Install with: pip install mcp jsonschema"
-                    ),
+                    message=_MCP_NO_VALIDATOR_MESSAGE,
                     details={
-                        "tool": tool_name,
-                        "mcp_server": mcp_server,
+                        "primitive": "tool",
+                        "reason": "schema_validator_unavailable",
                         "step_id": context.current_step_id,
                     },
                 )
             cache = context.metadata.setdefault("beddel._mcp_tool_schemas", {})
             if mcp_server not in cache:
-                tools = await client.list_tools()
-                cache[mcp_server] = {t["name"]: t["inputSchema"] for t in tools}
+                discovery_error: str | None = None
+                try:
+                    tools = await client.list_tools()
+                    discovered = {t["name"]: t["inputSchema"] for t in tools}
+                except BeddelError:
+                    raise
+                except Exception as exc:
+                    # Capture the class name only and raise after leaving the
+                    # block, so no original exception stays chained.
+                    discovery_error = type(exc).__name__
+                if discovery_error is not None:
+                    raise PrimitiveError(
+                        code=PRIM_TOOL_EXEC_FAILED,
+                        message=_MCP_DISCOVERY_FAILED_MESSAGE,
+                        details={"error_type": discovery_error},
+                    )
+                cache[mcp_server] = discovered
             tool_schema = cache[mcp_server].get(tool_name)
             if tool_schema is None:
                 raise PrimitiveError(
@@ -234,7 +279,7 @@ class ToolPrimitive(IPrimitive):
                         "step_id": context.current_step_id,
                     },
                 )
-            _validate_tool_arguments(arguments, tool_schema)
+            validator(arguments, tool_schema)
 
         context.metadata["_tool_context"] = {
             "tool_name": tool_name,
@@ -244,12 +289,25 @@ class ToolPrimitive(IPrimitive):
 
         timeout: int | float = config.get("timeout", 60)
         start_time = time.monotonic()
+        timed_out = False
+        call_error: str | None = None
         try:
             result = await asyncio.wait_for(
                 client.call_tool(tool_name, arguments),
                 timeout=timeout,
             )
         except TimeoutError:
+            timed_out = True
+        except BeddelError:
+            # Any Beddel error (MCPError included) keeps its code and details.
+            raise
+        except Exception as exc:
+            # Capture the class name only and raise after leaving the block:
+            # no raw transport text is copied and neither __cause__ nor
+            # __context__ points at the original exception.
+            call_error = type(exc).__name__
+
+        if timed_out:
             raise PrimitiveError(
                 code=PRIM_TOOL_TIMEOUT,
                 message=(
@@ -261,21 +319,13 @@ class ToolPrimitive(IPrimitive):
                     "timeout": timeout,
                     "step_id": context.current_step_id,
                 },
-            ) from None
-        except PrimitiveError:
-            raise
-        except Exception as exc:
+            )
+        if call_error is not None:
             raise PrimitiveError(
                 code=PRIM_TOOL_EXEC_FAILED,
-                message=(f"MCP tool '{tool_name}' on server '{mcp_server}' failed: {exc}"),
-                details={
-                    "primitive": "tool",
-                    "tool": tool_name,
-                    "mcp_server": mcp_server,
-                    "original_error": str(exc),
-                    "error_type": type(exc).__name__,
-                },
-            ) from exc
+                message=_MCP_CALL_FAILED_MESSAGE,
+                details={"error_type": call_error},
+            )
 
         duration_ms = int((time.monotonic() - start_time) * 1000)
         return {
@@ -285,6 +335,51 @@ class ToolPrimitive(IPrimitive):
             "arguments": arguments,
             "duration_ms": duration_ms,
         }
+
+    @staticmethod
+    def _check_mcp_allowlist(
+        mcp_server: str,
+        tool_name: str,
+        allowed_tools: list[str] | None,
+        context: ExecutionContext,
+    ) -> None:
+        """Admit an MCP tool only by its exact qualified name.
+
+        The qualified name is ``<mcp_server>:<tool>``.  Admission is an exact
+        string match against ``allowed_tools``: a bare tool name, a wildcard,
+        a case variant or the bare-suffix rule of the local path never admits
+        an MCP tool, and ``allowed_tools is None`` admits none (unlike the
+        local path, where ``None`` means unrestricted).
+
+        The refusal message is fixed; it does not interpolate the server
+        name, the tool name or the arguments.
+
+        Args:
+            mcp_server: Declared MCP server key from the step config.
+            tool_name: Server-side tool name from the step config.
+            allowed_tools: Allowlist from ``workflow.allowed_tools``, or
+                ``None`` when the workflow has none.
+            context: Execution context for error details.
+
+        Raises:
+            PrimitiveError: ``BEDDEL-PRIM-304`` when the qualified name is
+                not admitted.
+        """
+        admitted = (
+            allowed_tools is not None
+            and isinstance(mcp_server, str)
+            and isinstance(tool_name, str)
+            and f"{mcp_server}:{tool_name}" in allowed_tools
+        )
+        if not admitted:
+            raise PrimitiveError(
+                code=PRIM_TOOL_NOT_ALLOWED,
+                message=_MCP_NOT_ALLOWED_MESSAGE,
+                details={
+                    "primitive": "tool",
+                    "step_id": context.current_step_id,
+                },
+            )
 
     @staticmethod
     def _validate_config(config: dict[str, Any], context: ExecutionContext) -> None:
