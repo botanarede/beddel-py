@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
+from urllib.parse import urlsplit
 
 from beddel.domain.errors import StateError
 from beddel.error_codes import STATE_CORRUPTED
@@ -45,7 +47,14 @@ if TYPE_CHECKING:
     )
     from beddel.domain.registry import PrimitiveRegistry
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 # ---------------------------------------------------------------------------
 # PII tokenization types  (Epic 6 — PII Tokenization)
@@ -87,6 +96,7 @@ __all__ = [
     "InterruptibleContext",
     "KnowledgeEntry",
     "KnowledgeSource",
+    "MCPServerDeclaration",
     "MemoryEntry",
     "PIIPattern",
     "ParallelConfig",
@@ -1185,6 +1195,123 @@ class ToolDeclaration(BaseModel):
     target: str
 
 
+# ---------------------------------------------------------------------------
+# MCP server declarations  (AD-21, AD-3)
+# ---------------------------------------------------------------------------
+
+# Server key: snake_case, like every other workflow field.  The key must not
+# contain ``:`` because ``<server key>:<tool>`` is the qualified tool name.
+_MCP_SERVER_KEY_PATTERN = r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"
+
+# ``transport`` and ``authorization`` are NAMES resolved outside the core (an
+# adapter registered by the composition root, an authorization method known to
+# the MCP protocol kit).  The model never enumerates them; it only requires a
+# short lowercase identifier, which keeps token-looking values (mixed case,
+# long, punctuation, spaces) out of the workflow.
+_MCP_NAME_PATTERN = r"^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$"
+_MCP_NAME_MAX_LENGTH = 32
+_MCP_ENDPOINT_MAX_LENGTH = 2048
+_MCP_ENDPOINT_SCHEMES = frozenset({"http", "https"})
+_MCP_ENTRY_FIELDS = frozenset({"transport", "endpoint", "authorization"})
+_MCP_SERVER_KEY_RE = re.compile(_MCP_SERVER_KEY_PATTERN)
+
+_MCPServerKey = Annotated[str, StringConstraints(pattern=_MCP_SERVER_KEY_PATTERN)]
+_MCPName = Annotated[
+    str,
+    StringConstraints(pattern=_MCP_NAME_PATTERN, max_length=_MCP_NAME_MAX_LENGTH),
+]
+
+
+def _close_mcp_servers_key_set(schema: dict[str, Any]) -> None:
+    """Make the generated schema reject server keys outside the key pattern.
+
+    Pydantic renders a pattern-constrained mapping key as ``patternProperties``
+    alone, which JSON Schema validators read as "keys that do not match are
+    unconstrained".  The model rejects them, so the schema must too.
+    """
+    for branch in schema.get("anyOf", []):
+        if branch.get("type") == "object":
+            branch["additionalProperties"] = False
+
+
+class MCPServerDeclaration(BaseModel):
+    """Non-secret connection data for one MCP server a workflow may call.
+
+    The three fields below are the whole entry; any other key (``headers``,
+    ``env``, ``args``, ...) is rejected.  Credentials are never part of a
+    workflow: they are resolved and stored outside it by the MCP protocol kit.
+    No validation message produced here interpolates the offending value.
+
+    Attributes:
+        transport: Name of the client adapter the execution surface registers
+            for this server.  The model validates the shape of the name only;
+            it does not enumerate transports.
+        endpoint: Absolute http or https URL of the server.  It carries no
+            userinfo, no query string and no fragment, so no credential can
+            travel in it.  Requiring HTTPS except on loopback is the job of
+            the MCP protocol kit, not of this model.
+        authorization: Name of the authorization method the MCP protocol kit
+            resolves.  It is a name only, never a token or any other secret;
+            the model validates the shape of the name and does not enumerate
+            methods.
+    """
+
+    # ``extra="forbid"`` is the backstop; ``_reject_unknown_keys`` fires first so
+    # the error location never contains the rejected key.  ``hide_input_in_errors``
+    # keeps the input out of the error text when this model is validated directly.
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    transport: _MCPName = Field(
+        description="Name of the client adapter registered for this server.",
+    )
+    endpoint: str = Field(
+        max_length=_MCP_ENDPOINT_MAX_LENGTH,
+        description="Absolute http(s) URL of the server; no userinfo, query string or fragment.",
+    )
+    authorization: _MCPName = Field(
+        description="Name of the authorization method; never a token or secret.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_unknown_keys(cls, data: Any) -> Any:
+        # Pydantic's own "extra inputs" error puts the offending KEY NAME in the
+        # error location, so a credential used as a key would be echoed.  Refuse
+        # it here with a fixed message and a location that stops at the entry.
+        if isinstance(data, Mapping) and not data.keys() <= _MCP_ENTRY_FIELDS:
+            raise ValueError("entry accepts only transport, endpoint and authorization")
+        return data
+
+    @field_validator("endpoint")
+    @classmethod
+    def _validate_endpoint(cls, value: str) -> str:
+        # Every message is a fixed string: ``value`` is never interpolated, so
+        # a credential pasted into the endpoint cannot be echoed back.
+        if not value.isascii() or not value.isprintable() or " " in value or "\\" in value:
+            raise ValueError(
+                "endpoint must be an ASCII URL without whitespace, control characters "
+                "or backslashes"
+            )
+        # Strictest rule: ANY query string or fragment is refused, not a closed
+        # list of "credential-like" parameter names.  A deny-list is bypassed by
+        # a renamed parameter, and an MCP endpoint is a fixed URL whose
+        # authorization comes from the ``authorization`` method, never from it.
+        if "?" in value or "#" in value:
+            raise ValueError("endpoint must not carry a query string or a fragment")
+        try:
+            parts = urlsplit(value)
+            _ = parts.port  # raises ValueError for a malformed or out-of-range port
+        except ValueError:
+            raise ValueError("endpoint must be a well-formed absolute URL") from None
+        if "@" in parts.netloc:
+            raise ValueError("endpoint must not carry userinfo")
+        if not parts.scheme or not parts.hostname:
+            raise ValueError("endpoint must be an absolute URL with a scheme and a host")
+        if parts.scheme.lower() not in _MCP_ENDPOINT_SCHEMES:
+            raise ValueError("endpoint scheme must be http or https")
+        return value
+
+
 class Workflow(BaseModel):
     """Top-level workflow definition parsed from YAML.
 
@@ -1204,7 +1331,17 @@ class Workflow(BaseModel):
         tools: Optional list of inline tool declarations.  Each entry maps
             a logical name to a ``module:function`` target resolved at parse
             time.  When ``None``, no inline tools are declared.
+        mcp_servers: Optional map from server name (snake_case) to the
+            non-secret connection data of an MCP server the workflow may call.
+            Each entry accepts exactly ``transport``, ``endpoint`` and
+            ``authorization``.  When ``None``, no MCP server is declared.
     """
+
+    # Validation errors of this model never carry the offending input in their
+    # text (``input_value=...``), so a secret written into ``mcp_servers`` is not
+    # echoed by the error or by the traceback chain built from it.  Pydantic reads
+    # this setting from the model being validated, not from nested models.
+    model_config = ConfigDict(hide_input_in_errors=True)
 
     id: str
     name: str
@@ -1216,6 +1353,22 @@ class Workflow(BaseModel):
     allowed_tools: list[str] | None = None
     tools: list[ToolDeclaration] | None = None
     requires_kits: list[str] | None = None
+    mcp_servers: dict[_MCPServerKey, MCPServerDeclaration] | None = Field(
+        default=None,
+        json_schema_extra=_close_mcp_servers_key_set,
+    )
+
+    @field_validator("mcp_servers", mode="before")
+    @classmethod
+    def _validate_mcp_server_keys(cls, value: Any) -> Any:
+        # Pydantic's own key-pattern error puts the offending KEY in the error
+        # location, so a credential used as a server key would be echoed.  Refuse
+        # it here with a fixed message and the location ``mcp_servers`` only.
+        if isinstance(value, Mapping) and not all(
+            isinstance(key, str) and _MCP_SERVER_KEY_RE.fullmatch(key) for key in value
+        ):
+            raise ValueError("server keys must be snake_case")
+        return value
 
 
 # ---------------------------------------------------------------------------
