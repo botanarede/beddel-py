@@ -746,6 +746,56 @@ class TestMCPDelegation:
         assert "mcp_server" not in result
         assert isinstance(result["duration_ms"], int)
 
+    @pytest.mark.parametrize("mcp_server", ["", None, False])
+    async def test_tool_falsy_mcp_server_uses_local_registry(self, mcp_server: Any) -> None:
+        """Pins routing of a present-but-falsy mcp_server in direct library use.
+
+        The primitive treats a falsy value as "no MCP server" and runs the
+        local tool; workflow composition rejects such a value earlier.
+        """
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value={"content": "mcp-result"})
+        mock_client.list_tools = AsyncMock(return_value=[])
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"greet": _sync_greet},
+            mcp_registry={"srv": mock_client},
+            metadata={"_workflow_allowed_tools": ["greet"]},
+        )
+
+        result = await ToolPrimitive().execute({"tool": "greet", "mcp_server": mcp_server}, ctx)
+
+        assert result["tool"] == "greet"
+        assert result["result"] == "hello"
+        assert "mcp_server" not in result
+        mock_client.call_tool.assert_not_awaited()
+        mock_client.list_tools.assert_not_awaited()
+
+    @pytest.mark.parametrize("mcp_server", ["", None, False])
+    async def test_tool_falsy_mcp_server_applies_local_allowlist(self, mcp_server: Any) -> None:
+        """Pins that a present-but-falsy mcp_server still hits the local allowlist.
+
+        Direct library use only; workflow composition rejects the value earlier.
+        """
+        mock_client = AsyncMock()
+        mock_client.call_tool = AsyncMock(return_value={"content": "mcp-result"})
+        mock_client.list_tools = AsyncMock(return_value=[])
+
+        ctx = make_context(
+            workflow_id="wf-tool",
+            tool_registry={"greet": _sync_greet},
+            mcp_registry={"srv": mock_client},
+            metadata={"_workflow_allowed_tools": ["other"]},
+        )
+
+        with pytest.raises(PrimitiveError) as exc_info:
+            await ToolPrimitive().execute({"tool": "greet", "mcp_server": mcp_server}, ctx)
+
+        assert exc_info.value.code == "BEDDEL-PRIM-304"
+        mock_client.call_tool.assert_not_awaited()
+        mock_client.list_tools.assert_not_awaited()
+
     async def test_tool_mcp_resolves_variable_arguments(self) -> None:
         """MCP path resolves $input refs in arguments."""
         mock_client = AsyncMock()
