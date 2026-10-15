@@ -879,6 +879,122 @@ class TestClientLifecycle:
         assert isolated.log.names() == ["constructed", "connected", "call_tool", "disconnected"]
 
 
+class _HangingDisconnectClient(FakeMCPClient):
+    """Fake whose ``disconnect`` never answers (it stays cancellable)."""
+
+    async def disconnect(self) -> None:
+        self.log.record("disconnect_started", self.endpoint)
+        await asyncio.Event().wait()
+
+
+def _wiring_with_hanging_first(state: FakeKitState) -> MCPWiring:
+    wiring = MCPWiring()
+    wiring.add("srv_0", _HangingDisconnectClient(TRANSPORT, ENDPOINT, "none", log=state.log))
+    wiring.add("srv_1", FakeMCPClient(TRANSPORT, ENDPOINT2, "none", log=state.log))
+    return wiring
+
+
+def test_the_disconnect_bound_is_five_seconds() -> None:
+    assert surface._DISCONNECT_TIMEOUT == 5
+
+
+class TestBoundedDisconnect:
+    @pytest.fixture(autouse=True)
+    def _short_bound(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(surface, "_DISCONNECT_TIMEOUT", 0.05)
+
+    async def test_a_hanging_disconnect_is_abandoned_and_the_others_close(
+        self, isolated: FakeKitState, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        enable_log_capture(caplog)
+        wiring = _wiring_with_hanging_first(isolated)
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+
+        # The outer bound only keeps a regression from hanging the suite.
+        await asyncio.wait_for(wiring.aclose(), timeout=5)
+
+        assert loop.time() - started < 2
+        assert isolated.log.count("disconnect_started") == 1
+        assert _disconnects(isolated) == [ENDPOINT2]
+        assert "srv_0" in caplog.text
+        assert "TimeoutError" in caplog.text
+        assert FAKE_SECRET_MARKER not in caplog.text
+        for record in caplog.records:
+            assert record.exc_info is None
+        assert wiring.has_clients is False
+
+    async def test_a_hanging_disconnect_does_not_fail_a_successful_run(
+        self, isolated: FakeKitState
+    ) -> None:
+        wiring = _wiring_with_hanging_first(isolated)
+
+        result = await asyncio.wait_for(
+            execute_and_close(_StubExecutor(), _workflow(), {}, wiring),  # type: ignore[arg-type]
+            timeout=5,
+        )
+
+        assert result == {"step_results": {}}
+        assert _disconnects(isolated) == [ENDPOINT2]
+
+    async def test_a_step_failure_still_surfaces_when_a_disconnect_hangs(
+        self, isolated: FakeKitState
+    ) -> None:
+        wiring = _wiring_with_hanging_first(isolated)
+        failure = ExecutionError("BEDDEL-EXEC-002", "step failed")
+
+        with pytest.raises(ExecutionError) as exc_info:
+            await asyncio.wait_for(
+                execute_and_close(_StubExecutor(error=failure), _workflow(), {}, wiring),  # type: ignore[arg-type]
+                timeout=5,
+            )
+
+        assert exc_info.value is failure
+        assert isolated.log.count("disconnect_started") == 1
+        assert _disconnects(isolated) == [ENDPOINT2]
+
+    async def test_a_hanging_disconnect_after_a_cancelled_run_still_propagates_the_cancel(
+        self, isolated: FakeKitState
+    ) -> None:
+        wiring = _wiring_with_hanging_first(isolated)
+        executor = _StubExecutor(block=True)
+        task = asyncio.create_task(execute_and_close(executor, _workflow(), {}, wiring))  # type: ignore[arg-type]
+        await asyncio.wait_for(executor.started.wait(), timeout=5)
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=5)
+
+        assert isolated.log.count("disconnect_started") == 1
+        assert _disconnects(isolated) == [ENDPOINT2]
+
+    async def test_a_cancel_during_a_hanging_disconnect_still_closes_the_others(
+        self, monkeypatch: pytest.MonkeyPatch, isolated: FakeKitState
+    ) -> None:
+        monkeypatch.setattr(surface, "_DISCONNECT_TIMEOUT", 30)
+        wiring = _wiring_with_hanging_first(isolated)
+        task = asyncio.create_task(wiring.aclose())
+        while isolated.log.count("disconnect_started") == 0:
+            await asyncio.sleep(0)
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=5)
+
+        assert _disconnects(isolated) == [ENDPOINT2]
+        assert isolated.log.count("disconnect_started") == 1
+
+    async def test_every_disconnect_is_still_awaited_once_when_nothing_hangs(
+        self, isolated: FakeKitState
+    ) -> None:
+        wiring = _wiring_with(isolated, ENDPOINT, ENDPOINT2, scripts=None)
+
+        await wiring.aclose()
+        await wiring.aclose()
+
+        assert sorted(_disconnects(isolated)) == sorted([ENDPOINT, ENDPOINT2])
+
+
 # ---------------------------------------------------------------------------
 # beddel run end to end: composition errors, AC 11, AC 14
 # ---------------------------------------------------------------------------

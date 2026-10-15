@@ -19,7 +19,8 @@ workflow is parsed and before the first step runs, :func:`compose_mcp`
    never calls ``connect`` (the client connects on its first use).
 
 :class:`MCPWiring` owns the clients that were built and disconnects each of
-them once, with every ``disconnect`` isolated, when the run ends.
+them once, with every ``disconnect`` isolated and bounded by a 5 second
+timeout, when the run ends.
 
 Nothing here touches ``load_kit_adapters``, ``_build_adapter_registries`` or
 kit discovery (D-5 is not decided here), edits ``sys.path``, or deletes or
@@ -85,6 +86,10 @@ _SCHEMA_VALIDATOR_ATTRIBUTE: Final = "validate_tool_arguments"
 
 MCPClientConstructor = Callable[..., IMCPClient]
 
+#: Seconds one client is given to ``disconnect`` during cleanup before it is
+#: abandoned (and logged) so the next client can still be closed.
+_DISCONNECT_TIMEOUT: Final = 5  # seconds
+
 
 class MCPWiring:
     """The MCP clients built for one run, and the validator that goes with them.
@@ -117,13 +122,17 @@ class MCPWiring:
         self._registry[server] = client
 
     async def aclose(self) -> None:
-        """Disconnect every built client exactly once.
+        """Disconnect every built client exactly once, each within a time bound.
 
-        Each ``disconnect`` is isolated: a failure is logged (server key and
+        Each ``disconnect`` is isolated and bounded by ``_DISCONNECT_TIMEOUT``
+        (5 seconds): a failure or a timeout is logged (server key and
         exception class name only, never exception text) and neither masks
         the error that ended the run nor skips the remaining clients.  A
         cancellation that reaches a ``disconnect`` is re-raised only after
         the remaining clients were given their ``disconnect`` as well.
+
+        The bound relies on cancellation: a ``disconnect`` that swallows the
+        cancellation and keeps running is not interrupted.
         """
         if self._closed:
             return
@@ -132,7 +141,7 @@ class MCPWiring:
         for server, client in self._built:
             failure: str | None = None
             try:
-                await client.disconnect()
+                await asyncio.wait_for(client.disconnect(), timeout=_DISCONNECT_TIMEOUT)
             except asyncio.CancelledError as exc:
                 cancelled = exc
             except Exception as exc:
