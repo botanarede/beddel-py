@@ -1326,7 +1326,9 @@ class IMCPClient(Protocol):
         ...
 
 
-class ITracer(ABC, Generic[SpanT]):
+# SpanT is a public export, so the tracer keeps the classic Generic[...] form
+# instead of PEP 695 type parameters.
+class ITracer(ABC, Generic[SpanT]):  # noqa: UP046
     """Port interface for observability tracing.
 
     Defines the contract for trace span management.  Implementations

@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - A2A client modernized to SDK v1 patterns (Story K1.15)
+- The supported Python floor is now 3.12: `requires-python = ">=3.12"`, ruff `target-version = "py312"`, mypy `python_version = "3.12"`, and the lock file resolves for 3.12 and newer.
 - CLI launch tests updated for async server pattern
 - **Behavior change for MCP tool steps, also for direct library use:** an MCP tool is admitted only by its exact qualified name `<mcp_server>:<tool>` in `allowed_tools` (no bare tool name, no wildcard, no case folding, no suffix rule). A workflow that declares `mcp_servers` must define `allowed_tools`, and an MCP step that reaches the tool primitive without an allowlist is now refused with `BEDDEL-PRIM-304` (`PRIM_TOOL_NOT_ALLOWED`) instead of running unrestricted. Local tool steps are unchanged.
 - The quality gate no longer deselects `tests/primitives/test_tool.py::TestMCPSchemaValidation`.
