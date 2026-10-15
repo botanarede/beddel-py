@@ -20,7 +20,9 @@ workflow is parsed and before the first step runs, :func:`compose_mcp`
 
 :class:`MCPWiring` owns the clients that were built and disconnects each of
 them once, with every ``disconnect`` isolated and bounded by a 5 second
-timeout, when the run ends.
+timeout, when the run ends.  The bound relies on cooperative cancellation: a
+``disconnect`` that swallows the cancellation and keeps running is not
+interrupted.
 
 Nothing here touches ``load_kit_adapters``, ``_build_adapter_registries`` or
 kit discovery (D-5 is not decided here), edits ``sys.path``, or deletes or
