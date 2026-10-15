@@ -518,6 +518,9 @@ MCP_SCHEMA_VALIDATION_FAILED: str = "BEDDEL-MCP-603"
 MCP_SERVER_TIMEOUT: str = "BEDDEL-MCP-604"
 """MCP server operation timed out."""
 
+MCP_AUTHORIZATION_REQUIRED: str = "BEDDEL-MCP-605"
+"""MCP server requires authorization the client does not hold (operator action needed)."""
+
 # ---------------------------------------------------------------------------
 # Kit codes  (KIT prefix, 650 sub-range)
 # ---------------------------------------------------------------------------
@@ -793,6 +796,7 @@ ALL_CODES: dict[str, str] = {
     "MCP_TOOL_INVOCATION_FAILED": MCP_TOOL_INVOCATION_FAILED,
     "MCP_SCHEMA_VALIDATION_FAILED": MCP_SCHEMA_VALIDATION_FAILED,
     "MCP_SERVER_TIMEOUT": MCP_SERVER_TIMEOUT,
+    "MCP_AUTHORIZATION_REQUIRED": MCP_AUTHORIZATION_REQUIRED,
     # Auth
     "AUTH_DEVICE_FLOW_FAILED": AUTH_DEVICE_FLOW_FAILED,
     "AUTH_DEVICE_FLOW_TIMEOUT": AUTH_DEVICE_FLOW_TIMEOUT,

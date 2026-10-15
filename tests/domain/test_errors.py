@@ -334,3 +334,9 @@ class TestMCPErrorCodes:
 
         assert "MCP_SERVER_TIMEOUT" in error_codes.ALL_CODES
         assert error_codes.ALL_CODES["MCP_SERVER_TIMEOUT"] == "BEDDEL-MCP-604"
+
+    def test_mcp_authorization_required_in_all_codes(self) -> None:
+        from beddel import error_codes
+
+        assert "MCP_AUTHORIZATION_REQUIRED" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["MCP_AUTHORIZATION_REQUIRED"] == "BEDDEL-MCP-605"
