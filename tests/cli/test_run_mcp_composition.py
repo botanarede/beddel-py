@@ -51,6 +51,7 @@ from beddel.cli.mcp_composition import (
     load_kit_module,
     locate_kit_source,
 )
+from beddel.domain import mcp_composition as domain_composition
 from beddel.domain.errors import ExecutionError, MCPError, PrimitiveError
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.mcp_composition import (
@@ -79,6 +80,9 @@ ENDPOINT2 = "https://other.example/mcp"
 TOOL = "echo"
 QUALIFIED = f"{SERVER}:{TOOL}"
 QUALIFIED2 = f"{SECOND}:{TOOL}"
+
+# Captured at import time, before the autouse fixture replaces it with a stub.
+_REAL_ENSURE_KIT_PATHS = commands_module._ensure_kit_paths
 
 
 # ---------------------------------------------------------------------------
@@ -1249,3 +1253,332 @@ class TestRunSchemaValidator:
         assert "no MCP schema validator was supplied" in result.stderr
         assert "jsonschema" not in result.stderr.lower()
         assert "call_tool" not in FAKE_KIT_STATE.log.names()
+
+
+# ---------------------------------------------------------------------------
+# Run C coverage audit: the same rules proven through the real ``beddel run`` path
+# ---------------------------------------------------------------------------
+
+
+class _ComposeSpy:
+    """Records what ``run`` hands to ``compose_mcp`` and what it raises."""
+
+    def __init__(self) -> None:
+        self.kit_module_loaded_on_entry: list[bool] = []
+        self.errors: list[BaseException] = []
+
+    def reasons(self) -> list[Any]:
+        return [getattr(exc, "details", {}).get("reason") for exc in self.errors]
+
+
+def _spy_compose(monkeypatch: pytest.MonkeyPatch) -> _ComposeSpy:
+    spy = _ComposeSpy()
+    original = surface.compose_mcp
+
+    def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        spy.kit_module_loaded_on_entry.append(KIT_MODULE in sys.modules)
+        try:
+            return original(*args, **kwargs)
+        except BaseException as exc:
+            spy.errors.append(exc)
+            raise
+
+    monkeypatch.setattr(surface, "compose_mcp", _wrapped)
+    return spy
+
+
+def _write_unrelated_kit(kits_dir: Path, name: str) -> None:
+    """A minimal kit manifest (no module, no tools) whose name is ``name``."""
+    kit_dir = kits_dir / "unrelated-kit"
+    kit_dir.mkdir(parents=True, exist_ok=True)
+    (kit_dir / "kit.yaml").write_text(
+        f"name: {name}\nversion: 0.0.0\ndescription: unrelated kit\n"
+        "targets:\n  python:\n    status: implemented\n    module: unrelated_kit_pkg\n"
+        "    dependencies: []\n"
+    )
+
+
+def _assert_stopped_before_any_step(result: Result) -> None:
+    assert result.exit_code == 1
+    assert f"Error [{EXEC_COMPOSITION_FAILED}]: {COMPOSITION_FAILED_MESSAGE}" in result.stderr
+    assert FAKE_KIT_STATE.log.events == []  # nothing connected, listed or called
+    assert FAKE_KIT_STATE.constructor_kwargs == []  # nothing built
+
+
+class TestRunCompositionRulesThroughTheCli:
+    """AC 2, 4, 6, 8: composition rules reached via ``beddel run``, not only ``compose_mcp``."""
+
+    def test_unknown_transport_stops_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = _spy_compose(monkeypatch)
+        document = _doc(servers={SERVER: _server(transport="mcp-stdio")})
+
+        result = _invoke(tmp_path, document, kits=[_kits(tmp_path)])
+
+        _assert_stopped_before_any_step(result)
+        assert spy.reasons() == [REASON_UNKNOWN_TRANSPORT]
+
+    @pytest.mark.parametrize(
+        ("server", "tool"),
+        [("$input.x", TOOL), (SERVER, "$env.X"), (f"a-$input.{FAKE_SECRET_MARKER}", TOOL)],
+        ids=["server-input", "tool-env", "server-embedded"],
+    )
+    def test_dynamic_names_stop_the_run_without_echo(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, server: str, tool: str
+    ) -> None:
+        spy = _spy_compose(monkeypatch)
+        document = _doc([_step(server=server, tool=tool)])
+
+        result = _invoke(tmp_path, document, kits=[_kits(tmp_path)])
+
+        _assert_stopped_before_any_step(result)
+        assert spy.reasons() == [domain_composition.REASON_INVALID_NAME]
+        assert FAKE_SECRET_MARKER not in result.output
+        assert "$" not in result.output
+
+    def test_a_server_key_equal_to_a_cli_tool_prefix_stops_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ``run`` hands the merged tool registry (here a ``--tool`` name) to the composition.
+        spy = _spy_compose(monkeypatch)
+
+        result = _invoke(
+            tmp_path,
+            _doc(),
+            kits=[_kits(tmp_path)],
+            extra=("--tool", f"{SERVER}:dump=json:dumps"),
+        )
+
+        _assert_stopped_before_any_step(result)
+        assert spy.reasons() == [domain_composition.REASON_NAME_COLLISION]
+
+    def test_a_server_key_equal_to_a_discovered_kit_name_stops_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ``run`` hands the names of the discovered kits to the composition.  Kit names
+        # are kebab-case and server keys snake_case, so only a one-word name can collide.
+        spy = _spy_compose(monkeypatch)
+        kits = _kits(tmp_path)
+        _write_unrelated_kit(kits, "acme")
+        document = _doc([_step(server="acme")], servers={"acme": _server()}, allowed=["acme:echo"])
+
+        result = _invoke(tmp_path, document, kits=[kits])
+
+        _assert_stopped_before_any_step(result)
+        assert spy.reasons() == [domain_composition.REASON_NAME_COLLISION]
+
+    def test_unrelated_tool_and_kit_names_do_not_collide(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = _spy_compose(monkeypatch)
+        kits = _kits(tmp_path)
+        _write_unrelated_kit(kits, "some_other_kit")
+
+        result = _invoke(
+            tmp_path,
+            _doc([_step(arguments={"text": "hi"})]),
+            kits=[kits],
+            extra=("--tool", "dump=json:dumps"),
+        )
+
+        assert _step_results(result)["call"]["result"] == {"ok": True}
+        assert spy.errors == []
+
+    def test_two_kit_locations_stop_the_run_as_ambiguous(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = _spy_compose(monkeypatch)
+        first = _kits(tmp_path, "kits-a")
+        second = _kits(tmp_path, "kits-b")
+
+        result = _invoke(tmp_path, _doc(), kits=[first, second])
+
+        _assert_stopped_before_any_step(result)
+        assert spy.reasons() == [REASON_KIT_AMBIGUOUS]
+        assert KIT_MODULE not in sys.modules
+
+    def test_a_module_preloaded_from_another_directory_stops_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = _spy_compose(monkeypatch)
+        decoy_source = write_fake_kit(tmp_path / "decoy-kits")
+        sys.path.insert(0, str(decoy_source))
+        decoy = importlib.import_module(KIT_MODULE)
+        executions = list(FAKE_KIT_STATE.module_executions)
+
+        result = _invoke(tmp_path, _doc(), kits=[_kits(tmp_path)])
+
+        _assert_stopped_before_any_step(result)
+        assert spy.reasons() == [REASON_KIT_LOCATION_MISMATCH]
+        assert sys.modules[KIT_MODULE] is decoy  # never deleted, replaced or reloaded
+        assert FAKE_KIT_STATE.module_executions == executions
+
+    def test_the_real_loader_preloads_the_kit_and_the_composition_accepts_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No stubbing of the loader path here: ``_ensure_kit_paths`` puts the configured
+        # kit directory on ``sys.path`` and ``load_kit_adapters`` imports the module
+        # (then fails to build a zero-argument adapter and skips it, D-5, pre-existing)
+        # before the composition runs.  The composition must accept that module.
+        kits = _kits(tmp_path)
+        (tmp_path / ".beddel.json").write_text(json.dumps({"kits_paths": [str(kits)]}))
+        monkeypatch.setattr(commands_module, "_ensure_kit_paths", _REAL_ENSURE_KIT_PATHS)
+        spy = _spy_compose(monkeypatch)
+        document = _doc([_step(arguments={"text": "hi"})])
+
+        steps = _step_results(_invoke(tmp_path, document))  # no --kit: only the configuration
+
+        assert steps["call"]["result"] == {"ok": True}
+        assert spy.kit_module_loaded_on_entry == [True]  # preloaded by the loader path
+        assert spy.errors == []
+        assert len(FAKE_KIT_STATE.module_executions) == 1  # executed once, not reloaded
+        assert FAKE_KIT_STATE.log.names() == [
+            "constructed",
+            "connected",
+            "call_tool",
+            "disconnected",
+        ]
+
+
+class TestRunNestedStepsThroughTheCli:
+    """AC 2 and 14: a nested step at depth is composed, built, connected on use, closed."""
+
+    @staticmethod
+    def _carrier(step_id: str, **extra: Any) -> dict[str, Any]:
+        # A step whose condition is false (no input), so only its ``else`` branch runs.
+        return {
+            "id": step_id,
+            "primitive": "tool",
+            "if": "$input.go == 'yes'",
+            "config": {"tool": "unused"},
+            **extra,
+        }
+
+    def test_a_step_three_levels_deep_with_a_nested_fallback_runs(self, tmp_path: Path) -> None:
+        FAKE_KIT_STATE.scripts[ENDPOINT] = ClientScript(
+            call_error=MCPError(MCP_CONNECTION_FAILED, "Unreachable MCP server")
+        )
+        rescue = _step("rescue", server=SECOND, arguments={"text": "fb"})
+        leaf = _step("leaf", strategy={"type": "fallback", "fallback_step": rescue})
+        chain = self._carrier("l1", **{"else": [self._carrier("l2", **{"else": [leaf]})]})
+        document = _doc(
+            [chain],
+            servers={SERVER: _server(), SECOND: _server(endpoint=ENDPOINT2)},
+            allowed=[QUALIFIED, QUALIFIED2],
+        )
+
+        steps = _step_results(_invoke(tmp_path, document, kits=[_kits(tmp_path)]))
+
+        assert steps["leaf"]["mcp_server"] == SECOND  # the fallback (depth 4) ran
+        built = [d for n, d in FAKE_KIT_STATE.log.events if n == "constructed"]
+        assert built == [ENDPOINT, ENDPOINT2]  # both composed before the first step
+        connected = [d for n, d in FAKE_KIT_STATE.log.events if n == "connected"]
+        assert sorted(connected) == sorted([ENDPOINT, ENDPOINT2])
+        assert sorted(_disconnects(FAKE_KIT_STATE)) == sorted([ENDPOINT, ENDPOINT2])
+
+    def test_an_undeclared_server_at_depth_three_stops_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = _spy_compose(monkeypatch)
+        leaf = _step("leaf", server="ghost_srv")
+        chain = self._carrier("l1", **{"else": [self._carrier("l2", **{"then": [leaf]})]})
+
+        result = _invoke(tmp_path, _doc([chain]), kits=[_kits(tmp_path)])
+
+        _assert_stopped_before_any_step(result)
+        assert spy.reasons() == [domain_composition.REASON_UNDECLARED_SERVER]
+
+
+def _scenario_missing_allowlist(tmp_path: Path) -> ExecutionError:
+    document = _doc()
+    del document["allowed_tools"]
+    return _composition_error(_workflow(document), _kits(tmp_path))
+
+
+def _scenario_invalid_name(tmp_path: Path) -> ExecutionError:
+    return _composition_error(_workflow(_doc([_step(server="$input.x")])), _kits(tmp_path))
+
+
+def _scenario_undeclared_server(tmp_path: Path) -> ExecutionError:
+    return _composition_error(_workflow(_doc([_step(server="ghost_srv")])), _kits(tmp_path))
+
+
+def _scenario_unknown_transport(tmp_path: Path) -> ExecutionError:
+    document = _doc(servers={SERVER: _server(transport="mcp-stdio")})
+    return _composition_error(_workflow(document), _kits(tmp_path))
+
+
+def _scenario_tool_not_allowed(tmp_path: Path) -> ExecutionError:
+    return _composition_error(_workflow(_doc(allowed=[])), _kits(tmp_path))
+
+
+def _scenario_name_collision(tmp_path: Path) -> ExecutionError:
+    return _composition_error(_workflow(), _kits(tmp_path), kit_names=(SERVER,))
+
+
+def _scenario_kits_disabled(tmp_path: Path) -> ExecutionError:
+    return _composition_error(_workflow(), _kits(tmp_path), no_kits=True)
+
+
+def _scenario_kit_unavailable(tmp_path: Path) -> ExecutionError:
+    return _composition_error(_workflow(), None)
+
+
+def _scenario_kit_ambiguous(tmp_path: Path) -> ExecutionError:
+    return _composition_error(_workflow(), [_kits(tmp_path, "kits-a"), _kits(tmp_path, "kits-b")])
+
+
+def _scenario_kit_location_mismatch(tmp_path: Path) -> ExecutionError:
+    sys.path.insert(0, str(write_fake_kit(tmp_path / "decoy-kits")))
+    importlib.import_module(KIT_MODULE)
+    return _composition_error(_workflow(), _kits(tmp_path))
+
+
+def _scenario_adapter_unavailable(tmp_path: Path) -> ExecutionError:
+    kits = _kits(tmp_path, modules={"__init__.py": "def validate_tool_arguments(a, s): ..."})
+    return _composition_error(_workflow(), kits)
+
+
+def _scenario_adapter_construction_failed(tmp_path: Path) -> ExecutionError:
+    FAKE_KIT_STATE.constructor_errors[ENDPOINT] = RuntimeError("boom")
+    return _composition_error(_workflow(), _kits(tmp_path))
+
+
+_REASON_SCENARIOS = {
+    domain_composition.REASON_MISSING_ALLOWLIST: _scenario_missing_allowlist,
+    domain_composition.REASON_INVALID_NAME: _scenario_invalid_name,
+    domain_composition.REASON_UNDECLARED_SERVER: _scenario_undeclared_server,
+    REASON_UNKNOWN_TRANSPORT: _scenario_unknown_transport,
+    domain_composition.REASON_TOOL_NOT_ALLOWED: _scenario_tool_not_allowed,
+    domain_composition.REASON_NAME_COLLISION: _scenario_name_collision,
+    REASON_KITS_DISABLED: _scenario_kits_disabled,
+    REASON_KIT_UNAVAILABLE: _scenario_kit_unavailable,
+    REASON_KIT_AMBIGUOUS: _scenario_kit_ambiguous,
+    REASON_KIT_LOCATION_MISMATCH: _scenario_kit_location_mismatch,
+    REASON_ADAPTER_UNAVAILABLE: _scenario_adapter_unavailable,
+    REASON_ADAPTER_CONSTRUCTION_FAILED: _scenario_adapter_construction_failed,
+}
+
+
+class TestEveryCompositionReasonIsReachable:
+    """AC 12: every ``details["reason"]`` value is reachable, with one code and one message."""
+
+    @pytest.mark.parametrize("reason", sorted(_REASON_SCENARIOS))
+    def test_the_scenario_produces_its_reason(self, tmp_path: Path, reason: str) -> None:
+        err = _REASON_SCENARIOS[reason](tmp_path)
+
+        assert err.details["reason"] == reason
+        assert err.code == EXEC_COMPOSITION_FAILED
+        assert err.message == COMPOSITION_FAILED_MESSAGE
+        assert FAKE_KIT_STATE.log.events == []  # no I/O whatever the reason
+
+    def test_no_reason_constant_is_left_without_a_scenario(self) -> None:
+        declared = {
+            getattr(domain_composition, name)
+            for name in dir(domain_composition)
+            if name.startswith("REASON_")
+        }
+
+        assert set(_REASON_SCENARIOS) == declared
+        assert len(declared) == 12
