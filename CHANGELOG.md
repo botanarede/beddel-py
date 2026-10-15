@@ -47,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kit discovery registry: HTTP-first resolution via pre-generated `registry.json`, git sparse-checkout fallback, CI generator action
 - `--json` flag wired for kit discovery output
 - YAML flows: `code-review-claude.yaml`, `run-claude-vertex.yaml`, `sum-two-numbers.yaml`
+- MCP servers declared in `mcp_servers` are composed by `beddel run` before the first step executes: each server a step names is validated, its client is built from the `protocol-mcp-kit` adapter registered for its transport, and the kit is imported from the one location that `--kit` and `kits_paths` name. A composition failure stops the run with the new error code `BEDDEL-EXEC-050` (`EXEC_COMPOSITION_FAILED`) and a stable `details["reason"]`; no value of `mcp_server`, `tool`, `endpoint` or `arguments` is echoed.
+- MCP clients are connected at first use and closed when the run ends (success, failure or cancellation), once each; a failing `disconnect` neither masks the original error nor stops the others.
+- `ToolPrimitive(schema_validator=...)` and `register_builtins(registry, mcp_schema_validator=...)`: the schema validator for `validate_schema` is supplied by the composition root from the same kit import as the client adapter.
 
 ### Removed
 
@@ -56,11 +59,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A2A client modernized to SDK v1 patterns (Story K1.15)
 - CLI launch tests updated for async server pattern
+- **Behavior change for MCP tool steps, also for direct library use:** an MCP tool is admitted only by its exact qualified name `<mcp_server>:<tool>` in `allowed_tools` (no bare tool name, no wildcard, no case folding, no suffix rule). A workflow that declares `mcp_servers` must define `allowed_tools`, and an MCP step that reaches the tool primitive without an allowlist is now refused with `BEDDEL-PRIM-304` (`PRIM_TOOL_NOT_ALLOWED`) instead of running unrestricted. Local tool steps are unchanged.
+- The quality gate no longer deselects `tests/primitives/test_tool.py::TestMCPSchemaValidation`.
 
 ### Fixed
 
 - `VertexAgentEngineAdapter`: migrate to new Client API object model (`agent.api_resource.name` instead of `agent.resource_name`). Fixes "Error loading agents" in sidebar (AttributeError on vertexai SDK ≥1.148)
 - `VertexAgentEngineAdapter.chat()`: session creation and streaming migrated from agent-level methods to client service methods (`client.agent_engines.create_session`, `client.agent_engines._stream_query`)
+- MCP error codes are preserved: a Beddel `MCPError` raised by a client keeps its code (`BEDDEL-MCP-600` to `BEDDEL-MCP-605`) when it leaves the tool primitive instead of being re-wrapped as `BEDDEL-PRIM-301`. The `call_tool` timeout keeps `BEDDEL-PRIM-303`.
+- `validate_schema` on an MCP tool step no longer imports the kit through a path computed from the package location (which did not exist in the monorepo layout); the validator comes from the composition root, and a missing validator is reported with its own message instead of as a missing `jsonschema`.
+
+### Security
+
+- MCP tool calls: a non-Beddel exception from a client or from tool discovery is wrapped with a fixed message carrying only the exception class name and the step id, and the original exception is neither chained as `__cause__` nor as `__context__`; no raw transport exception text is copied into the message or the details. Beddel errors raised by a kit (for example `BEDDEL-MCP-603`) pass through unchanged, so their messages remain the kit's responsibility.
 
 ## [0.1.9] - 2026-05-07
 
