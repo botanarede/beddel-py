@@ -379,7 +379,6 @@ class QualityGateRunner:
         source = _contained_path(root, "src/beddel")
         tests = _contained_path(root, "tests")
         automation = _contained_path(root, "automation")
-        excluded_mcp_class = "tests/primitives/test_tool.py::TestMCPSchemaValidation"
 
         return (
             (
@@ -392,7 +391,6 @@ class QualityGateRunner:
                     "-p",
                     "no:cacheprovider",
                     *checked_pytest_targets,
-                    f"--deselect={excluded_mcp_class}",
                 ),
             ),
             (

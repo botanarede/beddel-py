@@ -58,7 +58,7 @@ def test_commands_are_closed_and_use_the_current_interpreter() -> None:
     assert "tests/api" not in pytest_command
     assert "tests/automation" in pytest_command
     assert "tests/unit/test_onboarding_workflow.py" in pytest_command
-    assert "--deselect=tests/primitives/test_tool.py::TestMCPSchemaValidation" in pytest_command
+    assert not any(argument.startswith("--deselect") for argument in pytest_command)
     schema_drift_command = commands[1][1]
     assert "vendor/beddel/spec/tests/test_schema_sync.py" in schema_drift_command
     assert all("shell" not in argument for _, command in commands for argument in command)
