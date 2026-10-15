@@ -38,6 +38,7 @@ import pytest
 
 KIT_DIRECTORY_NAME = "protocol-mcp-kit"
 KIT_PACKAGE = "beddel_protocol_mcp"
+TRANSPORT = "mcp-streamable-http"
 SERVER = "remote_srv"
 TOOL = "echo"
 ENDPOINT = "https://mcp.example.invalid/mcp"
@@ -145,6 +146,19 @@ _CHILD = textwrap.dedent(
 ) % {"server": SERVER, "tool": TOOL, "endpoint": ENDPOINT}
 
 
+def _is_the_streamable_http_kit(kit_dir: Path) -> bool:
+    """Whether ``kit_dir`` is a ``protocol-mcp-kit`` that supplies the adapter under test.
+
+    An older kit of the same name (stdio and SSE only) can sit on ``sys.path`` as well;
+    the manifest tells them apart.
+    """
+    manifest = kit_dir / "kit.yaml"
+    try:
+        return TRANSPORT in manifest.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
 def _real_kit_directory() -> Path | None:
     """The real ``protocol-mcp-kit`` directory, or ``None`` when it cannot be found."""
     for entry in sys.path:
@@ -153,12 +167,12 @@ def _real_kit_directory() -> Path | None:
             source.name in {"python", "src"}
             and source.parent.name == KIT_DIRECTORY_NAME
             and (source / KIT_PACKAGE / "__init__.py").is_file()
-            and (source.parent / "kit.yaml").is_file()
+            and _is_the_streamable_http_kit(source.parent)
         ):
             return source.parent.resolve()
     monorepo = Path(__file__).resolve().parents[4] / "vendor" / "beddel" / "kits"
     candidate = monorepo / KIT_DIRECTORY_NAME
-    if (candidate / "kit.yaml").is_file():
+    if _is_the_streamable_http_kit(candidate):
         return candidate.resolve()
     return None
 
