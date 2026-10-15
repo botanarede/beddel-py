@@ -551,6 +551,7 @@ def run(
     """Execute a workflow and print results."""
     _ensure_kit_paths()
 
+    from beddel.cli.mcp_composition import MCPWiring, compose_mcp, execute_and_close
     from beddel.domain.errors import BeddelError
     from beddel.domain.executor import WorkflowExecutor
     from beddel.domain.models import DefaultDependencies, Workflow
@@ -595,9 +596,6 @@ def run(
             raise SystemExit(1)
 
     # Build executor
-    registry = PrimitiveRegistry()
-    register_builtins(registry)
-
     if not workflow.requires_kits:
         discovery_result = discover_kits(_resolve_all_kit_paths(kit))
     agent_registry, llm_provider, coordination_strategy_registry = _build_adapter_registries(
@@ -628,6 +626,28 @@ def run(
         no_kits=no_kits,
         discovery_result=discovery_result,
     )
+    # Compose the declared MCP servers (AD-21).  Pure of I/O: it validates, loads
+    # the kit from its one configured location and constructs the clients; the
+    # clients connect on first use.  A workflow without MCP skips all of it.
+    wiring = MCPWiring()
+    try:
+        compose_mcp(
+            workflow,
+            wiring,
+            kit_paths=_resolve_all_kit_paths(kit),
+            no_kits=no_kits,
+            tool_names=merged_tools.keys(),
+            kit_names={m.kit.name for m in discovery_result.manifests},
+        )
+    except BeddelError as exc:
+        if wiring.has_clients:
+            # A constructor failed after earlier clients were built: close them.
+            asyncio.run(wiring.aclose())
+        click.echo(f"Error [{exc.code}]: {exc.message}", err=True)
+        raise SystemExit(1) from None
+
+    registry = PrimitiveRegistry()
+    register_builtins(registry, mcp_schema_validator=wiring.schema_validator)
     deps = DefaultDependencies(
         llm_provider=llm_provider,
         agent_registry=agent_registry,
@@ -635,12 +655,13 @@ def run(
         tool_registry=merged_tools,
         workflow_loader=_safe_workflow_loader,
         registry=registry,
+        mcp_registry=wiring.registry,
     )
     executor = WorkflowExecutor(registry, deps=deps)
 
-    # Execute
+    # Execute (the clients built above are disconnected when this coroutine ends)
     try:
-        result = asyncio.run(executor.execute(workflow, input_dict))
+        result = asyncio.run(execute_and_close(executor, workflow, input_dict, wiring))
     except BeddelError as exc:
         click.echo(f"Execution error [{exc.code}]: {exc.message}", err=True)
         raise SystemExit(1) from None

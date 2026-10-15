@@ -21,9 +21,11 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import textwrap
 import traceback
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from beddel.domain.errors import BeddelError, MCPError
@@ -224,3 +226,163 @@ def assert_unchained(exc: BaseException) -> None:
 def enable_log_capture(caplog: Any) -> None:
     """Capture every logger at DEBUG so leaks into logs are observable."""
     caplog.set_level(logging.DEBUG)
+
+
+# ---------------------------------------------------------------------------
+# Fake MCP protocol kit built on disk (Story 1.2b, surface composition tests)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class FakeKitState:
+    """Mutable state shared by every module executed from a fake kit on disk.
+
+    The fake kit's modules import ``FAKE_KIT_STATE`` from this module, so the
+    test and the kit it loads see the same object whichever directory the kit
+    was loaded from.
+    """
+
+    log: EventLog = field(default_factory=EventLog)
+    scripts: dict[str, ClientScript] = field(default_factory=dict)
+    constructor_errors: dict[str, BaseException] = field(default_factory=dict)
+    constructor_kwargs: list[dict[str, Any]] = field(default_factory=list)
+    validator_calls: list[tuple[dict[str, Any], dict[str, Any]]] = field(default_factory=list)
+    module_executions: list[str] = field(default_factory=list)
+
+
+FAKE_KIT_STATE = FakeKitState()
+
+
+def reset_fake_kit_state() -> FakeKitState:
+    """Reset ``FAKE_KIT_STATE`` in place (identity is kept) and return it."""
+    FAKE_KIT_STATE.log = EventLog()
+    FAKE_KIT_STATE.scripts = {}
+    FAKE_KIT_STATE.constructor_errors = {}
+    FAKE_KIT_STATE.constructor_kwargs = []
+    FAKE_KIT_STATE.validator_calls = []
+    FAKE_KIT_STATE.module_executions = []
+    return FAKE_KIT_STATE
+
+
+class KitStreamableHTTPClient(FakeMCPClient):
+    """Fake of ``StreamableHTTPMCPClient``: keyword-only construction, no I/O."""
+
+    def __init__(self, *, transport: str, endpoint: str, authorization: str) -> None:
+        state = FAKE_KIT_STATE
+        state.constructor_kwargs.append(
+            {"transport": transport, "endpoint": endpoint, "authorization": authorization}
+        )
+        error = state.constructor_errors.get(endpoint)
+        if error is not None:
+            raise error
+        super().__init__(
+            transport,
+            endpoint,
+            authorization,
+            log=state.log,
+            script=state.scripts.get(endpoint),
+        )
+
+
+def kit_validate_tool_arguments(arguments: dict[str, Any], schema: dict[str, Any]) -> None:
+    """Fake of the kit's ``validate_tool_arguments``; records every call."""
+    FAKE_KIT_STATE.validator_calls.append((arguments, schema))
+    stub_validate_tool_arguments(arguments, schema)
+
+
+_FAKE_KIT_YAML = """\
+name: protocol-mcp-kit
+version: 0.0.0
+description: Fake MCP protocol kit for composition tests
+author: tests
+adapters:
+- port: IMCPClient
+  implementation: StreamableHTTPMCPClient
+  description: fake
+targets:
+  python:
+    status: implemented
+    module: beddel_protocol_mcp
+    dependencies: []
+    adapters:
+    - port: IMCPClient
+      name: mcp-streamable-http
+      target: beddel_protocol_mcp.http_client:StreamableHTTPMCPClient
+"""
+
+_FAKE_KIT_MODULES: dict[str, str] = {
+    "__init__.py": '''\
+        """Fake protocol-mcp-kit package (tests only: no SDK, no network)."""
+        from _mcp_fakes import FAKE_KIT_STATE
+
+        FAKE_KIT_STATE.module_executions.append(__file__)
+
+        from beddel_protocol_mcp.http_client import StreamableHTTPMCPClient
+        from beddel_protocol_mcp.schema_validator import validate_tool_arguments
+        from beddel_protocol_mcp.sse_client import SSEMCPClient
+        from beddel_protocol_mcp.stdio_client import StdioMCPClient
+
+        __all__ = [
+            "SSEMCPClient",
+            "StdioMCPClient",
+            "StreamableHTTPMCPClient",
+            "validate_tool_arguments",
+        ]
+    ''',
+    "http_client.py": """\
+        from _mcp_fakes import KitStreamableHTTPClient as StreamableHTTPMCPClient
+
+        __all__ = ["StreamableHTTPMCPClient"]
+    """,
+    "schema_validator.py": """\
+        from _mcp_fakes import kit_validate_tool_arguments as validate_tool_arguments
+
+        __all__ = ["validate_tool_arguments"]
+    """,
+    "sse_client.py": """\
+        class SSEMCPClient:
+            def __init__(self, *args, **kwargs):
+                raise AssertionError("the SSE adapter must never be constructed")
+    """,
+    "stdio_client.py": """\
+        class StdioMCPClient:
+            def __init__(self, *args, **kwargs):
+                raise AssertionError("the stdio adapter must never be constructed")
+    """,
+}
+
+
+def write_fake_kit(
+    kits_dir: Path,
+    *,
+    layout: str = "python",
+    modules: dict[str, str] | None = None,
+    with_manifest: bool = True,
+) -> Path:
+    """Write a fake ``protocol-mcp-kit`` under ``kits_dir`` and return its source dir.
+
+    The package lives in ``<kits_dir>/protocol-mcp-kit/<layout>/beddel_protocol_mcp``
+    (``layout`` is ``python`` or ``src``).  ``modules`` replaces or adds files of
+    the package (file name -> source); a value of ``""`` is written empty.
+    """
+    kit_dir = kits_dir / "protocol-mcp-kit"
+    package = kit_dir / layout / "beddel_protocol_mcp"
+    package.mkdir(parents=True, exist_ok=True)
+    sources = {**_FAKE_KIT_MODULES, **(modules or {})}
+    for name, source in sources.items():
+        (package / name).write_text(textwrap.dedent(source))
+    if with_manifest:
+        (kit_dir / "kit.yaml").write_text(_FAKE_KIT_YAML)
+    return kit_dir / layout
+
+
+def purge_kit_modules() -> None:
+    """Remove every ``beddel_protocol_mcp*`` entry from ``sys.modules``."""
+    import sys
+
+    for name in [
+        n
+        for n in sys.modules
+        if n == "beddel_protocol_mcp" or n.startswith("beddel_protocol_mcp.")
+    ]:
+        del sys.modules[name]
