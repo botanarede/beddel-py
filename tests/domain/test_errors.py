@@ -277,6 +277,37 @@ class TestDurableErrorCodes:
         assert error_codes.ALL_CODES["DURABLE_CORRUPT_DATA"] == "BEDDEL-DURABLE-902"
 
 
+class TestExecCompositionFailedCode:
+    """Tests that the run-composition error code is registered."""
+
+    def test_exec_composition_failed_in_all_codes(self) -> None:
+        from beddel import error_codes
+
+        assert "EXEC_COMPOSITION_FAILED" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["EXEC_COMPOSITION_FAILED"] == "BEDDEL-EXEC-050"
+        assert error_codes.EXEC_COMPOSITION_FAILED == "BEDDEL-EXEC-050"
+
+    def test_exec_composition_failed_is_unique(self) -> None:
+        from beddel import error_codes
+
+        owners = [n for n, c in error_codes.ALL_CODES.items() if c == "BEDDEL-EXEC-050"]
+        assert owners == ["EXEC_COMPOSITION_FAILED"]
+
+    def test_raised_as_execution_error_keeps_code_and_reason(self) -> None:
+        from beddel.error_codes import EXEC_COMPOSITION_FAILED
+
+        err = ExecutionError(
+            EXEC_COMPOSITION_FAILED,
+            "Run composition failed",
+            {"reason": "missing_allowlist"},
+        )
+
+        assert isinstance(err, BeddelError)
+        assert err.code == "BEDDEL-EXEC-050"
+        assert err.details == {"reason": "missing_allowlist"}
+        assert str(err) == "BEDDEL-EXEC-050: Run composition failed"
+
+
 class TestMCPError:
     """Tests for MCPError subclass."""
 

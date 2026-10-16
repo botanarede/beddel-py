@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from _mcp_fakes import stub_validate_tool_arguments
 
 from beddel.domain.errors import ExecutionError, MCPError
 from beddel.domain.executor import WorkflowExecutor
@@ -35,8 +36,10 @@ def _tool_step(
     return Step(id=step_id, primitive="tool", config=config)
 
 
-def _workflow(*steps: Step) -> Workflow:
-    return Workflow(id="wf-mcp-test", name="MCP Test", steps=list(steps))
+def _workflow(*steps: Step, allowed_tools: list[str] | None = None) -> Workflow:
+    return Workflow(
+        id="wf-mcp-test", name="MCP Test", steps=list(steps), allowed_tools=allowed_tools
+    )
 
 
 class TestMCPToolFullPath:
@@ -64,7 +67,7 @@ class TestMCPToolFullPath:
             mcp_server="test-server",
             arguments={"query": "hello"},
         )
-        wf = _workflow(step)
+        wf = _workflow(step, allowed_tools=["test-server:remote-search"])
 
         # Act
         result = await executor.execute(wf, {})
@@ -120,7 +123,7 @@ class TestMCPAndLocalToolsCoexist:
             mcp_server="calc-server",
             arguments={"x": 6, "y": 7},
         )
-        wf = _workflow(local_step, mcp_step)
+        wf = _workflow(local_step, mcp_step, allowed_tools=["add", "calc-server:multiply"])
 
         # Act
         result = await executor.execute(wf, {})
@@ -203,7 +206,7 @@ class TestSSEMCPToolFullPath:
             mcp_server="sse-server",
             arguments={"query": "world"},
         )
-        wf = _workflow(step)
+        wf = _workflow(step, allowed_tools=["sse-server:sse-search"])
 
         result = await executor.execute(wf, {})
 
@@ -241,7 +244,7 @@ class TestMCPSchemaValidationIntegration:
         mock_client.call_tool.return_value = "Hello, Alice!"
 
         registry = PrimitiveRegistry()
-        register_builtins(registry)
+        register_builtins(registry, mcp_schema_validator=stub_validate_tool_arguments)
 
         deps = DefaultDependencies(
             mcp_registry={"schema-server": mock_client},
@@ -258,7 +261,7 @@ class TestMCPSchemaValidationIntegration:
                 "arguments": {"name": "Alice"},
             },
         )
-        wf = _workflow(step)
+        wf = _workflow(step, allowed_tools=["schema-server:greet"])
 
         result = await executor.execute(wf, {})
 
@@ -285,7 +288,7 @@ class TestMCPSchemaValidationIntegration:
         ]
 
         registry = PrimitiveRegistry()
-        register_builtins(registry)
+        register_builtins(registry, mcp_schema_validator=stub_validate_tool_arguments)
 
         deps = DefaultDependencies(
             mcp_registry={"schema-server": mock_client},
@@ -302,7 +305,7 @@ class TestMCPSchemaValidationIntegration:
                 "arguments": {"name": 12345},
             },
         )
-        wf = _workflow(step)
+        wf = _workflow(step, allowed_tools=["schema-server:greet"])
 
         with pytest.raises(ExecutionError) as exc_info:
             await executor.execute(wf, {})
@@ -355,7 +358,12 @@ class TestMCPMixedTransports:
             mcp_server="sse-server",
             arguments={"input": "xyz"},
         )
-        wf = _workflow(local_step, stdio_step, sse_step)
+        wf = _workflow(
+            local_step,
+            stdio_step,
+            sse_step,
+            allowed_tools=["double", "stdio-server:stdio-tool", "sse-server:sse-tool"],
+        )
 
         result = await executor.execute(wf, {})
 

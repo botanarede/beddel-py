@@ -3,7 +3,7 @@
 </p>
 
 [![PyPI version](https://img.shields.io/pypi/v/beddel.svg)](https://pypi.org/project/beddel/)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Pydantic v2](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pydantic/pydantic/main/docs/badge/v2.json)](https://docs.pydantic.dev/)
@@ -114,7 +114,7 @@ beddel launch             # opens the browser with the interactive flow runner
 
 `beddel init` downloads `serve-fastapi-kit`, `ag-ui-kit`, and `provider-gemini-kit` from the GitHub `kits/` directory and pip-installs their dependencies. Use `--provider litellm` to install `provider-litellm-kit` instead. Add more kits later with `beddel kit install <kit-name>`, or run `beddel kit install` (no arguments) to browse all available kits interactively.
 
-Requires Python 3.11+.
+Requires Python 3.12+.
 
 ## Quickstart: `beddel launch`
 
