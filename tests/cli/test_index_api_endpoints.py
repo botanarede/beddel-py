@@ -11,8 +11,12 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
+
+pytest.importorskip("httpx")
+pytest.importorskip("fastapi")
+
+import httpx
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 

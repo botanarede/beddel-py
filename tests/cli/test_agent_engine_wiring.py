@@ -7,12 +7,35 @@ when vertexai is absent the routes are simply omitted (graceful degradation).
 
 from __future__ import annotations
 
+import sys
+import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytest.importorskip("fastapi")
+
+from fastapi import APIRouter
+
 from beddel.flows import get_bundled_workflow_path
+
+
+@pytest.fixture(autouse=True)
+def _stub_kit_loading(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep wiring tests independent of the developer's local kit paths."""
+    import beddel.cli.commands as commands
+
+    monkeypatch.setattr(commands, "_ensure_kit_paths", lambda *_a, **_kw: None)
+    monkeypatch.setattr(commands, "_validate_config_paths", lambda *_a, **_kw: None)
+
+    fake_serve_fastapi = types.ModuleType("beddel_serve_fastapi")
+    fake_serve_fastapi.__path__ = []
+    fake_handler = types.ModuleType("beddel_serve_fastapi.handler")
+    fake_handler.create_beddel_handler = lambda *_a, **_kw: APIRouter()
+    fake_serve_fastapi.handler = fake_handler
+    monkeypatch.setitem(sys.modules, "beddel_serve_fastapi", fake_serve_fastapi)
+    monkeypatch.setitem(sys.modules, "beddel_serve_fastapi.handler", fake_handler)
 
 
 @pytest.fixture()
@@ -23,7 +46,7 @@ def setup_wf() -> tuple[Path, ...]:
 
 def _route_paths(app: object) -> list[str]:
     """Extract all route path strings from a FastAPI app."""
-    return [r.path for r in getattr(app, "routes", [])]  # type: ignore[attr-defined]
+    return [p for r in getattr(app, "routes", []) if (p := getattr(r, "path", None)) is not None]
 
 
 class TestAgentEngineSidebarWiring:

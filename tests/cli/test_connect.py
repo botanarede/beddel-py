@@ -3,17 +3,36 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
 import pytest
-from beddel_auth_github.provider import CredentialData
+
+if TYPE_CHECKING:
+    from beddel_auth_github.provider import CredentialData
+
 from click.testing import CliRunner
 
 from beddel.cli.commands import cli
 
+_CORE_CLASSES = {
+    "TestRelayLoopHttpLongPoll",
+    "TestConnectHelpNewOptions",
+    "TestConnectNoSubcommand",
+}
+
+
+@pytest.fixture(autouse=True)
+def _require_auth_github(request: pytest.FixtureRequest) -> None:
+    """Skip auth-github tests while keeping the tests that need no kit available."""
+    if request.cls is not None and request.cls.__name__ in _CORE_CLASSES:
+        return
+    pytest.importorskip("beddel_auth_github")
+
 
 def _sample_creds() -> CredentialData:
+    from beddel_auth_github.provider import CredentialData
+
     return CredentialData(
         access_token="gho_abc123",
         github_user="testuser",
@@ -1442,7 +1461,7 @@ class TestRelayLoopHttpLongPoll:
 
     async def test_relay_loop_connected_on_204(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """HTTP long-poll prints 'Connected to' on first 204 response."""
-        import httpx
+        httpx = pytest.importorskip("httpx")
 
         from beddel.cli.commands import _relay_loop
 
@@ -1479,7 +1498,7 @@ class TestRelayLoopHttpLongPoll:
 
     async def test_relay_loop_auth_error_401(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """HTTP long-poll raises SystemExit(1) on 401 and prints auth error."""
-        import httpx
+        httpx = pytest.importorskip("httpx")
 
         from beddel.cli.commands import _relay_loop
 
@@ -1514,7 +1533,7 @@ class TestRelayLoopHttpLongPoll:
 
     async def test_relay_loop_backoff_on_5xx(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """HTTP long-poll reconnects with backoff on 500 response."""
-        import httpx
+        httpx = pytest.importorskip("httpx")
 
         from beddel.cli.commands import _relay_loop
 
@@ -1557,7 +1576,7 @@ class TestRelayLoopHttpLongPoll:
 
     async def test_handle_relay_run_posts_events(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """_handle_relay_run collects SSE events and POSTs them to relay endpoint."""
-        import httpx
+        httpx = pytest.importorskip("httpx")
 
         from beddel.cli.commands import _handle_relay_run
 

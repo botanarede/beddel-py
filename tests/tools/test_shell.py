@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
+pytest.importorskip("beddel_tools_shell")
+
 from beddel_tools_shell.tools import shell_exec
 
 from beddel.utils.subprocess import SubprocessResult

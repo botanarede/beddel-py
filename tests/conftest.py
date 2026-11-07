@@ -1,48 +1,12 @@
 """Shared pytest fixtures for Beddel SDK tests.
 
-Adds all kit source directories to ``sys.path`` at test bootstrap so that
-kit module imports (e.g. ``from beddel_provider_litellm.adapter import ...``)
-resolve without editable installs.
+Kits are never put on ``sys.path``. Kit-backed test modules skip through
+``pytest.importorskip`` when the kit or its third-party packages are absent.
 """
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
-
-# ---------------------------------------------------------------------------
-# Kit sys.path bootstrap (ADR-0008, Story 5.1.1 Task 5)
-# ---------------------------------------------------------------------------
-# conftest.py lives at: <project_root>/src/beddel-py/tests/conftest.py
-#   parents[0] = tests/
-#   parents[1] = beddel-py/
-#   parents[2] = src/
-#   parents[3] = <project_root>
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
-# Kits live at: <project_root>/repo/kits/<kit>/{python|src}/
-# (moved from <project_root>/kits/ during kit ecosystem restructure)
-_KITS_BASE = _PROJECT_ROOT / "repo" / "kits"
-
-# Dynamic discovery: add python/ (or src/) directory of every kit that has one
-if _KITS_BASE.is_dir():
-    for _kit_dir in sorted(_KITS_BASE.iterdir()):
-        if not _kit_dir.is_dir():
-            continue
-        # Prefer python/ layout, fall back to src/
-        _kit_python = _kit_dir / "python"
-        _kit_src_alt = _kit_dir / "src"
-        _kit_src_dir = (
-            _kit_python
-            if _kit_python.is_dir()
-            else _kit_src_alt
-            if _kit_src_alt.is_dir()
-            else None
-        )
-        if _kit_src_dir and str(_kit_src_dir) not in sys.path:
-            sys.path.insert(0, str(_kit_src_dir))
 
 
 # ---------------------------------------------------------------------------

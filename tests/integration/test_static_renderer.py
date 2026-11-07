@@ -6,6 +6,13 @@ A2UI HTML renderer) and ``GET /favicon.ico`` (204) onto a FastAPI app.
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("beddel_serve_fastapi")
+pytest.importorskip("fastapi")
+pytest.importorskip("httpx")
+pytest.importorskip("starlette")
+
 from beddel_serve_fastapi.static_routes import register_static_routes
 from fastapi import FastAPI
 from starlette.testclient import TestClient

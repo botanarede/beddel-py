@@ -6,6 +6,10 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
+
+pytest.importorskip("ag_ui")
+pytest.importorskip("beddel_ag_ui")
+
 from ag_ui.core import (
     BaseEvent,
     CustomEvent,

@@ -1,0 +1,26 @@
+# Hello World — minimal single-step Beddel workflow.
+#
+# Demonstrates: one LLM call, $input variable resolution, structured output.
+#
+# NOTE: Model names follow LiteLLM format (provider/model).
+# Update the model name below if the version becomes unavailable.
+id: hello-world
+name: Hello World
+description: A minimal workflow that greets the user with a fun fact about a topic.
+
+input_schema:
+  type: object
+  properties:
+    topic:
+      type: string
+  required:
+    - topic
+
+steps:
+  - id: greet
+    primitive: llm
+    config:
+      # Model names may need updating as providers release new versions.
+      model: gemini/gemini-2.0-flash
+      prompt: "Say hello and share one fun fact about $input.topic"
+      temperature: 0.7

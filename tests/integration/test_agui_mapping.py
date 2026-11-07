@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import pytest
+
+pytest.importorskip("ag_ui")
+pytest.importorskip("beddel_ag_ui")
+
 from ag_ui.core import (
     CustomEvent,
     RunErrorEvent,

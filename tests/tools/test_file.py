@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 
 import pytest
+
+pytest.importorskip("beddel_tools_file")
+
 from beddel_tools_file.tools import file_read, file_write
 
 
