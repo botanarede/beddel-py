@@ -526,7 +526,9 @@ def initialize(provider: str, kits_dir: Path, *, force: bool = False) -> None:
                     skip_download = True
                     click.echo(f"  ✓ All required kits already present in {first_path}")
                     for kit_info in all_kits:
-                        register_kit_in_db(db_path, kit_info["name"], first_path / kit_info["name"])
+                        register_kit_in_db(
+                            db_path, kit_info["name"], first_path / kit_info["name"]
+                        )
 
     if not skip_download and not install_required_kits(db_path, kits_dir, all_kits):
         click.echo("\n⚠ Some kits failed. Run 'beddel init' again.", err=True)
@@ -616,9 +618,7 @@ def prompt_bootstrap() -> bool:
         show_choices=True,
     ).lower()
 
-    kits_dir = Path(
-        click.prompt("  2. Directory to keep kits in", type=str).strip()
-    ).expanduser()
+    kits_dir = Path(click.prompt("  2. Directory to keep kits in", type=str).strip()).expanduser()
 
     all_kits = REQUIRED_KITS + PROVIDER_KITS[provider]
     click.echo()

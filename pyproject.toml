@@ -113,7 +113,8 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 files = ["src/beddel", "automation"]
-exclude = ["^\\.venv/"]
+# tests/ is outside the type-checked scope the owner decided on 2026-08-16 (src/beddel and automation); excluding it keeps "mypy ." equal to that scope.
+exclude = ["^\\.venv/", "^tests/"]
 
 # -----------------------------------------------------------------------------
 # Pytest

@@ -23,6 +23,7 @@ steps:
 
 ```python
 import beddel
+
 beddel.setup()
 
 from beddel.domain.parser import WorkflowParser
@@ -51,26 +52,27 @@ result = await WorkflowExecutor(registry, provider=LiteLLMAdapter()).execute(
 import asyncio
 from litellm import acompletion
 
+
 async def pipeline(topic):
     # Step 1: research
     r1 = await acompletion(
         model="gemini/gemini-2.0-flash",
-        messages=[{"role": "user",
-            "content": f"Research {topic}"}],
+        messages=[{"role": "user", "content": f"Research {topic}"}],
     )
     # Step 2: summarize (retry logic)
     for attempt in range(3):
         try:
             r2 = await acompletion(
                 model="gemini/gemini-2.0-flash",
-                messages=[{"role": "user",
-                    "content": f"Summarize: "
-                    f"{r1.choices[0].message.content}"}],
+                messages=[
+                    {"role": "user", "content": f"Summarize: {r1.choices[0].message.content}"}
+                ],
             )
             break
         except Exception:
-            if attempt == 2: raise
-            await asyncio.sleep(2 ** attempt)
+            if attempt == 2:
+                raise
+            await asyncio.sleep(2**attempt)
     return r2.choices[0].message.content
 ```
 
@@ -231,6 +233,7 @@ from beddel.domain.registry import PrimitiveRegistry
 from beddel.primitives import register_builtins
 from beddel_provider_litellm.adapter import LiteLLMAdapter
 
+
 async def main():
     workflow = WorkflowParser.parse(Path("workflow.yaml").read_text())
     registry = PrimitiveRegistry()
@@ -239,6 +242,7 @@ async def main():
         workflow, inputs={"topic": "astronomy"}
     )
     print(result["step_results"]["greet"]["content"])
+
 
 asyncio.run(main())
 ```
@@ -324,6 +328,7 @@ Each kit declares its own pip dependencies in `kit.yaml`. The `install` command 
 
 ```python
 import beddel
+
 beddel.setup()
 
 from beddel_observability_otel.adapter import OpenTelemetryAdapter
