@@ -10,6 +10,10 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+pytest.importorskip("beddel_provider_litellm")
+
 from beddel_provider_litellm.adapter import LiteLLMAdapter
 
 from beddel.domain.executor import WorkflowExecutor

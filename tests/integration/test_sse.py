@@ -6,6 +6,10 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import pytest
+
+pytest.importorskip("beddel_serve_fastapi")
+
 from beddel_serve_fastapi.sse import BeddelSSEAdapter
 from beddel_serve_fastapi.sse import BeddelSSEAdapter as DirectSSEAdapter
 

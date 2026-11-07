@@ -12,6 +12,12 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import pytest
+
+pytest.importorskip("httpx")
+pytest.importorskip("beddel_serve_fastapi")
+pytest.importorskip("fastapi")
+
 import httpx
 from beddel_serve_fastapi.handler import create_beddel_handler
 from fastapi import APIRouter, FastAPI

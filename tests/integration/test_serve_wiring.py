@@ -11,6 +11,10 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+pytest.importorskip("beddel_serve_fastapi")
+
 from beddel_serve_fastapi.handler import create_beddel_handler
 
 from beddel.domain.executor import WorkflowExecutor

@@ -19,8 +19,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
+
+pytest.importorskip("httpx")
+pytest.importorskip("beddel_ag_ui")
+pytest.importorskip("fastapi")
+
+import httpx
 from beddel_ag_ui.listing import create_workflow_listing_router
 from fastapi import FastAPI
 

@@ -7,11 +7,27 @@ AC#8 (graceful degradation).
 from __future__ import annotations
 
 import sqlite3
+import sys
+import types
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+
+pytest.importorskip("fastapi")
+
+
+@pytest.fixture(autouse=True)
+def _stub_serve_fastapi(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide the handler module without loading a developer kit."""
+    fake_serve_fastapi = types.ModuleType("beddel_serve_fastapi")
+    fake_serve_fastapi.__path__ = []
+    fake_handler = types.ModuleType("beddel_serve_fastapi.handler")
+    fake_handler.create_beddel_handler = lambda *_a, **_kw: MagicMock()
+    fake_serve_fastapi.handler = fake_handler
+    monkeypatch.setitem(sys.modules, "beddel_serve_fastapi", fake_serve_fastapi)
+    monkeypatch.setitem(sys.modules, "beddel_serve_fastapi.handler", fake_handler)
 
 
 class TestBuildRuntimeAppIndexSync:

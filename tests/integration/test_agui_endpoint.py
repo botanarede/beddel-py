@@ -15,8 +15,13 @@ from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
+
+pytest.importorskip("httpx")
+pytest.importorskip("beddel_ag_ui")
+pytest.importorskip("fastapi")
+
+import httpx
 from beddel_ag_ui.endpoint import _extract_inputs, create_agui_endpoint
 from fastapi import FastAPI
 

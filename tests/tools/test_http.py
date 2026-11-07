@@ -6,6 +6,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+pytest.importorskip("beddel_tools_http")
+
 from beddel_tools_http.http import http_request
 
 
@@ -188,7 +191,7 @@ class TestHttpRequestErrorHandling:
     @patch("beddel_tools_http.http.httpx.Client")
     def test_httpx_error_raises_runtime_error(self, mock_client_cls: Any) -> None:
         # Arrange
-        import httpx
+        httpx = pytest.importorskip("httpx")
 
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)

@@ -14,6 +14,10 @@ import shutil
 from pathlib import Path
 
 import pytest
+
+pytest.importorskip("starlette")
+pytest.importorskip("httpx")
+
 from starlette.testclient import TestClient
 
 from beddel.domain.kit import KitDiscoveryResult

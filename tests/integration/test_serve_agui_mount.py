@@ -18,8 +18,14 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
+
+pytest.importorskip("httpx")
+pytest.importorskip("beddel_ag_ui")
+pytest.importorskip("beddel_serve_fastapi")
+pytest.importorskip("fastapi")
+
+import httpx
 from beddel_ag_ui.endpoint import create_agui_endpoint
 from beddel_serve_fastapi.handler import create_beddel_handler
 from fastapi import FastAPI

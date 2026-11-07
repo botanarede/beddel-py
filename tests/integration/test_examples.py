@@ -1,7 +1,7 @@
-"""Validation tests for example workflows in ``examples/workflows/``.
+"""Validation tests for the versioned example workflow next to this test.
 
-Ensures every shipped example parses correctly through the full
-WorkflowParser pipeline (YAML → schema → variable-reference validation).
+Ensures the example parses correctly through the full WorkflowParser pipeline
+(YAML → schema → variable-reference validation).
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from beddel.primitives import register_builtins
 # Path helpers
 # ---------------------------------------------------------------------------
 
-EXAMPLES_DIR = Path(__file__).resolve().parents[4] / "examples" / "workflows"
+EXAMPLES_DIR = Path(__file__).resolve().parent
 
 
 def _load_example(filename: str) -> str:
@@ -37,7 +37,7 @@ def _load_example(filename: str) -> str:
 
 
 class TestHelloWorkflow:
-    """Verify that examples/workflows/hello.yaml parses and validates."""
+    """Verify that the versioned hello.yaml next to this test parses and validates."""
 
     def test_hello_parses_successfully(self) -> None:
         """hello.yaml loads and passes all parser validation phases."""

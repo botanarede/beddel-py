@@ -10,6 +10,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+
+pytest.importorskip("beddel_observability_otel")
+pytest.importorskip("opentelemetry.sdk")
+
 from beddel_observability_otel.adapter import OpenTelemetryAdapter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor

@@ -15,6 +15,9 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
+
+pytest.importorskip("beddel_ag_ui")
+
 from beddel_ag_ui.adk_mapper import map_adk_events
 
 from beddel.domain.models import BeddelEvent, EventType

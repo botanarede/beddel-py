@@ -73,6 +73,8 @@ def test_launch_accepted_persists_and_initializes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Accepting records the chosen kits directory and bootstraps once."""
+    pytest.importorskip("uvicorn")
+
     monkeypatch.setattr("beddel.cli.init.is_bootstrapped", lambda: False)
     monkeypatch.setattr("beddel.cli.init._stdin_is_tty", lambda: True)
 
@@ -130,6 +132,8 @@ def test_launch_serves_example_workflows_not_setup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The browser gets the usage examples; the setup wizard stays in the terminal."""
+    pytest.importorskip("uvicorn")
+
     monkeypatch.setattr("beddel.cli.init.is_bootstrapped", lambda: True)
 
     calls: list[dict] = []
@@ -156,6 +160,8 @@ def test_launch_serves_example_workflows_not_setup(
 
 def test_launch_reports_the_flow_count(monkeypatch: pytest.MonkeyPatch) -> None:
     """Launch reports how many flows it mounted."""
+    pytest.importorskip("uvicorn")
+
     monkeypatch.setattr("beddel.cli.init.is_bootstrapped", lambda: True)
     monkeypatch.setattr(
         "beddel.cli.commands._build_runtime_app",
@@ -171,6 +177,8 @@ def test_launch_reports_the_flow_count(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_launch_opens_browser(monkeypatch: pytest.MonkeyPatch) -> None:
     """Default behaviour opens the browser after server starts."""
+    pytest.importorskip("uvicorn")
+
     monkeypatch.setattr("beddel.cli.init.is_bootstrapped", lambda: True)
     monkeypatch.setattr(
         "beddel.cli.commands._build_runtime_app",

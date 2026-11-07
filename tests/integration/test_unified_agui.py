@@ -21,8 +21,13 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock
 
-import httpx
 import pytest
+
+pytest.importorskip("httpx")
+pytest.importorskip("beddel_ag_ui")
+pytest.importorskip("fastapi")
+
+import httpx
 from beddel_ag_ui.endpoint import create_agui_endpoint
 from beddel_ag_ui.unified import create_unified_agui_endpoint
 from fastapi import FastAPI

@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
+pytest.importorskip("beddel_tools_gates")
+
 from beddel_tools_gates.tools import mypy_check, pytest_run, ruff_check, ruff_format
 
 
