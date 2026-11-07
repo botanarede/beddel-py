@@ -112,9 +112,7 @@ def test_launch_prompt_lists_provider_kit_with_reason(
     monkeypatch.setattr("beddel.cli.init._persist_kits_dir", lambda _d: None)
     monkeypatch.setattr("beddel.cli.init.initialize", lambda *_a, **_k: None)
 
-    result = CliRunner().invoke(
-        cli, ["launch"], input=f"litellm\n{tmp_path / 'k'}\nn\n"
-    )
+    result = CliRunner().invoke(cli, ["launch"], input=f"litellm\n{tmp_path / 'k'}\nn\n")
 
     assert "serve-fastapi-kit" in result.output
     assert "ag-ui-kit" in result.output
