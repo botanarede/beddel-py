@@ -481,6 +481,22 @@ def test_runner_invalid_baseline_is_blocking_with_exit_two(
     assert report.comparison == {"reason": {"check": "readable_report", "side": "base"}}
 
 
+_CACHE_NAMES = frozenset({"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"})
+
+
+def _cache_paths(root: Path) -> set[Path]:
+    """Return cache directories and every path inside them, relative to root, outside .venv."""
+    found: set[Path] = set()
+    for directory, subdirectories, files in os.walk(root):
+        subdirectories[:] = [name for name in subdirectories if name != ".venv"]
+        relative = Path(directory).relative_to(root)
+        inside = any(part in _CACHE_NAMES for part in relative.parts)
+        for name in (*subdirectories, *files):
+            if inside or name in _CACHE_NAMES:
+                found.add(relative / name)
+    return found
+
+
 def test_runner_process_leaves_no_cache_artifacts() -> None:
     root = Path(__file__).resolve().parents[2]
     environment = os.environ.copy()
@@ -488,6 +504,7 @@ def test_runner_process_leaves_no_cache_artifacts() -> None:
     environment.pop("PYTHONPYCACHEPREFIX", None)
     # The gate invokes pytest with PYTHONSAFEPATH=1, so cwd is not an import path.
     environment["PYTHONPATH"] = str(root)
+    before = _cache_paths(root)
     completed = subprocess.run(
         [sys.executable, "-m", "automation.quality_gate_runner", "--invalid"],
         cwd=root,
@@ -496,13 +513,13 @@ def test_runner_process_leaves_no_cache_artifacts() -> None:
         check=False,
         text=True,
     )
+    after = _cache_paths(root)
 
     assert completed.returncode == 2
-    cache_names = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
-    cache_paths = (
-        path for path in root.rglob("*") if ".venv" not in path.parts and path.name in cache_names
-    )
-    assert not any(cache_paths)
+    assert sorted(after - before) == []
+    # The runner removes its own bytecode at import. The delta above alone would hide a
+    # regression once an earlier run left that directory behind, so assert its absence too.
+    assert not (root / "automation" / "__pycache__").exists()
 
 
 def test_runner_returns_two_when_fixed_layout_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
