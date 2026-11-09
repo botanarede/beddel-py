@@ -332,6 +332,9 @@ EXEC_GOAL_CONDITION_FAILED: str = "BEDDEL-EXEC-041"
 EXEC_COMPOSITION_FAILED: str = "BEDDEL-EXEC-050"
 """Run composition failed before the first step (details carry a stable ``reason``)."""
 
+EXEC_UNCODED_ERROR: str = "BEDDEL-EXEC-051"
+"""Error without a Beddel code, recorded when a skip-on-error step absorbs it."""
+
 # ---------------------------------------------------------------------------
 # Circuit Breaker codes  (CB prefix, 800 range)
 # ---------------------------------------------------------------------------
@@ -761,6 +764,7 @@ ALL_CODES: dict[str, str] = {
     "EXEC_GOAL_MAX_ATTEMPTS": EXEC_GOAL_MAX_ATTEMPTS,
     "EXEC_GOAL_CONDITION_FAILED": EXEC_GOAL_CONDITION_FAILED,
     "EXEC_COMPOSITION_FAILED": EXEC_COMPOSITION_FAILED,
+    "EXEC_UNCODED_ERROR": EXEC_UNCODED_ERROR,
     # Circuit Breaker
     "CB_CIRCUIT_OPEN": CB_CIRCUIT_OPEN,
     "CB_FALLBACK_FAILED": CB_FALLBACK_FAILED,

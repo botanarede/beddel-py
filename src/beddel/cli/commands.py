@@ -675,6 +675,9 @@ def run(
                 output[step_id] = step_result
             except (TypeError, ValueError):
                 output[step_id] = str(step_result)
+        absorbed_errors = result.get("absorbed_errors")
+        if absorbed_errors and "_absorbed_errors" not in output:
+            output["_absorbed_errors"] = absorbed_errors
         click.echo(json.dumps(output, indent=2))
     else:
         for step_id, step_result in result.get("step_results", {}).items():
@@ -683,6 +686,12 @@ def run(
                 click.echo(step_result["content"])
             else:
                 click.echo(str(step_result))
+            click.echo()
+        absorbed_errors = result.get("absorbed_errors")
+        if absorbed_errors:
+            click.echo("[absorbed errors]")
+            for outcome in absorbed_errors:
+                click.echo(f"{outcome['step_id']}: {outcome['error_code']}")
             click.echo()
 
 

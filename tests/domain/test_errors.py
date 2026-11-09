@@ -308,6 +308,23 @@ class TestExecCompositionFailedCode:
         assert str(err) == "BEDDEL-EXEC-050: Run composition failed"
 
 
+class TestExecUncodedErrorCode:
+    """Tests that the fallback skip-on-error code is registered."""
+
+    def test_exec_uncoded_error_is_registered(self) -> None:
+        from beddel import error_codes
+
+        assert "EXEC_UNCODED_ERROR" in error_codes.ALL_CODES
+        assert error_codes.ALL_CODES["EXEC_UNCODED_ERROR"] == "BEDDEL-EXEC-051"
+        assert error_codes.EXEC_UNCODED_ERROR == "BEDDEL-EXEC-051"
+
+    def test_exec_uncoded_error_is_unique(self) -> None:
+        from beddel import error_codes
+
+        owners = [n for n, c in error_codes.ALL_CODES.items() if c == "BEDDEL-EXEC-051"]
+        assert owners == ["EXEC_UNCODED_ERROR"]
+
+
 class TestMCPError:
     """Tests for MCPError subclass."""
 

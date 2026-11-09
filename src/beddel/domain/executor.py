@@ -18,9 +18,16 @@ import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from beddel.domain.errors import BudgetError, ExecutionError, ResolveError, TracingError
+from beddel.domain.errors import (
+    BeddelError,
+    BudgetError,
+    ExecutionError,
+    ResolveError,
+    TracingError,
+)
 from beddel.domain.models import (
     SKIPPED,
+    AbsorbedStepError,
     ApprovalResult,
     BeddelEvent,
     BudgetStatus,
@@ -54,6 +61,7 @@ from beddel.error_codes import (
     EXEC_RETRIES_EXHAUSTED,
     EXEC_STEP_FAILED,
     EXEC_TIMEOUT,
+    EXEC_UNCODED_ERROR,
 )
 
 __all__ = [
@@ -64,6 +72,14 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 _COMPARISON_RE = re.compile(r"^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$")
+_BEDDEL_CODE_PATTERN = re.compile(r"BEDDEL-[A-Z]+-\d{3,4}")
+
+
+def _absorbed_error_code(error: Exception) -> str:
+    """Return the safe registered code for an error absorbed by skip-on-error."""
+    if isinstance(error, BeddelError) and _BEDDEL_CODE_PATTERN.fullmatch(error.code):
+        return error.code
+    return EXEC_UNCODED_ERROR
 
 
 def _parse_literal(value: str) -> int | float | bool | None | str:
@@ -324,7 +340,9 @@ class WorkflowExecutor:
 
         Returns:
             A dict with ``"step_results"`` mapping step ids to their return
-            values and ``"metadata"`` carrying runtime metadata.
+            values and ``"metadata"`` carrying runtime metadata.  When a
+            skip-on-error step absorbs an error, ``"absorbed_errors"`` also
+            contains its step id and error code.
 
         Raises:
             ExecutionError: ``BEDDEL-EXEC-002`` when a step fails during
@@ -363,6 +381,10 @@ class WorkflowExecutor:
                 "step_results": dict(context.step_results),
                 "metadata": dict(context.metadata),
             }
+            if context.absorbed_errors:
+                result["absorbed_errors"] = [
+                    outcome.model_dump() for outcome in context.absorbed_errors
+                ]
 
             await self._dispatch_hook(context, "on_workflow_end", workflow.id, result)
             return result
@@ -1188,8 +1210,9 @@ class WorkflowExecutor:
 
         Inspects ``step.execution_strategy.type`` and delegates to the
         corresponding handler.  The ``fail`` strategy re-raises immediately;
-        ``skip`` returns ``None``; ``retry`` attempts exponential back-off;
-        ``fallback`` executes an alternative step.
+        ``skip`` records the error outcome and returns ``None``; ``retry``
+        attempts exponential back-off; ``fallback`` executes an alternative
+        step.
 
         Args:
             step: The step that failed.
@@ -1209,10 +1232,12 @@ class WorkflowExecutor:
         strategy = step.execution_strategy.type
 
         if strategy == StrategyType.SKIP:
+            code = _absorbed_error_code(error)
+            context.absorbed_errors.append(AbsorbedStepError(step_id=step.id, error_code=code))
             logger.warning(
                 "Step '%s' failed but strategy is SKIP — continuing: %s",
                 step.id,
-                error,
+                code,
             )
             return None
 

@@ -1220,6 +1220,80 @@ class TestRunStrategies:
         assert steps["second"]["result"] == {"ok": True}
         assert sorted(_disconnects(FAKE_KIT_STATE)) == sorted([ENDPOINT, ENDPOINT2])
 
+    def test_skip_outcome_is_in_the_json_output(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        enable_log_capture(caplog)
+        FAKE_KIT_STATE.scripts[ENDPOINT] = ClientScript(
+            call_error=MCPError("BEDDEL-MCP-600", f"failure {FAKE_SECRET_MARKER}")
+        )
+        document = self._two_server_document({"type": "skip"})
+
+        result = _invoke(tmp_path, document, kits=[_kits(tmp_path)])
+        parsed = _step_results(result)
+
+        assert parsed["first"] is None
+        assert parsed["second"]["result"] == {"ok": True}
+        assert parsed["_absorbed_errors"] == [{"step_id": "first", "error_code": "BEDDEL-MCP-600"}]
+        assert FAKE_SECRET_MARKER not in caplog.text
+        assert all(FAKE_SECRET_MARKER not in record.getMessage() for record in caplog.records)
+        assert FAKE_SECRET_MARKER not in result.output
+
+    def test_skip_outcome_is_in_the_text_output(self, tmp_path: Path) -> None:
+        FAKE_KIT_STATE.scripts[ENDPOINT] = self._unreachable()
+        document = self._two_server_document({"type": "skip"})
+        workflow_path = _write_workflow(tmp_path, document)
+        kits = _kits(tmp_path)
+
+        result = CliRunner().invoke(run, [str(workflow_path), "--kit", str(kits)])
+
+        assert result.exit_code == 0, result.output
+        assert "[absorbed errors]" in result.output
+        assert "first: BEDDEL-MCP-600" in result.output
+
+    def test_a_succeeding_skip_step_adds_no_outcome(self, tmp_path: Path) -> None:
+        parsed = _step_results(
+            _invoke(tmp_path, self._two_server_document({"type": "skip"}), kits=[_kits(tmp_path)])
+        )
+
+        assert set(parsed) == {"first", "second"}
+
+    def test_an_absorbed_error_creates_no_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setenv("HOME", str(home))
+        FAKE_KIT_STATE.scripts[ENDPOINT] = self._unreachable()
+        kits = _kits(tmp_path)
+        document = self._two_server_document({"type": "skip"})
+        _write_workflow(tmp_path, document)
+        before = {
+            path.relative_to(tmp_path)
+            for path in tmp_path.rglob("*")
+            if "__pycache__" not in path.parts
+        }
+
+        result = _invoke(tmp_path, document, kits=[kits])
+        after = {
+            path.relative_to(tmp_path)
+            for path in tmp_path.rglob("*")
+            if "__pycache__" not in path.parts
+        }
+
+        assert result.exit_code == 0, result.output
+        assert after == before
+        assert list(home.iterdir()) == []
+
+    def test_a_step_named_like_the_outcome_key_keeps_its_value(self, tmp_path: Path) -> None:
+        FAKE_KIT_STATE.scripts[ENDPOINT] = self._unreachable()
+        document = self._two_server_document({"type": "skip"})
+        document["steps"][0]["id"] = "_absorbed_errors"
+
+        parsed = _step_results(_invoke(tmp_path, document, kits=[_kits(tmp_path)]))
+
+        assert parsed["_absorbed_errors"] is None
+
     def test_fail_stops_the_run_at_that_step(self, tmp_path: Path) -> None:
         FAKE_KIT_STATE.scripts[ENDPOINT] = self._unreachable()
         document = self._two_server_document({"type": "fail"})
@@ -1441,6 +1515,49 @@ class TestRunCompositionRulesThroughTheCli:
 
         _assert_stopped_before_any_step(result)
         assert spy.reasons() == [REASON_UNKNOWN_TRANSPORT]
+
+    @pytest.mark.parametrize(
+        "composition_case",
+        [
+            "undeclared-server",
+            "unknown-transport",
+            "tool-not-allowed",
+            "kit-unavailable",
+            "kit-name-collision",
+        ],
+    )
+    def test_skip_never_relaxes_composition(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        composition_case: str,
+    ) -> None:
+        _spy_compose(monkeypatch)
+        kits: list[Path] | None = [_kits(tmp_path)]
+        if composition_case == "undeclared-server":
+            document = _doc([_step(server="ghost_srv", strategy={"type": "skip"})])
+        elif composition_case == "unknown-transport":
+            document = _doc(
+                [_step(strategy={"type": "skip"})],
+                servers={SERVER: _server(transport="mcp-stdio")},
+            )
+        elif composition_case == "tool-not-allowed":
+            document = _doc([_step(tool="forbidden", strategy={"type": "skip"})])
+        elif composition_case == "kit-unavailable":
+            kits = None
+            document = _doc([_step(strategy={"type": "skip"})])
+        else:
+            assert kits is not None
+            _write_unrelated_kit(kits[0], "acme")
+            document = _doc(
+                [_step(server="acme", strategy={"type": "skip"})],
+                servers={"acme": _server()},
+                allowed=["acme:echo"],
+            )
+
+        result = _invoke(tmp_path, document, kits=kits)
+
+        _assert_stopped_before_any_step(result)
 
     @pytest.mark.parametrize(
         ("server", "tool"),
