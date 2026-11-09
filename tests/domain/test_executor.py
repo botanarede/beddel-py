@@ -666,8 +666,9 @@ class TestSkipStrategy:
             {"step_id": "optional", "error_code": "BEDDEL-EXEC-051"}
         ]
 
-    async def test_skip_records_a_malformed_code_under_the_fixed_code(self) -> None:
-        error = PrimitiveError("BAD-CODE", "transport-secret")
+    @pytest.mark.parametrize("code", ["BAD-CODE", "BEDDEL-MCP-٦٠٠"])
+    async def test_skip_records_a_malformed_code_under_the_fixed_code(self, code: str) -> None:
+        error = PrimitiveError(code, "transport-secret")
         registry, _ = _registry_with_stub(side_effect=error)
         step = _make_step("optional", strategy_type=StrategyType.SKIP)
 

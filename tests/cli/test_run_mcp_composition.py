@@ -41,6 +41,7 @@ from click.testing import CliRunner, Result
 
 from beddel.cli import commands as commands_module
 from beddel.cli import config as config_module
+from beddel.cli import init as init_module
 from beddel.cli import mcp_composition as surface
 from beddel.cli.commands import run
 from beddel.cli.mcp_composition import (
@@ -62,6 +63,9 @@ from beddel.domain.mcp_composition import (
     REASON_KIT_LOCATION_MISMATCH,
     REASON_KIT_UNAVAILABLE,
     REASON_KITS_DISABLED,
+    REASON_NAME_COLLISION,
+    REASON_TOOL_NOT_ALLOWED,
+    REASON_UNDECLARED_SERVER,
     REASON_UNKNOWN_TRANSPORT,
 )
 from beddel.domain.models import DefaultDependencies, Workflow
@@ -1239,8 +1243,13 @@ class TestRunStrategies:
         assert all(FAKE_SECRET_MARKER not in record.getMessage() for record in caplog.records)
         assert FAKE_SECRET_MARKER not in result.output
 
-    def test_skip_outcome_is_in_the_text_output(self, tmp_path: Path) -> None:
-        FAKE_KIT_STATE.scripts[ENDPOINT] = self._unreachable()
+    def test_skip_outcome_is_in_the_text_output(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        enable_log_capture(caplog)
+        FAKE_KIT_STATE.scripts[ENDPOINT] = ClientScript(
+            call_error=MCPError("BEDDEL-MCP-600", f"failure {FAKE_SECRET_MARKER}")
+        )
         document = self._two_server_document({"type": "skip"})
         workflow_path = _write_workflow(tmp_path, document)
         kits = _kits(tmp_path)
@@ -1250,6 +1259,9 @@ class TestRunStrategies:
         assert result.exit_code == 0, result.output
         assert "[absorbed errors]" in result.output
         assert "first: BEDDEL-MCP-600" in result.output
+        assert FAKE_SECRET_MARKER not in result.output
+        assert FAKE_SECRET_MARKER not in caplog.text
+        assert all(FAKE_SECRET_MARKER not in record.getMessage() for record in caplog.records)
 
     def test_a_succeeding_skip_step_adds_no_outcome(self, tmp_path: Path) -> None:
         parsed = _step_results(
@@ -1264,6 +1276,12 @@ class TestRunStrategies:
         home = tmp_path / "home"
         home.mkdir()
         monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setattr(
+            config_module,
+            "GLOBAL_CONFIG_PATH",
+            home / ".config" / "beddel" / "config.json",
+        )
+        monkeypatch.setattr(init_module, "BEDDEL_DATA_DIR", home / ".config" / "beddel")
         FAKE_KIT_STATE.scripts[ENDPOINT] = self._unreachable()
         kits = _kits(tmp_path)
         document = self._two_server_document({"type": "skip"})
@@ -1517,13 +1535,13 @@ class TestRunCompositionRulesThroughTheCli:
         assert spy.reasons() == [REASON_UNKNOWN_TRANSPORT]
 
     @pytest.mark.parametrize(
-        "composition_case",
+        ("composition_case", "expected_reason"),
         [
-            "undeclared-server",
-            "unknown-transport",
-            "tool-not-allowed",
-            "kit-unavailable",
-            "kit-name-collision",
+            ("undeclared-server", REASON_UNDECLARED_SERVER),
+            ("unknown-transport", REASON_UNKNOWN_TRANSPORT),
+            ("tool-not-allowed", REASON_TOOL_NOT_ALLOWED),
+            ("kit-unavailable", REASON_KIT_UNAVAILABLE),
+            ("kit-name-collision", REASON_NAME_COLLISION),
         ],
     )
     def test_skip_never_relaxes_composition(
@@ -1531,8 +1549,9 @@ class TestRunCompositionRulesThroughTheCli:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         composition_case: str,
+        expected_reason: str,
     ) -> None:
-        _spy_compose(monkeypatch)
+        spy = _spy_compose(monkeypatch)
         kits: list[Path] | None = [_kits(tmp_path)]
         if composition_case == "undeclared-server":
             document = _doc([_step(server="ghost_srv", strategy={"type": "skip"})])
@@ -1558,6 +1577,7 @@ class TestRunCompositionRulesThroughTheCli:
         result = _invoke(tmp_path, document, kits=kits)
 
         _assert_stopped_before_any_step(result)
+        assert spy.reasons() == [expected_reason]
 
     @pytest.mark.parametrize(
         ("server", "tool"),

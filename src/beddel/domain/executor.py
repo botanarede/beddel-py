@@ -72,7 +72,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 _COMPARISON_RE = re.compile(r"^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.+)$")
-_BEDDEL_CODE_PATTERN = re.compile(r"BEDDEL-[A-Z]+-\d{3,4}")
+_BEDDEL_CODE_PATTERN = re.compile(r"BEDDEL-[A-Z]+-[0-9]{3,4}")
 
 
 def _absorbed_error_code(error: Exception) -> str:
