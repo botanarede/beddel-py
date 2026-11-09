@@ -74,6 +74,7 @@ class PIIPattern:
 
 
 __all__ = [
+    "AbsorbedStepError",
     "AgentResult",
     "ApprovalPolicy",
     "ApprovalResult",
@@ -1071,6 +1072,18 @@ class InterruptibleContext:
         return True
 
 
+class AbsorbedStepError(BaseModel):
+    """Operational outcome for a step error absorbed by skip-on-error.
+
+    This outcome is held only for the active run and is never persisted.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    step_id: str
+    error_code: str
+
+
 class ExecutionContext(InterruptibleContext, BaseModel):
     """Mutable runtime context threaded through workflow execution.
 
@@ -1082,6 +1095,8 @@ class ExecutionContext(InterruptibleContext, BaseModel):
         workflow_id: Identifier of the workflow being executed.
         inputs: User-supplied inputs for the workflow run.
         step_results: Results keyed by step id, populated during execution.
+        absorbed_errors: Operational outcomes for errors absorbed by
+            skip-on-error steps; never persisted in checkpoints.
         metadata: Arbitrary runtime metadata.
         current_step_id: The id of the step currently being executed.
         suspended: When True the executor skips remaining steps gracefully.
@@ -1094,6 +1109,7 @@ class ExecutionContext(InterruptibleContext, BaseModel):
     workflow_id: str
     inputs: dict[str, Any] = Field(default_factory=dict)
     step_results: dict[str, Any] = Field(default_factory=dict)
+    absorbed_errors: list[AbsorbedStepError] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     current_step_id: str | None = None
     deps: DefaultDependencies = Field(default_factory=DefaultDependencies)

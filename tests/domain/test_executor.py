@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from beddel.adapters.hooks import LifecycleHookManager
-from beddel.domain.errors import ExecutionError
+from beddel.domain.errors import ExecutionError, PrimitiveError
 from beddel.domain.executor import WorkflowExecutor
 from beddel.domain.models import (
     SKIPPED,
+    AbsorbedStepError,
     BeddelEvent,
     DefaultDependencies,
     EventType,
@@ -635,6 +637,117 @@ class TestSkipStrategy:
         result = await executor.execute(wf)
 
         assert result["step_results"]["skip-s"] is None
+
+    async def test_skip_records_the_step_id_and_the_beddel_code(self) -> None:
+        marker = "transport-secret"
+        error = PrimitiveError("BEDDEL-PRIM-301", marker)
+        registry, _ = _registry_with_stub(side_effect=[error, "next-ok"])
+        steps = [
+            _make_step("optional", strategy_type=StrategyType.SKIP),
+            _make_step("next"),
+        ]
+
+        result = await WorkflowExecutor(registry).execute(_make_workflow(steps))
+
+        assert result["step_results"]["optional"] is None
+        assert result["step_results"]["next"] == "next-ok"
+        assert result["absorbed_errors"] == [
+            {"step_id": "optional", "error_code": "BEDDEL-PRIM-301"}
+        ]
+        assert marker not in str(result)
+
+    async def test_skip_records_an_uncoded_error_under_the_fixed_code(self) -> None:
+        registry, _ = _registry_with_stub(side_effect=RuntimeError("transport-secret"))
+        step = _make_step("optional", strategy_type=StrategyType.SKIP)
+
+        result = await WorkflowExecutor(registry).execute(_make_workflow([step]))
+
+        assert result["absorbed_errors"] == [
+            {"step_id": "optional", "error_code": "BEDDEL-EXEC-051"}
+        ]
+
+    @pytest.mark.parametrize("code", ["BAD-CODE", "BEDDEL-MCP-٦٠٠"])
+    async def test_skip_records_a_malformed_code_under_the_fixed_code(self, code: str) -> None:
+        error = PrimitiveError(code, "transport-secret")
+        registry, _ = _registry_with_stub(side_effect=error)
+        step = _make_step("optional", strategy_type=StrategyType.SKIP)
+
+        result = await WorkflowExecutor(registry).execute(_make_workflow([step]))
+
+        assert result["absorbed_errors"] == [
+            {"step_id": "optional", "error_code": "BEDDEL-EXEC-051"}
+        ]
+
+    async def test_skip_timeout_records_the_timeout_code(self) -> None:
+        async def _slow(config: dict[str, Any], context: ExecutionContext) -> str:
+            await asyncio.sleep(10)
+            return "too late"
+
+        registry = _make_registry(("test-prim", AsyncMock(side_effect=_slow)))
+        step = _make_step("optional", timeout=0.01, strategy_type=StrategyType.SKIP)
+
+        result = await WorkflowExecutor(registry).execute(_make_workflow([step]))
+
+        assert result["absorbed_errors"] == [
+            {"step_id": "optional", "error_code": "BEDDEL-EXEC-005"}
+        ]
+
+    async def test_skip_warning_carries_only_the_step_id_and_the_code(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        marker = "transport-secret"
+        registry, _ = _registry_with_stub(side_effect=PrimitiveError("BEDDEL-PRIM-301", marker))
+        step = _make_step("optional", strategy_type=StrategyType.SKIP)
+        caplog.set_level(logging.DEBUG, logger="beddel.domain.executor")
+
+        await WorkflowExecutor(registry).execute(_make_workflow([step]))
+
+        records = [
+            record
+            for record in caplog.records
+            if record.name == "beddel.domain.executor" and record.levelno == logging.WARNING
+        ]
+        assert len(records) == 1
+        assert records[0].args == ("optional", "BEDDEL-PRIM-301")
+        assert records[0].exc_info is None
+        assert marker not in caplog.text
+
+    async def test_a_skip_step_that_succeeds_records_nothing(self) -> None:
+        registry, _ = _registry_with_stub(return_value="ok")
+        step = _make_step("optional", strategy_type=StrategyType.SKIP)
+
+        result = await WorkflowExecutor(registry).execute(_make_workflow([step]))
+
+        assert set(result) == {"step_results", "metadata"}
+
+    @pytest.mark.parametrize("strategy", ["fallback", "delegate-skip", "retry-succeeds"])
+    async def test_other_strategies_record_nothing(self, strategy: str) -> None:
+        registry, _ = _registry_with_stub(side_effect=[RuntimeError("boom"), "recovered"])
+        provider = None
+        if strategy == "fallback":
+            strategy_type = StrategyType.FALLBACK
+            fallback_step = _make_step("fallback")
+        elif strategy == "delegate-skip":
+            strategy_type = StrategyType.DELEGATE
+            fallback_step = None
+            provider = AsyncMock(spec=ILLMProvider)
+            provider.complete = AsyncMock(return_value={"content": "skip"})
+        else:
+            strategy_type = StrategyType.RETRY
+            fallback_step = None
+
+        retry = RetryConfig(max_attempts=2, backoff_base=0, jitter=False)
+        step = _make_step(
+            "optional",
+            strategy_type=strategy_type,
+            fallback_step=fallback_step,
+            retry=retry,
+        )
+        deps = DefaultDependencies(llm_provider=provider) if provider is not None else None
+
+        result = await WorkflowExecutor(registry, deps=deps).execute(_make_workflow([step]))
+
+        assert "absorbed_errors" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -1906,6 +2019,15 @@ class TestInterruptibleContext:
         assert "provider" not in data["metadata"]
         assert data["metadata"]["key1"] == "value1"
         assert data["step_results"] == {"s1": "result1"}
+
+    async def test_serialize_carries_no_absorbed_error(self) -> None:
+        outcome = AbsorbedStepError(step_id="optional", error_code="BEDDEL-MCP-600")
+        ctx = ExecutionContext(workflow_id="wf-1", absorbed_errors=[outcome])
+
+        data = ctx.serialize()
+
+        assert "absorbed_errors" not in data
+        assert "BEDDEL-MCP-600" not in json.dumps(data)
 
     async def test_restore_reconstructs_state(self) -> None:
         """restore() faithfully reconstructs all serializable fields."""

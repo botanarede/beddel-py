@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from beddel.domain.models import (
+    AbsorbedStepError,
     BackoffType,
     BeddelEvent,
     CircuitBreakerConfig,
@@ -845,6 +846,7 @@ class TestAllExports:
         from beddel.domain import models
 
         expected = {
+            "AbsorbedStepError",
             "AgentResult",
             "ApprovalPolicy",
             "ApprovalResult",
@@ -883,6 +885,30 @@ class TestAllExports:
             "Workflow",
         }
         assert set(models.__all__) == expected
+
+
+class TestAbsorbedStepError:
+    """Tests for the transient skip-on-error outcome model."""
+
+    def test_model_dump_contains_only_step_id_and_error_code(self) -> None:
+        outcome = AbsorbedStepError(step_id="optional", error_code="BEDDEL-MCP-600")
+
+        assert outcome.model_dump() == {
+            "step_id": "optional",
+            "error_code": "BEDDEL-MCP-600",
+        }
+
+    def test_extra_fields_and_mutation_are_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            AbsorbedStepError(
+                step_id="optional",
+                error_code="BEDDEL-MCP-600",
+                message="secret",
+            )
+
+        outcome = AbsorbedStepError(step_id="optional", error_code="BEDDEL-MCP-600")
+        with pytest.raises(ValidationError):
+            outcome.step_id = "changed"
 
 
 # ---------------------------------------------------------------------------

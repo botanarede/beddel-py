@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `beddel/serve/` tier: `IAgentRuntimeAdapter` protocol, `VertexAgentEngineAdapter`, `AgentInfo`/`ChatChunk` models, FastAPI route injection, bundled sidebar HTML
+- `beddel run` records skip-on-error outcomes as `absorbed_errors` in executor results and `_absorbed_errors` or an `[absorbed errors]` block in CLI output; skip warnings carry only the step id and error code, with uncoded errors registered as `BEDDEL-EXEC-051`.
 - Interactive kit discovery: `beddel kit install` (no args) triggers interactive browse via sparse-checkout from GitHub registry
 - Kit discovery registry: HTTP-first resolution via pre-generated `registry.json`, git sparse-checkout fallback, CI generator action
 - `--json` flag wired for kit discovery output
