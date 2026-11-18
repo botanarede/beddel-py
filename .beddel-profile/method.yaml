@@ -1,0 +1,14 @@
+schema: profile-dev/method/1
+inputs:
+  story_path: .beddel-pilot/story.md
+  guide_path: .beddel-pilot/guide.md
+  spec_path: .beddel-pilot/spec.md
+  status_path: ""
+  branch: feat/story-{story_key}
+  remote: origin
+  base_branch: main
+methods:
+  bmad:
+    plan: "Load the bmad-build skill and run it only through its spec step (step 02) to write the spec above; keep the front matter above, ask no question and stop at its first checkpoint."
+    implement: "Load the bmad-dev-story skill and use it for this unit only on the current feature branch, within the limits above."
+    fix: "Load the bmad-dev-story skill and use it for these Findings only on the current feature branch, within the limits above."
