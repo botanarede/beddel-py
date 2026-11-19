@@ -9,6 +9,6 @@ inputs:
   base_branch: main
 methods:
   bmad:
-    plan: "Load the bmad-build skill and run it only through its spec step (step 02) to write the spec above; keep the front matter above, ask no question and stop at its first checkpoint."
-    implement: "Load the bmad-dev-story skill and use it for this unit only on the current feature branch, within the limits above."
-    fix: "Load the bmad-dev-story skill and use it for these Findings only on the current feature branch, within the limits above."
+    plan: "Load the bmad-build skill from .beddel-pilot/.kiro/skills/bmad-build/SKILL.md. The BMAD project root is the .beddel-pilot folder of the current working directory; use its absolute path as {project-root}. Run the skill only through its spec step (step 02) to write the spec above; keep the front matter above, ask no question and stop at its first checkpoint."
+    implement: "Load the bmad-dev-story skill from .beddel-pilot/.kiro/skills/bmad-dev-story/SKILL.md. The BMAD project root is the .beddel-pilot folder of the current working directory; use its absolute path as {project-root}. Use it for this unit only on the current feature branch, within the limits above."
+    fix: "Load the bmad-dev-story skill from .beddel-pilot/.kiro/skills/bmad-dev-story/SKILL.md. The BMAD project root is the .beddel-pilot folder of the current working directory; use its absolute path as {project-root}. Use it for these Findings only on the current feature branch, within the limits above."
