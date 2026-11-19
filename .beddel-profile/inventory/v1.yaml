@@ -1,0 +1,84 @@
+version: v1
+classes:
+  - id: quality-gate
+    kind: gate
+  - id: blind-hunter
+    kind: review
+  - id: edge-case-hunter
+    kind: review
+  - id: verification-gap
+    kind: review
+  - id: acceptance-auditor
+    kind: review
+components:
+  - id: core
+    kind: component
+    path: src/beddel
+  - id: automation
+    kind: component
+    path: automation
+  - id: workflow-contract
+    kind: shared_contract
+    path: src/beddel/domain/models.py
+criteria:
+  - id: quality-gate-pass
+    description: The configured quality gate passes.
+    blocking: true
+  - id: blind-hunter-pass
+    description: The blind (context-free) review finds no divergence.
+    blocking: true
+  - id: edge-case-hunter-pass
+    description: The edge-case review finds no divergence.
+    blocking: true
+  - id: verification-gap-pass
+    description: The verification-gap review finds no divergence.
+    blocking: true
+  - id: acceptance-auditor-pass
+    description: The acceptance review finds no divergence.
+    blocking: true
+obligations:
+  - class: quality-gate
+    affected_point: core
+    criterion: quality-gate-pass
+  - class: quality-gate
+    affected_point: automation
+    criterion: quality-gate-pass
+  - class: quality-gate
+    affected_point: workflow-contract
+    criterion: quality-gate-pass
+  - class: blind-hunter
+    affected_point: core
+    criterion: blind-hunter-pass
+  - class: blind-hunter
+    affected_point: automation
+    criterion: blind-hunter-pass
+  - class: blind-hunter
+    affected_point: workflow-contract
+    criterion: blind-hunter-pass
+  - class: edge-case-hunter
+    affected_point: core
+    criterion: edge-case-hunter-pass
+  - class: edge-case-hunter
+    affected_point: automation
+    criterion: edge-case-hunter-pass
+  - class: edge-case-hunter
+    affected_point: workflow-contract
+    criterion: edge-case-hunter-pass
+  - class: verification-gap
+    affected_point: core
+    criterion: verification-gap-pass
+  - class: verification-gap
+    affected_point: automation
+    criterion: verification-gap-pass
+  - class: verification-gap
+    affected_point: workflow-contract
+    criterion: verification-gap-pass
+  - class: acceptance-auditor
+    affected_point: core
+    criterion: acceptance-auditor-pass
+  - class: acceptance-auditor
+    affected_point: automation
+    criterion: acceptance-auditor-pass
+  - class: acceptance-auditor
+    affected_point: workflow-contract
+    criterion: acceptance-auditor-pass
