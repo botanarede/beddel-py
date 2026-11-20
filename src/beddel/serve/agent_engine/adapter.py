@@ -32,7 +32,7 @@ _AVAILABLE = False
 _vertexai: Any = None
 
 try:
-    import vertexai as _vertexai_module
+    import vertexai as _vertexai_module  # type: ignore[import-not-found, unused-ignore]
 
     _vertexai = _vertexai_module
     _AVAILABLE = True
@@ -41,7 +41,7 @@ try:
     # Required because google-genai 2.8.0 passes max_line_length= but aiohttp 3.13+
     # removed it. This is a temporary workaround until google-genai is fixed upstream.
     try:
-        import aiohttp
+        import aiohttp  # type: ignore[import-not-found, unused-ignore]
 
         _orig_readline = aiohttp.StreamReader.readline
 

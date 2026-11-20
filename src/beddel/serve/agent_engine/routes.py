@@ -34,9 +34,14 @@ def register_agent_engine_routes(app: Any, adapter: IAgentRuntimeAdapter) -> Non
         adapter: An :class:`~.ports.IAgentRuntimeAdapter` implementation
             that supplies agent discovery and chat streaming.
     """
-    from fastapi import Request
-    from fastapi.responses import HTMLResponse, JSONResponse
-    from sse_starlette.sse import EventSourceResponse
+    from fastapi import Request  # type: ignore[import-not-found, unused-ignore]
+    from fastapi.responses import (  # type: ignore[import-not-found, unused-ignore]
+        HTMLResponse,
+        JSONResponse,
+    )
+    from sse_starlette.sse import (  # type: ignore[import-not-found, unused-ignore]
+        EventSourceResponse,
+    )
 
     @app.get("/api/agent-engine/agents")
     async def _list_agents() -> JSONResponse:
