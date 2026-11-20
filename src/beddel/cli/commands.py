@@ -1854,7 +1854,7 @@ def _build_runtime_app(
     # This minimal version serves the standalone launcher (beddel launch).
     if not dashboard:
 
-        @app.get("/workflows")
+        @app.get("/workflows")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
         async def _list_all_workflows() -> list[dict[str, Any]]:
             """Return summary list of all mounted workflows for the launcher."""
             results: list[dict[str, Any]] = []
@@ -2043,7 +2043,7 @@ def _build_runtime_app(
 
                 _token_ref = _a2a_token  # capture for closure
 
-                class _A2ABearerAuthMiddleware(BaseHTTPMiddleware):
+                class _A2ABearerAuthMiddleware(BaseHTTPMiddleware):  # type: ignore[misc, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
                     async def dispatch(self, request: Any, call_next: Any) -> Any:
                         if request.url.path.startswith("/a2a"):
                             auth = request.headers.get("authorization", "")
@@ -2064,7 +2064,7 @@ def _build_runtime_app(
             # Legacy alias for backward compat
             from starlette.responses import RedirectResponse as _RedirectResp
 
-            @app.get("/.well-known/agent.json")
+            @app.get("/.well-known/agent.json")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
             async def _legacy_agent_card() -> Any:
                 return _RedirectResp("/.well-known/agent-card.json", status_code=301)
 
@@ -2097,7 +2097,7 @@ def _build_runtime_app(
     # ── Index API endpoints (unconditional — not gated by dashboard flag) ──
     from fastapi.responses import JSONResponse  # type: ignore[import-not-found, unused-ignore]
 
-    @app.get("/api/kits")
+    @app.get("/api/kits")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
     async def api_kits(enabled: str | None = Query(None)) -> JSONResponse:
         if _index_store is None:
             return JSONResponse(
@@ -2112,7 +2112,7 @@ def _build_runtime_app(
             kit_row["enabled"] = bool(kit_row["enabled"])
         return JSONResponse(content=kits)
 
-    @app.get("/api/flows")
+    @app.get("/api/flows")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
     async def api_flows(enabled: str | None = Query(None)) -> JSONResponse:
         if _index_store is None:
             return JSONResponse(
@@ -2127,7 +2127,7 @@ def _build_runtime_app(
             flow_row["enabled"] = bool(flow_row["enabled"])
         return JSONResponse(content=flows)
 
-    @app.get("/health")
+    @app.get("/health")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
@@ -2137,7 +2137,7 @@ def _build_runtime_app(
         # Pre-compute available kit names for pre-flight deps check
         _available_kit_names = {m.kit.name for m in discovery_result.manifests}
 
-        @app.get("/workflows")
+        @app.get("/workflows")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
         async def list_workflows() -> list[dict[str, Any]]:
             results: list[dict[str, Any]] = []
             for wf, _ in all_workflows.values():
