@@ -11,7 +11,7 @@ not with these helpers directly.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import ExecutionContext
@@ -92,13 +92,14 @@ def get_model(config: dict[str, Any], context: ExecutionContext, primitive_type:
                 "missing_key": "model",
             },
         )
+    model = cast(str, model)
 
     # Budget degradation override (highest priority).
     # degradation_model MUST be a concrete model identifier (e.g. "gpt-4o-mini"),
     # not a tier alias — intentionally bypasses tier resolution to guarantee
     # the cheapest model is used when budget is degraded.
     if context.metadata.get("_budget_degraded"):
-        return context.metadata["_degradation_model"]
+        return cast(str, context.metadata["_degradation_model"])
 
     # Tier resolution: if tier_router is available, try to resolve
     tier_router = context.deps.tier_router

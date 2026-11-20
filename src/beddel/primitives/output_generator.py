@@ -11,7 +11,7 @@ Supports three output formats: JSON (with configurable indent), Markdown
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from beddel.domain.errors import PrimitiveError
 from beddel.domain.models import ExecutionContext
@@ -133,7 +133,7 @@ class OutputGeneratorPrimitive(IPrimitive):
                 },
             )
 
-        return config["template"]
+        return cast(str, config["template"])
 
     @staticmethod
     def _resolve_template(template: str, context: ExecutionContext) -> Any:

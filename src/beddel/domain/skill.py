@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from beddel.domain.errors import SkillError
 from beddel.domain.kit import KitManifest
@@ -192,7 +192,7 @@ class SkillResolver:
             )
 
         # 5. Return resolved path
-        return manifest.root_path / workflow.path
+        return cast(Path, manifest.root_path / workflow.path)
 
     @staticmethod
     def _find_kit(

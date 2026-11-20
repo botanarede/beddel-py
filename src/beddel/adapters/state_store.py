@@ -16,7 +16,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from beddel.domain.errors import StateError
 from beddel.error_codes import (
@@ -142,7 +142,7 @@ class JSONFileStateStore:
                     f"Failed to read state for workflow {workflow_id!r}: {exc}",
                 ) from exc
             try:
-                return json.loads(data)
+                return cast(dict[str, Any] | None, json.loads(data))
             except json.JSONDecodeError as exc:
                 raise StateError(
                     STATE_CORRUPTED,
