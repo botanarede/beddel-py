@@ -1270,8 +1270,8 @@ async def _handle_relay_run_agent_engine(
 
     credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     auth_req = google.auth.transport.requests.Request()
-    credentials.refresh(auth_req)  # type: ignore[no-untyped-call]
-    bearer_token: str = credentials.token  # type: ignore[assignment]
+    credentials.refresh(auth_req)  # type: ignore[no-untyped-call, unused-ignore]
+    bearer_token: str = credentials.token  # type: ignore[assignment, unused-ignore]
 
     # Build Agent Engine URL
     # agent_engine_url is like: projects/beddel-beta/locations/us-central1/reasoningEngines/123

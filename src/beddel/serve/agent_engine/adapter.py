@@ -45,11 +45,11 @@ try:
 
         _orig_readline = aiohttp.StreamReader.readline
 
-        async def _patched_readline(self: Any, **kwargs: Any) -> bytes:  # type: ignore[no-untyped-def]
+        async def _patched_readline(self: Any, **kwargs: Any) -> bytes:  # type: ignore[no-untyped-def, unused-ignore]
             kwargs.pop("max_line_length", None)
             return cast(bytes, await _orig_readline(self))
 
-        aiohttp.StreamReader.readline = _patched_readline  # type: ignore[assignment]
+        aiohttp.StreamReader.readline = _patched_readline  # type: ignore[assignment, unused-ignore]
         logger.debug("Patched aiohttp.StreamReader.readline for google-genai compat")
     except (ImportError, AttributeError):
         pass
