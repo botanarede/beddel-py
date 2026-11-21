@@ -92,7 +92,16 @@ def get_model(config: dict[str, Any], context: ExecutionContext, primitive_type:
                 "missing_key": "model",
             },
         )
-    model = cast(str, model)
+    if not isinstance(model, str):
+        raise PrimitiveError(
+            PRIM_MISSING_MODEL,
+            f"Config key 'model' must be a string, got {type(model).__name__}",
+            {
+                "step_id": context.current_step_id,
+                "primitive_type": primitive_type,
+                "model_type": type(model).__name__,
+            },
+        )
 
     # Budget degradation override (highest priority).
     # degradation_model MUST be a concrete model identifier (e.g. "gpt-4o-mini"),
