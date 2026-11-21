@@ -1,0 +1,7 @@
+schema: profile-dev/approval-decision/1
+change_id: 8-6-pilot-of-the-new-flow-on-one-real-story-measured
+revision: 0db50697ee32e126890c1700f1d1ff6e1a8d8947
+report: changes/8-6-pilot-of-the-new-flow-on-one-real-story-measured/report/2.json
+report_sha256: 0f98a4687ccf42330f7844316f05c3f00ba9c347d90cd93a95ca211291fc7fd6
+approved_by: Carlos Bacelar
+approved_at: '2026-11-21T16:10:23Z'
