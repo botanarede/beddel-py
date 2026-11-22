@@ -17,7 +17,6 @@ import tempfile
 import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 import click
 
@@ -644,7 +643,7 @@ def prompt_bootstrap() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def register_init_command(cli: Any) -> None:
+def register_init_command(cli: click.Group) -> None:
     """Register the 'init' command on the CLI group."""
 
     @cli.command()

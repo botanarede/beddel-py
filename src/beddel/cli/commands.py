@@ -738,7 +738,7 @@ def _start_runtime(
     """
     import threading
 
-    import uvicorn
+    import uvicorn  # type: ignore[import-not-found, unused-ignore]
 
     app, loaded, wf_ids = _build_runtime_app(workflow_paths, dashboard=True)
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
@@ -809,7 +809,7 @@ def _connect_remote_flow(
         # Token exchange: establish browser session on dashboard
         browser_url = dashboard_url  # fallback: open dashboard root
         try:
-            import httpx
+            import httpx  # type: ignore[import-not-found, unused-ignore]
 
             async def _exchange() -> str | None:
                 async with httpx.AsyncClient(timeout=30.0) as http:
@@ -973,7 +973,7 @@ def connect(
 
         import threading
 
-        import uvicorn
+        import uvicorn  # type: ignore[import-not-found, unused-ignore]
 
         config = uvicorn.Config(app, host=host, port=port, log_level="info")
         uvi_server = uvicorn.Server(config)
@@ -1060,7 +1060,7 @@ def connect_dev(ctx: click.Context, *, url: str) -> None:
 
     import threading
 
-    import uvicorn
+    import uvicorn  # type: ignore[import-not-found, unused-ignore]
 
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     uvi_server = uvicorn.Server(config)
@@ -1154,7 +1154,7 @@ def connect_remote(ctx: click.Context, *, url: str) -> None:
         # Token exchange: establish browser session on dashboard
         browser_url = dashboard_url  # fallback: open dashboard root
         try:
-            import httpx
+            import httpx  # type: ignore[import-not-found, unused-ignore]
 
             async def _exchange() -> str | None:
                 async with httpx.AsyncClient(timeout=30.0) as http:
@@ -1191,7 +1191,7 @@ def connect_remote(ctx: click.Context, *, url: str) -> None:
 
         import threading
 
-        import uvicorn
+        import uvicorn  # type: ignore[import-not-found, unused-ignore]
 
         config = uvicorn.Config(app, host=host, port=port, log_level="info")
         uvi_server = uvicorn.Server(config)
@@ -1265,13 +1265,13 @@ async def _handle_relay_run_agent_engine(
             message = forwarded.get("message", "")
 
     # Get Bearer token via ADC (lazy imports)
-    import google.auth
-    import google.auth.transport.requests
+    import google.auth  # type: ignore[import-not-found, unused-ignore]
+    import google.auth.transport.requests  # type: ignore[import-not-found, unused-ignore]
 
     credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     auth_req = google.auth.transport.requests.Request()
-    credentials.refresh(auth_req)  # type: ignore[no-untyped-call]
-    bearer_token: str = credentials.token  # type: ignore[assignment]
+    credentials.refresh(auth_req)  # type: ignore[no-untyped-call, unused-ignore]
+    bearer_token: str = credentials.token  # type: ignore[assignment, unused-ignore]
 
     # Build Agent Engine URL
     # agent_engine_url is like: projects/beddel-beta/locations/us-central1/reasoningEngines/123
@@ -1624,8 +1624,10 @@ def _build_runtime_app(
     Returns (app, loaded_count, workflow_ids).
     """
     try:
-        from fastapi import FastAPI, Query
-        from fastapi.middleware.cors import CORSMiddleware
+        from fastapi import FastAPI, Query  # type: ignore[import-not-found, unused-ignore]
+        from fastapi.middleware.cors import (  # type: ignore[import-not-found, unused-ignore]
+            CORSMiddleware,
+        )
     except ImportError:
         click.echo(
             "Missing dependencies. Install missing kits: beddel init",
@@ -1852,7 +1854,7 @@ def _build_runtime_app(
     # This minimal version serves the standalone launcher (beddel launch).
     if not dashboard:
 
-        @app.get("/workflows")
+        @app.get("/workflows")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
         async def _list_all_workflows() -> list[dict[str, Any]]:
             """Return summary list of all mounted workflows for the launcher."""
             results: list[dict[str, Any]] = []
@@ -1958,8 +1960,8 @@ def _build_runtime_app(
 
     if a2a_enable and _a2a_kit_available:
         try:
-            from a2a.server.request_handlers import (
-                DefaultRequestHandler,  # type: ignore[import-not-found]
+            from a2a.server.request_handlers import (  # type: ignore[import-not-found, unused-ignore]
+                DefaultRequestHandler,
             )
             from a2a.server.routes import (  # type: ignore[import-not-found]
                 add_a2a_routes_to_fastapi,
@@ -2032,12 +2034,16 @@ def _build_runtime_app(
             if _a2a_token:
                 from secrets import compare_digest as _compare_digest
 
-                from starlette.middleware.base import BaseHTTPMiddleware
-                from starlette.responses import JSONResponse as _StarletteJSON
+                from starlette.middleware.base import (  # type: ignore[import-not-found, unused-ignore]
+                    BaseHTTPMiddleware,
+                )
+                from starlette.responses import (  # type: ignore[import-not-found, unused-ignore]
+                    JSONResponse as _StarletteJSON,
+                )
 
                 _token_ref = _a2a_token  # capture for closure
 
-                class _A2ABearerAuthMiddleware(BaseHTTPMiddleware):
+                class _A2ABearerAuthMiddleware(BaseHTTPMiddleware):  # type: ignore[misc, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
                     async def dispatch(self, request: Any, call_next: Any) -> Any:
                         if request.url.path.startswith("/a2a"):
                             auth = request.headers.get("authorization", "")
@@ -2058,7 +2064,7 @@ def _build_runtime_app(
             # Legacy alias for backward compat
             from starlette.responses import RedirectResponse as _RedirectResp
 
-            @app.get("/.well-known/agent.json")
+            @app.get("/.well-known/agent.json")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
             async def _legacy_agent_card() -> Any:
                 return _RedirectResp("/.well-known/agent-card.json", status_code=301)
 
@@ -2089,9 +2095,9 @@ def _build_runtime_app(
         logger.debug("A2A not mounted: serve-a2a-kit not discovered or not enabled in kit index")
 
     # ── Index API endpoints (unconditional — not gated by dashboard flag) ──
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import JSONResponse  # type: ignore[import-not-found, unused-ignore]
 
-    @app.get("/api/kits")
+    @app.get("/api/kits")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
     async def api_kits(enabled: str | None = Query(None)) -> JSONResponse:
         if _index_store is None:
             return JSONResponse(
@@ -2106,7 +2112,7 @@ def _build_runtime_app(
             kit_row["enabled"] = bool(kit_row["enabled"])
         return JSONResponse(content=kits)
 
-    @app.get("/api/flows")
+    @app.get("/api/flows")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
     async def api_flows(enabled: str | None = Query(None)) -> JSONResponse:
         if _index_store is None:
             return JSONResponse(
@@ -2121,7 +2127,7 @@ def _build_runtime_app(
             flow_row["enabled"] = bool(flow_row["enabled"])
         return JSONResponse(content=flows)
 
-    @app.get("/health")
+    @app.get("/health")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
 
@@ -2131,7 +2137,7 @@ def _build_runtime_app(
         # Pre-compute available kit names for pre-flight deps check
         _available_kit_names = {m.kit.name for m in discovery_result.manifests}
 
-        @app.get("/workflows")
+        @app.get("/workflows")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
         async def list_workflows() -> list[dict[str, Any]]:
             results: list[dict[str, Any]] = []
             for wf, _ in all_workflows.values():
@@ -2152,7 +2158,7 @@ def _build_runtime_app(
 
     # ── Agent Engine sidebar routes (guarded — absent when vertexai not installed) ──
     try:
-        from beddel.serve.agent_engine.adapter import _AVAILABLE as _AE_AVAILABLE  # type: ignore[import-not-found]  # noqa: I001
+        from beddel.serve.agent_engine.adapter import _AVAILABLE as _AE_AVAILABLE  # type: ignore[import-not-found, unused-ignore]  # noqa: I001
 
         if _AE_AVAILABLE:
             _ae_project = "beddel-beta"
@@ -2276,7 +2282,7 @@ def serve(
         return
 
     try:
-        import uvicorn
+        import uvicorn  # type: ignore[import-not-found, unused-ignore]
     except ImportError:
         click.echo(
             "Missing dependencies. Install missing kits: beddel init",
@@ -2409,7 +2415,7 @@ def launch(port: int, *, no_browser: bool) -> None:
         raise SystemExit(0)
 
     try:
-        import uvicorn
+        import uvicorn  # type: ignore[import-not-found, unused-ignore]
     except ImportError:
         click.echo(
             "  ✗ The kits are installed but their Python packages are not importable.\n"

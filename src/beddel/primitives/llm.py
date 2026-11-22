@@ -9,7 +9,7 @@ Supports both synchronous (request/response) and streaming modes.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from beddel.domain.models import ExecutionContext
 from beddel.domain.ports import ILLMProvider, IPrimitive
@@ -162,7 +162,7 @@ class LLMPrimitive(IPrimitive):
         if "prompt" in config:
             return [{"role": "user", "content": config["prompt"]}]
         if "messages" in config:
-            return config["messages"]
+            return cast(list[dict[str, Any]], config["messages"])
         return []
 
     @staticmethod

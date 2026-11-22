@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from beddel.domain.errors import ExecutionError
@@ -206,6 +206,9 @@ class GoalOrientedStrategy:
         if self._backoff_type == BackoffType.FIXED:
             return self._backoff_base
         if self._backoff_type == BackoffType.EXPONENTIAL:
-            return min(self._backoff_base * (2 ** (attempt - 1)), self._backoff_max)
+            return cast(
+                float,
+                min(self._backoff_base * (2 ** (attempt - 1)), self._backoff_max),
+            )
         # ADAPTIVE
         return self._backoff_base * (attempt / self._max_attempts) * self._backoff_max

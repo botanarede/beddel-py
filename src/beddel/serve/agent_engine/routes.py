@@ -34,11 +34,16 @@ def register_agent_engine_routes(app: Any, adapter: IAgentRuntimeAdapter) -> Non
         adapter: An :class:`~.ports.IAgentRuntimeAdapter` implementation
             that supplies agent discovery and chat streaming.
     """
-    from fastapi import Request
-    from fastapi.responses import HTMLResponse, JSONResponse
-    from sse_starlette.sse import EventSourceResponse
+    from fastapi import Request  # type: ignore[import-not-found, unused-ignore]
+    from fastapi.responses import (  # type: ignore[import-not-found, unused-ignore]
+        HTMLResponse,
+        JSONResponse,
+    )
+    from sse_starlette.sse import (  # type: ignore[import-not-found, unused-ignore]
+        EventSourceResponse,
+    )
 
-    @app.get("/api/agent-engine/agents")
+    @app.get("/api/agent-engine/agents")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
     async def _list_agents() -> JSONResponse:
         try:
             agents = await adapter.list_agents()
@@ -58,7 +63,7 @@ def register_agent_engine_routes(app: Any, adapter: IAgentRuntimeAdapter) -> Non
                 content={"error": f"Failed to list agents: {exc}"},
             )
 
-    @app.post("/api/agent-engine/chat")
+    @app.post("/api/agent-engine/chat")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
     async def _chat(request: Request) -> EventSourceResponse:
         body = await request.json()
         resource_name: str = body["resource_name"]
@@ -87,7 +92,7 @@ def register_agent_engine_routes(app: Any, adapter: IAgentRuntimeAdapter) -> Non
 
         return EventSourceResponse(_event_generator())
 
-    @app.get("/api/agent-engine/sidebar")
+    @app.get("/api/agent-engine/sidebar")  # type: ignore[untyped-decorator, unused-ignore]  # shortcut: TD-5 moves concrete web adapters to kits
     async def _sidebar() -> HTMLResponse:
         html = _SIDEBAR_PATH.read_text(encoding="utf-8")
         return HTMLResponse(content=html)
